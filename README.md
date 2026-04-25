@@ -1,5 +1,6 @@
 notes:
 
+-         //filter data based on blood component and group if provided
 
 - process and print data after search !!!???
 - catch live location in search?
