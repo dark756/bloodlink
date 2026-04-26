@@ -111,7 +111,7 @@ export default function Search() {
             return;
         }
         if (coords.lng) params.append("longitude", coords.lng);
-        const range = { 'urban': [3000], 'rural': [10000, 30000, 90000] };
+        const range = { 'urban': [3000,5000,10000], 'rural': [10000, 30000, 90000] };
         const is_urban = true;//logic to be implemented 
         for (let r of (is_urban ? range.urban : range.rural)) {
             params.delete("radius");
