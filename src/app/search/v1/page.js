@@ -68,7 +68,7 @@ export default function Search() {
         if (bloodGroupId) params.append("bloodGroupId", bloodGroupId);
         console.log(params.toString());
         const response = await axios.get(`/api/search?${params.toString()}`, {});
-        console.log(response.data);
+        console.log(response.data.length);
         if (response.status === 200) {
             //handle the response data as needed
             setLoaded(true);

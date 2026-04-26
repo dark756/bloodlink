@@ -19,7 +19,7 @@ export async function GET(request) {
                 }
             }
         );
-
+        console.log(response.data.length);
         return NextResponse.json(response.data);
     } catch (error) {
         return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });

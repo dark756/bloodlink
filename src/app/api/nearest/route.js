@@ -20,7 +20,7 @@ export async function GET(request) {
                 }
             }
         );
-
+        console.log(response.data.length);  
         return NextResponse.json(response.data);
     } catch (error) {
         console.log('Error fetching data:', error);

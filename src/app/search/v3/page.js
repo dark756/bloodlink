@@ -3,12 +3,10 @@ import { useState, useEffect } from "react";
 import data from "@/../assets/district_data.json";
 import axios from "axios";
 import "leaflet/dist/leaflet.css";
-import dynamic from "next/dynamic"
 import { useMapEvents } from 'react-leaflet';
+import dynamic from "next/dynamic";
 
-const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), { ssr: false });
-const TileLayer = dynamic(() => import("react-leaflet").then((mod) => mod.TileLayer), { ssr: false });
-const Marker = dynamic(() => import("react-leaflet").then((mod) => mod.Marker), { ssr: false });
+const BloodMap = dynamic(() => import("../../components/Map.js"), { ssr: false });
 
 const bloodComponents = {
     "Whole Blood": 11,
@@ -53,6 +51,7 @@ export default function Search() {
     const [error, setError] = useState("")
     const [locationSearchResults, setLocationSearchResults] = useState([]);
     const [customIcon, setCustomIcon] = useState(null);
+    const [locationLabel, setLocationLabel] = useState("");
 
     useEffect(() => {
         const initLeaflet = async () => {
@@ -95,20 +94,8 @@ export default function Search() {
         );
     };
 
-    function LocationMarker() {
-        const mapEvents = useMapEvents({
-            click(e) {
-                setCoords(e.latlng);
-            },
-        });
 
-        // Only render marker if coords exist AND icon is loaded
-        if (!coords || !customIcon) return null;
-        return <Marker position={coords} icon={customIcon} />;
-    }
-
-
-    const handleSearchWithLocation = async (getCurrentPosition, bloodComponentId, bloodGroupId) => {
+    const handleSearchWithLocation = async (bloodComponentId, bloodGroupId) => {
         setLoading(true);
         if (!coords) {
             alert("Failed to get location. Please allow location access and try again.");
@@ -124,9 +111,10 @@ export default function Search() {
             return;
         }
         if (coords.lng) params.append("longitude", coords.lng);
-        const range = { 'urban': [3000, 5000, 10000], 'rural': [10000, 30000, 50000] };
-        const is_urban = false;//logic to be implemented 
+        const range = { 'urban': [3000], 'rural': [10000, 30000, 90000] };
+        const is_urban = true;//logic to be implemented 
         for (let r of (is_urban ? range.urban : range.rural)) {
+            params.delete("radius");
             params.append("radius", r);
             console.log(params.toString());
             const response = await axios.get(`/api/nearest?${params.toString()}`, {});
@@ -135,16 +123,60 @@ export default function Search() {
                 setLoading(false);
                 return;
             }
-            if (response.data.length === 0) continue;
-            //getstatecodes unique
-            // const stateCodes = [...new Set(response.data.map(item => item.stateCode))];
-            // console.log(stateCodes)
-            //filter 
-            const p2 = new URLSearchParams();
-            if (bloodComponentId) p2.append("ComponentId", bloodComponentId);
-            if (bloodGroupId) p2.append("bloodGroupId", bloodGroupId);
-            setLocationSearchResults(response.data);
+            if (response.data.length === 0) {
+                console.log(`No results within ${r} meters. Expanding search radius...`);
+                continue;
             }
+            // if (!bloodComponentId && !bloodGroupId) { //if no filters, show all results from nearest api
+            //     setLocationSearchResults(response.data);
+            //     break;
+            // }
+            //getstatecodes unique
+            const stateCodes = [...new Set(response.data.map(item => item.stateCode))];
+            const hospitalCodes = response.data.map(item => item.hospitalCode);
+            if (stateCodes.length === 0) {
+                console.log("No statecodes found.");
+                continue;
+            }
+            const nearestMap = new Map(
+                response.data.map(item => [String(item.hospitalCode), item])
+            );            //filter 
+            var filteredResults = [];
+            for (let sc of stateCodes) {
+                const p2 = new URLSearchParams();
+                p2.set("stateCode", sc);
+                if (bloodComponentId) p2.append("ComponentId", bloodComponentId);
+                if (bloodGroupId) p2.append("bloodGroupId", bloodGroupId);
+                const res = await axios.get(`/api/search?${p2.toString()}`, {});
+                if (res.status !== 200) {
+                    alert("Failed to fetch data. Please try again later.");
+                    setLoading(false);
+                    return;
+                }
+                console.log(res.data);
+                console.log(response.data);
+                const filtered = res.data
+                    .filter(item => nearestMap.has(String(item.hospitalCode)))
+                    .map(item => {
+                        const nearest = nearestMap.get(String(item.hospitalCode));
+                        return {
+                            ...item,
+                            dist: nearest.dist,
+                            lat: nearest.latitude,   
+                            lng: nearest.longitude,  
+                        };
+                    });
+                filteredResults.push(...filtered);
+            }
+            if (filteredResults.length === 0) {
+                console.log("No results found.");
+                continue;
+            }
+            filteredResults.sort((a, b) => (a.dist ?? Infinity) - (b.dist ?? Infinity));
+            console.log(filteredResults);
+            setLocationSearchResults(filteredResults);
+            break;
+        }
 
         //filter ends here
         setLoading(false);
@@ -244,14 +276,12 @@ export default function Search() {
                 Search with current location instead
             </button>
             <div className="border rounded-lg overflow-hidden h-[300px] w-full relative">
-                <MapContainer
-                    center={[20.5937, 78.9629]} // Default center (India)
-                    zoom={5}
-                    style={{ height: "100%", width: "100%" }}
-                >
-                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                    <LocationMarker />
-                </MapContainer>
+                <BloodMap
+                    coords={coords}
+                    setCoords={setCoords}
+                    onRequestLocation={requestLocation}
+                    loading={loading}
+                />
 
                 {/* Manual Refresh Button overlaid on Map */}
                 <button
@@ -301,10 +331,17 @@ export default function Search() {
                     <h2 className="text-xl font-bold mb-2">Search Results based on location:</h2>
                     <ul>
                         {locationSearchResults.map((result) => (
-                            <li key={result.hospitalCode}>{result.name}<br />{result.address}   {round(result.dist / 1000, 2)} km <br />
-                                <button onClick={() => getInfo(result.hospitalCode, result.stateCode)}
-                                    className="bg-green-500 text-white px-4 py-2 rounded">Get info
-                                </button>
+                            <li key={result.hospitalCode}>{result.hospitalname}<br />{result.hospitaladd}   {round(result.dist / 1000, 2)} km <br />
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {Object.entries(result.components).map(([name, info]) => {
+                                        const isAvailable = info?.available_WithQty && info.available_WithQty.trim() !== "";
+                                        return isAvailable ? (
+                                            <span key={name} className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
+                                                <strong>{name}:</strong> {info.available_WithQty}
+                                            </span>
+                                        ) : null;
+                                    })}
+                                </div>
                             </li>
                         ))}
                     </ul>
