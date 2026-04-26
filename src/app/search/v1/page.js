@@ -40,6 +40,8 @@ export default function Search() {
     const [bloodComponentId, setBloodComponentId] = useState();
     const [bloodGroupId, setBloodGroupId] = useState("");
     const [loaded, setLoaded] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
     const [searchResults, setSearchResults] = useState([]);
 
     useEffect(() => {
@@ -54,6 +56,7 @@ export default function Search() {
     }, [stateCode, states]);
 
     const handleSearch = async (stateCode, districtCode, bloodComponentId, bloodGroupId) => {
+        setLoading(true);
         const params = new URLSearchParams();
         if (stateCode) params.append("stateCode", stateCode);
         else {

@@ -40,12 +40,13 @@ export default function Search() {
     const [bloodComponentId, setBloodComponentId] = useState();
     const [bloodGroupId, setBloodGroupId] = useState("");
     const [loaded, setLoaded] = useState(false);
+    const [loading, setLoading] = useState(false);
     const [searchResults, setSearchResults] = useState([]);
     const [coords, setCoords] = useState(null)
     const [error, setError] = useState("")
     const [locationSearchResults, setLocationSearchResults] = useState([]);
 
-    useEffect(() => {
+    useEffect(() => { //geolocation fetching
         if (!navigator.geolocation) {
             setError("Geolocation not supported");
             return;
@@ -58,7 +59,7 @@ export default function Search() {
         );
     }, []);
 
-    useEffect(() => {
+    useEffect(() => { //update districts when state changes
         const selectedState = states.find(s => s.stateCode === stateCode);
 
         if (selectedState) {
@@ -68,7 +69,10 @@ export default function Search() {
             setDistricts([]);
         }
     }, [stateCode, states]);
+
+
     const handleSearchWithLocation = async (getCurrentPosition, bloodComponentId, bloodGroupId) => {
+        setLoading(true);
         if (!coords) {
             alert("Failed to get location. Please allow location access and try again.");
             console.log(error);
@@ -79,6 +83,7 @@ export default function Search() {
         if (coords.lat) params.append("latitude", coords.lat);
         else {
             alert("Failed to get location. Please allow location access and try again.");
+            setLoading(false);
             return;
         }
         if (coords.lng) params.append("longitude", coords.lng);
@@ -87,21 +92,25 @@ export default function Search() {
         // if (bloodGroupId) params.append("bloodGroupId", bloodGroupId);
         console.log(params.toString());
         const response = await axios.get(`/api/nearest?${params.toString()}`, {});
-        if(response.status !== 200) {
+        if (response.status !== 200) {
             alert("Failed to fetch data. Please try again later.");
+            setLoading(false);
             return;
         }
         console.log(response.data);
+        setLoading(false);
         //filter data based on blood component and group if provided
         setLoaded(true);
         setLocationSearchResults(response.data);
     };
 
     const handleSearch = async (stateCode, districtCode, bloodComponentId, bloodGroupId) => {
+        setLoading(true);
         setLocationSearchResults([]);
         const params = new URLSearchParams();
         if (stateCode) params.append("stateCode", stateCode);
         else {
+            setLoading(false);
             alert("Please select a state.");
             return;
         }
@@ -111,6 +120,7 @@ export default function Search() {
         console.log(params.toString());
         const response = await axios.get(`/api/search?${params.toString()}`, {});
         console.log(response.data);
+        setLoading(false);
         if (response.status === 200) {
             //handle the response data as needed
             setLoaded(true);
@@ -121,9 +131,14 @@ export default function Search() {
 
     };
 
+    const getInfo = async (hospitalCode, stateCode) => {
+        const response = await axios.get(`/api/search?stateCode=${stateCode}&hospitalCodes=${hospitalCode}`);
+        console.log(response.data);
+    };
+
     return (
         <div className="flex flex-col gap-4 p-10">
-            <select
+            <select //blood component dropdown
                 value={bloodComponentId}
                 onChange={(e) => setBloodComponentId(e.target.value)}
             >
@@ -134,7 +149,7 @@ export default function Search() {
                     </option>
                 ))}
             </select>
-            <select
+            <select //blood group dropdown
                 value={bloodGroupId}
                 onChange={(e) => setBloodGroupId(e.target.value)}
             >
@@ -145,7 +160,7 @@ export default function Search() {
                     </option>
                 ))}
             </select>
-            <select
+            <select //state dropdown
                 value={stateCode}
                 onChange={(e) => setStateCode(e.target.value)}
             >
@@ -157,7 +172,7 @@ export default function Search() {
                 ))}
             </select>
 
-            {districts.length > 0 && (
+            {districts.length > 0 && ( //district dropdown, only shown if a state with districts is selected
                 <select
                     value={districtCode}
                     onChange={(e) => setDistrictCode(e.target.value)}
@@ -170,14 +185,16 @@ export default function Search() {
                     ))}
                 </select>
             )}
-            <button className="bg-blue-500 text-white px-4 py-2 rounded disabled:bg-gray-400"
-                disabled={!stateCode}
+
+            <button className="bg-blue-500 text-white px-4 py-2 rounded disabled:bg-gray-400" //search button, disabled if no state is selected 
+                disabled={!stateCode || loading}
                 onClick={() => handleSearch(stateCode, districtCode, bloodComponentId, bloodGroupId)}
             >
                 Search
             </button>
-            <button className="bg-blue-500 text-white px-4 py-2 rounded disabled:bg-gray-400"
-                disabled={coords === null || error !== ""}
+
+            <button className="bg-blue-500 text-white px-4 py-2 rounded disabled:bg-gray-400" //search with location button, disabled if location is not available
+                disabled={coords === null || error !== "" || loading}
                 onClick={() => handleSearchWithLocation(bloodComponentId, bloodGroupId)}
             >
                 Search with current location instead
@@ -193,24 +210,22 @@ export default function Search() {
                     <h2 className="text-xl font-bold mb-2">Search Results:</h2>
                     <ul>
                         {searchResults.map((result) => (
-  <li key={result.hospitalCode} className="p-4 border-b">
-    <h3 className="font-bold">{result.hospitalname}</h3>
-    <p className="text-sm text-gray-600">{result.hospitaladd}</p>
-    
-    <div className="mt-2 flex flex-wrap gap-2">
-      {Object.entries(result.components).map(([name, info]) => {
-        // 1. Check if info exists and has a non-null, non-empty availability string
-        const isAvailable = info?.available_WithQty && info.available_WithQty.trim() !== "";
+                            <li key={result.hospitalCode} className="p-4 border-b">
+                                <h3 className="font-bold">{result.hospitalname}</h3>
+                                <p className="text-sm text-gray-600">{result.hospitaladd}</p>
 
-        return isAvailable ? (
-          <span key={name} className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
-            <strong>{name}:</strong> {info.available_WithQty}
-          </span>
-        ) : null;
-      })}
-    </div>
-  </li>
-))}
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {Object.entries(result.components).map(([name, info]) => {
+                                        const isAvailable = info?.available_WithQty && info.available_WithQty.trim() !== "";
+                                        return isAvailable ? (
+                                            <span key={name} className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
+                                                <strong>{name}:</strong> {info.available_WithQty}
+                                            </span>
+                                        ) : null;
+                                    })}
+                                </div>
+                            </li>
+                        ))}
                     </ul>
                 </div>
             )}
@@ -219,8 +234,11 @@ export default function Search() {
                     <h2 className="text-xl font-bold mb-2">Search Results based on location:</h2>
                     <ul>
                         {locationSearchResults.map((result) => (
-                            <li key={result.hospitalCode}>{result.name}<br/>{result.address}<br/>{round(result.dist/1000, 2)} km<button onClick={()=> getInfo(result.hospitalCode)}
-                            className="bg-green-500 text-white px-4 py-2 rounded">Get info</button></li>
+                            <li key={result.hospitalCode}>{result.name}<br />{result.address}   {round(result.dist / 1000, 2)} km <br/>
+                            <button onClick={() => getInfo(result.hospitalCode,result.stateCode)}
+                                className="bg-green-500 text-white px-4 py-2 rounded">Get info
+                                </button>
+                                </li>
                         ))}
                     </ul>
                 </div>
