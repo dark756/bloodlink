@@ -2,6 +2,7 @@
 import data from "@/../assets/district_data.json";
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import axios from "axios";
 
 
 const bloodGroups = {
@@ -48,7 +49,12 @@ export default function SetDetails() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-
+  var isEligibleToDonate =
+    donor &&
+    !recentTattoo &&
+    !pregnant &&
+    !underweight &&
+    !hasDisease;
 
 
   useEffect(() => { //update districts when state changes
@@ -66,17 +72,13 @@ export default function SetDetails() {
     //get partial data to prefill form if user has already filled some details
   }, []);
 
-  const handleSubmit = async() => {
+  const handleSubmit = async () => {
     setLoading(true);
     setPart(part + 1);
-    const isEligibleToDonate =
-      donor &&
-      !recentTattoo &&
-      !pregnant &&
-      !underweight &&
-      !hasDisease;
-    const details = {
-      email:session.user.email,
+
+    const payload = {
+      email: session.user.email,
+      details:{
       fullName,
       dob,
       gender,
@@ -88,8 +90,7 @@ export default function SetDetails() {
         phone: emergencyPhone,
       },
 
-      wantsDonor: donor,
-      isDonor:isEligibleToDonate,
+      isDonor: donor,
       bloodGroupId,
       donorDetails: donor
         ? {
@@ -101,22 +102,23 @@ export default function SetDetails() {
           onMedication,
           medicationDetails: onMedication ? medicationDetails : null,
           hasDisease,
-          // isEligibleToDonate,
+          isEligibleToDonate,
         }
         : null,
 
       isProfileComplete: true
     }
-    const response =await axios.post("/api/set-details", {details});
+  };
+    const response = await axios.post("/api/details", { payload });
     if (response.status !== 200) {
       setError("Failed to submit details. Please try again.");
       setLoading(false);
       return;
     }
     alert("Details submitted!");
-    setLoading(false);  
+    setLoading(false);
   }
-const handlePart0Continue = (e) => {
+  const handlePart0Continue = (e) => {
     e.preventDefault();
     if (!fullName || !dob || !phone || !stateCode) {
       setError("Please fill in all required fields.");
