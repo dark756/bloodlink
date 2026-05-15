@@ -17,7 +17,7 @@ export default function Header() {
       <div className="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between">
 
         {/* Logo / brand */}
-        <span className="font-semibold text-gray-900">My App</span>
+        <span className="font-semibold text-gray-900">Bloodlink</span>
 
         {/* Right side: auth status */}
         <div className="flex items-center gap-3">
