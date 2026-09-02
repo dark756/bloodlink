@@ -5,6 +5,7 @@ export default withAuth(
   function middleware(req) {
     const { pathname } = req.nextUrl;
     const token = req.nextauth.token;
+    console.log(token)
 
     const isProfileComplete = token?.isProfileComplete;
 
@@ -12,6 +13,7 @@ export default withAuth(
     const isSettingsPage = pathname === "/set-details";
 
     if (!isProfileComplete && !isSettingsPage) {
+      console.log(`redirected to set details\nprofile: ${isProfileComplete}`)
       return NextResponse.redirect(new URL("/set-details", req.url));
     }
 

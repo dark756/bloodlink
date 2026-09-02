@@ -1,4 +1,4 @@
-import  { NextAuthOptions } from "next-auth";
+import { NextAuthOptions } from "next-auth";
 import NextAuth from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 import { MongoClient, ServerApiVersion } from "mongodb";
@@ -6,7 +6,7 @@ let db;
 
 async function connectDB() {
   if (db) return db;
-  
+
   const client = new MongoClient(process.env.MONGO_URI, {
     serverApi: {
       version: ServerApiVersion.v1,
@@ -14,7 +14,7 @@ async function connectDB() {
       deprecationErrors: true,
     }
   });
-  
+
   await client.connect(); // Explicit connect call
   db = client.db();
   return db;
@@ -50,7 +50,7 @@ const handler = NextAuth({
       const name = user.name;
       const existingUser = await db.collection("users").findOne({ email });
       if (!existingUser) {
-        await db.collection("users").insertOne({ email, name,role: "user" ,isProfileComplete:false});
+        await db.collection("users").insertOne({ email, name, role: "user", isProfileComplete: false });
       }
       return true;
     },
@@ -64,6 +64,19 @@ const handler = NextAuth({
 
       return session;
     },
+    async jwt({ token, user }) {
+      const db = await connectDB();
+      const email = user?.email || token.email;
+
+      if (email) {
+        const dbUser = await db.collection("users").findOne({ email });
+        token.isProfileComplete = dbUser?.isProfileComplete ?? false;
+        token.role = dbUser?.role;
+        token.userId = dbUser?._id.toString();
+      }
+
+      return token;
+    }
   },
 });
-export {handler as POST, handler as GET}
+export { handler as POST, handler as GET }

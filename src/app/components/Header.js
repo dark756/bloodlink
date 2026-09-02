@@ -32,7 +32,7 @@ export default function Header() {
               {session.user?.image ? (
                 <img
                   src={session.user.image}
-                  alt={session.user.name ?? "User"}
+                  alt={session.user.picture ?? "User"}
                   className="h-8 w-8 rounded-full object-cover"
                 />
               ) : (
