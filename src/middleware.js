@@ -5,7 +5,7 @@ export default withAuth(
   function middleware(req) {
     const { pathname } = req.nextUrl;
     const token = req.nextauth.token;
-    console.log(token)
+    //console.log(token)
 
     const isProfileComplete = token?.isProfileComplete;
 
