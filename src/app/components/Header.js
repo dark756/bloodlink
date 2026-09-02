@@ -1,5 +1,6 @@
 "use client";
 import { useSession, signIn, signOut } from "next-auth/react";
+import Link from "next/link";
 
 export default function Header() {
   const { data: session, status } = useSession();
@@ -17,7 +18,9 @@ export default function Header() {
       <div className="mx-auto max-w-6xl px-6 h-14 flex items-center justify-between">
 
         {/* Logo / brand */}
-        <span className="font-semibold text-gray-900">Bloodlink</span>
+        <span className="font-semibold text-gray-900">
+          <Link href="/">Bloodlink</Link>
+        </span>
 
         {/* Right side: auth status */}
         <div className="flex items-center gap-3">
