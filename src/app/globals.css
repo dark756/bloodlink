@@ -1,26 +1,310 @@
 @import "tailwindcss";
 
+/* Basic colours used across the site */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* The site is designed light-only, so tell the browser not to dark-mode
+     the native form controls and scrollbars. */
+  color-scheme: light;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --red: #d32f2f;
+  --red-dark: #b02525;
+  --grey-bg: #f7f7f7;
+  --border: #e0e0e0;
+  --text: #222222;
+  --text-light: #666666;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--grey-bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Page wrappers (not called "container" — Tailwind has its own class by
+   that name and the two would fight) */
+.page-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+
+.page-wrap-small {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: bold;
+  color: var(--text);
+}
+
+.page-subtitle {
+  font-size: 14px;
+  color: var(--text-light);
+  margin-top: 6px;
+}
+
+/* Cards */
+.card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.card-body {
+  padding: 20px;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: #fafafa;
+  border-radius: 8px 8px 0 0;
+}
+
+/* Form fields */
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-light);
+  margin-bottom: 5px;
+}
+
+.input,
+.select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--text);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+
+.input:focus,
+.select:focus {
+  border-color: var(--red);
+}
+
+.select {
+  cursor: pointer;
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-light);
+}
+
+.check-row input {
+  margin-top: 2px;
+  accent-color: var(--red);
+  cursor: pointer;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 16px;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 600;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--red);
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--red-dark);
+}
+
+.btn-outline {
+  background: #ffffff;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: #f2f2f2;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 12px;
+  border-radius: 4px;
+  background: #f0f0f0;
+  color: var(--text-light);
+}
+
+.badge-green {
+  background: #e6f4ea;
+  color: #1b7a41;
+}
+
+.badge-red {
+  background: #fdeaea;
+  color: var(--red);
+}
+
+/* Notices */
+.notice {
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  border: 1px solid;
+}
+
+.notice-warn {
+  background: #fff8e6;
+  border-color: #f0dda5;
+  color: #8a6100;
+}
+
+.notice-error {
+  background: #fdeaea;
+  border-color: #f2c4c4;
+  color: #a52121;
+}
+
+/* Search results */
+.result-item {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.result-item:last-child {
+  border-bottom: none;
+}
+
+.result-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.result-address {
+  font-size: 13px;
+  color: var(--text-light);
+  margin-top: 3px;
+}
+
+/* Step indicator on the details form */
+.step-dot {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: #ffffff;
+  color: var(--text-light);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-dot-current {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.step-dot-done {
+  border-color: var(--red);
+  background: var(--red);
+  color: #ffffff;
+}
+
+.step-line {
+  flex: 1;
+  height: 2px;
+  background: var(--border);
+}
+
+.step-line-done {
+  background: var(--red);
+}
+
+/* Map */
+.map-box {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.map-button {
+  position: absolute;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+.map-button:hover:not(:disabled) {
+  background: #f2f2f2;
+}
+
+.map-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* Small loading spinner */
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #dddddd;
+  border-top-color: var(--red);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

@@ -112,7 +112,7 @@ export default function Search() {
         }
         if (coords.lng) params.append("longitude", coords.lng);
         const range = { 'urban': [3000,5000,10000], 'rural': [10000, 30000, 90000] };
-        const is_urban = true;//logic to be implemented 
+        const is_urban = true;//logic to be implemented
         for (let r of (is_urban ? range.urban : range.rural)) {
             params.delete("radius");
             params.append("radius", r);
@@ -140,7 +140,7 @@ export default function Search() {
             }
             const nearestMap = new Map(
                 response.data.map(item => [String(item.hospitalCode), item])
-            );            //filter 
+            );            //filter
             var filteredResults = [];
             for (let sc of stateCodes) {
                 const p2 = new URLSearchParams();
@@ -162,8 +162,8 @@ export default function Search() {
                         return {
                             ...item,
                             dist: nearest.dist,
-                            lat: nearest.latitude,   
-                            lng: nearest.longitude,  
+                            lat: nearest.latitude,
+                            lng: nearest.longitude,
                         };
                     });
                 filteredResults.push(...filtered);
@@ -213,69 +213,115 @@ export default function Search() {
 
 
     return (
-        <div className="flex flex-col gap-4 p-10">
-            <select //blood component dropdown
-                value={bloodComponentId}
-                onChange={(e) => setBloodComponentId(e.target.value)}
-            >
-                <option value="">Select Blood Component</option>
-                {Object.entries(bloodComponents).map(([name, code]) => (
-                    <option key={code} value={code}>
-                        {name}
-                    </option>
-                ))}
-            </select>
-            <select //blood group dropdown
-                value={bloodGroupId}
-                onChange={(e) => setBloodGroupId(e.target.value)}
-            >
-                <option value="">Select Blood Group</option>
-                {Object.entries(bloodGroups).map(([name, code]) => (
-                    <option key={code} value={code}>
-                        {name}
-                    </option>
-                ))}
-            </select>
-            <select //state dropdown
-                value={stateCode}
-                onChange={(e) => setStateCode(e.target.value)}
-            >
-                <option value="">Select State</option>
-                {states.map(s => (
-                    <option key={s.stateCode} value={s.stateCode}>
-                        {s.stateName}
-                    </option>
-                ))}
-            </select>
+        <div className="page-wrap">
 
-            {districts.length > 0 && ( //district dropdown, only shown if a state with districts is selected
-                <select
-                    value={districtCode}
-                    onChange={(e) => setDistrictCode(e.target.value)}
-                >
-                    <option value="">Select District</option>
-                    {districts.map(d => (
-                        <option key={d.districtCode} value={d.districtCode}>
-                            {d.districtName}
-                        </option>
-                    ))}
-                </select>
-            )}
+            <h1 className="page-title">Search Blood Availability</h1>
+            <p className="page-subtitle">
+                Pick a state and district, or drop a pin on the map to search
+                around your location.
+            </p>
 
-            <button className="bg-blue-500 text-white px-4 py-2 rounded disabled:bg-gray-400" //search button, disabled if no state is selected 
-                disabled={!stateCode || loading}
-                onClick={() => handleSearch(stateCode, districtCode, bloodComponentId, bloodGroupId)}
-            >
-                Search
-            </button>
+            {/* Filters */}
+            <div className="card card-body mt-5 max-w-xl">
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label className="label">Blood Component</label>
+                        <select //blood component dropdown
+                            className="select"
+                            value={bloodComponentId}
+                            onChange={(e) => setBloodComponentId(e.target.value)}
+                        >
+                            <option value="">Select Blood Component</option>
+                            {Object.entries(bloodComponents).map(([name, code]) => (
+                                <option key={code} value={code}>
+                                    {name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
-            <button className="bg-blue-500 text-white px-4 py-2 rounded disabled:bg-gray-400" //search with location button, disabled if location is not available
-                disabled={coords === null || error !== "" || loading}
-                onClick={() => handleSearchWithLocation(bloodComponentId, bloodGroupId)}
-            >
-                Search with current location instead
-            </button>
-            <div className="border rounded-lg overflow-hidden h-[300px] w-full relative">
+                    <div>
+                        <label className="label">Blood Group</label>
+                        <select //blood group dropdown
+                            className="select"
+                            value={bloodGroupId}
+                            onChange={(e) => setBloodGroupId(e.target.value)}
+                        >
+                            <option value="">Select Blood Group</option>
+                            {Object.entries(bloodGroups).map(([name, code]) => (
+                                <option key={code} value={code}>
+                                    {name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="label">State</label>
+                        <select //state dropdown
+                            className="select"
+                            value={stateCode}
+                            onChange={(e) => setStateCode(e.target.value)}
+                        >
+                            <option value="">Select State</option>
+                            {states.map(s => (
+                                <option key={s.stateCode} value={s.stateCode}>
+                                    {s.stateName}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {districts.length > 0 && ( //district dropdown, only shown if a state with districts is selected
+                        <div>
+                            <label className="label">District</label>
+                            <select
+                                className="select"
+                                value={districtCode}
+                                onChange={(e) => setDistrictCode(e.target.value)}
+                            >
+                                <option value="">Select District</option>
+                                {districts.map(d => (
+                                    <option key={d.districtCode} value={d.districtCode}>
+                                        {d.districtName}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 mt-5">
+                    <button className="btn btn-primary" //search button, disabled if no state is selected
+                        disabled={!stateCode || loading}
+                        onClick={() => handleSearch(stateCode, districtCode, bloodComponentId, bloodGroupId)}
+                    >
+                        {loading ? "Searching..." : "Search"}
+                    </button>
+
+                    <button className="btn btn-outline" //search with location button, disabled if location is not available
+                        disabled={coords === null || error !== "" || loading}
+                        onClick={() => handleSearchWithLocation(bloodComponentId, bloodGroupId)}
+                    >
+                        📍 Search with current location instead
+                    </button>
+                </div>
+            </div>
+
+            {/* Map to pick a location */}
+            <div className="card card-body mt-5 max-w-xl">
+                <div className="flex items-center justify-between mb-3">
+                    <span className="label" style={{ marginBottom: 0 }}>Pick your location</span>
+
+                    {/* Manual Refresh Button */}
+                    <button
+                        onClick={requestLocation}
+                        className="btn btn-outline btn-small"
+                    >
+                        {loading ? "Locating..." : "📍 Use My Precise Location"}
+                    </button>
+                </div>
+
                 <BloodMap
                     coords={coords}
                     setCoords={setCoords}
@@ -283,39 +329,33 @@ export default function Search() {
                     loading={loading}
                 />
 
-                {/* Manual Refresh Button overlaid on Map */}
-                <button
-                    onClick={requestLocation}
-                    className="absolute top-2 right-2 z-[1000] bg-white p-2 shadow-md rounded text-xs font-bold hover:bg-gray-100"
-                >
-                    {loading ? "Locating..." : "📍 Use My Precise Location"}
-                </button>
+                {coords && (
+                    <p className="text-xs text-[#666] mt-2">
+                        Selected: {round(coords.lat, 4)}, {round(coords.lng, 4)}
+                    </p>
+                )}
             </div>
-
-            {coords && (
-                <p className="text-xs text-gray-500">
-                    Selected: {round(coords.lat, 4)}, {round(coords.lng, 4)}
-                </p>
-            )}
 
 
             {loaded && searchResults.length === 0 && locationSearchResults.length === 0 && (
-                <p>No results found.</p>
+                <p className="text-sm text-[#666] mt-5">No results found.</p>
             )}
             {loaded && searchResults.length > 0 && (
-                <div>
-                    <h2 className="text-xl font-bold mb-2">Search Results:</h2>
+                <div className="card mt-5 max-w-xl">
+                    <h2 className="card-title">
+                        Search Results ({searchResults.length})
+                    </h2>
                     <ul>
                         {searchResults.map((result) => (
-                            <li key={result.hospitalCode} className="p-4 border-b">
-                                <h3 className="font-bold">{result.hospitalname}</h3>
-                                <p className="text-sm text-gray-600">{result.hospitaladd}</p>
+                            <li key={result.hospitalCode} className="result-item">
+                                <h3 className="result-name">{result.hospitalname}</h3>
+                                <p className="result-address">{result.hospitaladd}</p>
 
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     {Object.entries(result.components).map(([name, info]) => {
                                         const isAvailable = info?.available_WithQty && info.available_WithQty.trim() !== "";
                                         return isAvailable ? (
-                                            <span key={name} className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
+                                            <span key={name} className="badge badge-green">
                                                 <strong>{name}:</strong> {info.available_WithQty}
                                             </span>
                                         ) : null;
@@ -327,16 +367,23 @@ export default function Search() {
                 </div>
             )}
             {loaded && locationSearchResults.length > 0 && (
-                <div>
-                    <h2 className="text-xl font-bold mb-2">Search Results based on location:</h2>
+                <div className="card mt-5 max-w-xl">
+                    <h2 className="card-title">
+                        Search Results based on location ({locationSearchResults.length})
+                    </h2>
                     <ul>
                         {locationSearchResults.map((result) => (
-                            <li key={result.hospitalCode}>{result.hospitalname}<br />{result.hospitaladd}   {round(result.dist / 1000, 2)} km <br />
+                            <li key={result.hospitalCode} className="result-item">
+                                <h3 className="result-name">{result.hospitalname}</h3>
+                                <p className="result-address">{result.hospitaladd}</p>
+                                <p className="text-sm text-[#d32f2f] mt-1">
+                                    {round(result.dist / 1000, 2)} km away
+                                </p>
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     {Object.entries(result.components).map(([name, info]) => {
                                         const isAvailable = info?.available_WithQty && info.available_WithQty.trim() !== "";
                                         return isAvailable ? (
-                                            <span key={name} className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
+                                            <span key={name} className="badge badge-green">
                                                 <strong>{name}:</strong> {info.available_WithQty}
                                             </span>
                                         ) : null;

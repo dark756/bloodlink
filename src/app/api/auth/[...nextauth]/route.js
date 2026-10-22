@@ -1,39 +1,6 @@
-import { NextAuthOptions } from "next-auth";
-import NextAuth from "next-auth"
-import GoogleProvider from "next-auth/providers/google"
-import { MongoClient, ServerApiVersion } from "mongodb";
-let db;
-
-async function connectDB() {
-  if (db) return db;
-
-  const client = new MongoClient(process.env.MONGO_URI, {
-    serverApi: {
-      version: ServerApiVersion.v1,
-      strict: true,
-      deprecationErrors: true,
-    }
-  });
-
-  await client.connect(); // Explicit connect call
-  db = client.db();
-  return db;
-}
-
-// export const authOptions =
-// {
-//     session: {
-//     strategy: "jwt"
-//   },
-//   providers: [GoogleProvider({
-//     clientId: process.env.GOOGLE_CLIENT_ID,
-//     clientSecret:process.env.GOOGLE_CLIENT_SECRET
-//   })],
-//     secret: process.env.NEXTAUTH_SECRET,
-// }
-// const handler= NextAuth(authOptions)
-
-
+import NextAuth from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+import { getDb } from "@/lib/db";
 
 const handler = NextAuth({
   providers: [
@@ -44,39 +11,54 @@ const handler = NextAuth({
   ],
   secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
-    async signIn({ user, account, profile }) {
-      const db = await connectDB();
-      const email = user.email;
-      const name = user.name;
-      const existingUser = await db.collection("users").findOne({ email });
-      if (!existingUser) {
-        await db.collection("users").insertOne({ email, name, role: "user", isProfileComplete: false });
-      }
+    async signIn({ user }) {
+      if (!user?.email) return false;
+      const db = await getDb();
+      // Upsert so two first-time logins at once can't create duplicate users.
+      await db.collection("users").updateOne(
+        { email: user.email },
+        {
+          $setOnInsert: {
+            email: user.email,
+            name: user.name ?? null,
+            role: "user",
+            isProfileComplete: false,
+            createdAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
       return true;
     },
+
+    // jwt() is the only callback that touches the database. It re-reads the user
+    // on every session read, which is how isProfileComplete reaches the session
+    // cookie after the profile form is saved (the form also calls update() so the
+    // cookie refreshes immediately). Don't limit this to sign-in without adding
+    // another way to refresh the token.
+    async jwt({ token, user }) {
+      const email = user?.email ?? token.email;
+      if (!email) return token;
+      const db = await getDb();
+      const dbUser = await db
+        .collection("users")
+        .findOne({ email }, { projection: { role: 1, isProfileComplete: 1 } });
+      token.userId = dbUser?._id?.toString() ?? null;
+      token.role = dbUser?.role ?? "user";
+      token.isProfileComplete = dbUser?.isProfileComplete === true;
+      return token;
+    },
+
+    // session() only reshapes the token for the client.
     async session({ session, token }) {
-      const db = await connectDB();
-      const dbUser = await db.collection("users").findOne({ email: session.user.email });
-
-      session.user.id = dbUser.id;
-      session.user.isProfileComplete = dbUser.isProfileComplete;
-      session.user.role = dbUser.role;
-
+      if (session.user) {
+        session.user.id = token.userId ?? null;
+        session.user.role = token.role ?? "user";
+        session.user.isProfileComplete = token.isProfileComplete === true;
+      }
       return session;
     },
-    async jwt({ token, user }) {
-      const db = await connectDB();
-      const email = user?.email || token.email;
-
-      if (email) {
-        const dbUser = await db.collection("users").findOne({ email });
-        token.isProfileComplete = dbUser?.isProfileComplete ?? false;
-        token.role = dbUser?.role;
-        token.userId = dbUser?._id.toString();
-      }
-
-      return token;
-    }
   },
 });
-export { handler as POST, handler as GET }
+
+export { handler as GET, handler as POST };

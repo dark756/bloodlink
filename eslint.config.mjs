@@ -10,6 +10,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Old search page iterations kept for reference only.
+    "archive/**",
   ]),
 ]);
 

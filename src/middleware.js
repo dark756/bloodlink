@@ -1,33 +1,27 @@
 import { withAuth } from "next-auth/middleware";
 import { NextResponse } from "next/server";
 
+// Signed-out users are sent to the NextAuth sign-in page by withAuth.
+// Signed-in users with an incomplete profile are sent to /set-details.
 export default withAuth(
   function middleware(req) {
     const { pathname } = req.nextUrl;
-    const token = req.nextauth.token;
-    //console.log(token)
+    const isProfileComplete = req.nextauth.token?.isProfileComplete === true;
 
-    const isProfileComplete = token?.isProfileComplete;
-
-    // Allow access to set-details page itself (avoid redirect loop)
-    const isSettingsPage = pathname === "/set-details";
-
-    if (!isProfileComplete && !isSettingsPage) {
-      console.log(`redirected to set details\nprofile: ${isProfileComplete}`)
+    // /set-details itself stays reachable, both to avoid a redirect loop and so
+    // users with a complete profile can edit it.
+    if (!isProfileComplete && pathname !== "/set-details") {
       return NextResponse.redirect(new URL("/set-details", req.url));
     }
-
     return NextResponse.next();
   },
   {
     callbacks: {
-      // Only run middleware function if user is logged in
       authorized: ({ token }) => !!token,
     },
   }
 );
 
-// Protect these routes — add more as needed
 export const config = {
-  matcher: ["/peer-to-peer"],
+  matcher: ["/peer-to-peer", "/set-details"],
 };

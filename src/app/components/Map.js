@@ -1,76 +1,45 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+// Load this component only through next/dynamic with { ssr: false }:
+// Leaflet touches `window` as soon as it is imported.
+import "leaflet/dist/leaflet.css";
+import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
 
-// ── Leaflet CSS injected once, globally, on first mount ───────────────────────
-// Avoids "document is not defined" from SSR/hydration, and prevents duplicate
-// <link> tags if BloodMap is mounted more than once on the same page.
+// ── CARTO basemap tiles ───────────────────────────────────────────────────────
+// Without NEXT_PUBLIC_CARTO_API_KEY, CARTO stamps an "API key required"
+// watermark over the map. The key is public by design: the browser fetches tiles.
+const cartoApiKey = process.env.NEXT_PUBLIC_CARTO_API_KEY;
+const tileUrl =
+  "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png" +
+  (cartoApiKey ? `?key=${cartoApiKey}` : "");
 
-let leafletCssInjected = false;
+// Nominatim's public server allows about one request per second, so reverse
+// geocoding waits until the pin has stopped moving for this long.
+const GEOCODE_DELAY_MS = 800;
 
-function ensureLeafletCss() {
-  if (leafletCssInjected) return;
-  if (typeof document === "undefined") return;
-  if (!document.querySelector('link[href*="leaflet"]')) {
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(link);
-  }
-  leafletCssInjected = true;
+const INDIA_CENTER = [20.5937, 78.9629];
+
+function coordsKey({ lat, lng }) {
+  return `${lat.toFixed(5)},${lng.toFixed(5)}`;
 }
 
-// ── Default icon fix — only needs to run once ─────────────────────────────────
-// Next.js asset bundling strips the default icon URLs out of Leaflet's source,
-// so we patch them back manually. The guard prevents repeated mergeOptions calls.
-
-let leafletIconFixed = false;
-
-function fixLeafletIcon() {
-  if (leafletIconFixed) return;
-  delete L.Icon.Default.prototype._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-    iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-    shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  });
-  leafletIconFixed = true;
+function formatCoords({ lat, lng }) {
+  return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 }
 
-// ── Red pin icon for the selected location ────────────────────────────────────
-
-const redPinIcon = () =>
-  L.divIcon({
+function makePinIcon() {
+  return L.divIcon({
     className: "",
-    html: `<div style="
-      width:0;height:0;
-      border-left:10px solid transparent;
-      border-right:10px solid transparent;
-      border-top:28px solid #e53e3e;
-      position:relative;
-      filter:drop-shadow(0 2px 4px rgba(0,0,0,0.35));
-    ">
-      <div style="
-        position:absolute;top:-32px;left:-8px;
-        width:16px;height:16px;
-        background:#e53e3e;
-        border-radius:50% 50% 50% 0;
-        transform:rotate(-45deg);
-        border:2px solid white;
-      "></div>
-    </div>`,
-    iconSize: [20, 28],
-    iconAnchor: [10, 28],
+    html: `<div style="width:18px;height:18px;background:#d32f2f;border:3px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
   });
+}
 
-// ── ClickHandler: a hook-only child component ─────────────────────────────────
-// useMapEvents is a React hook — it CANNOT be wrapped in dynamic().
-// Placing it in a dedicated child component (rendered inside MapContainer)
-// is the correct pattern.
-
+// useMapEvents is a hook, so it lives in a child rendered inside MapContainer.
 function ClickHandler({ onMapClick }) {
   useMapEvents({
     click(e) {
@@ -80,206 +49,124 @@ function ClickHandler({ onMapClick }) {
   return null;
 }
 
-// ── instanceCounter gives every MapContainer a unique, stable key ─────────────
-// When a component unmounts and remounts, React reuses the same DOM node by
-// default. Leaflet stores a _leaflet_id on that node and throws "Map container
-// is being reused by another instance" when it tries to re-initialise.
-// A monotonically increasing key forces React to create a fresh DOM node.
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BloodMap
-//
 // Props:
-//   coords          — { lat, lng } | null   — current pin position
-//   setCoords       — (coords) => void       — called on map click OR GPS
-//   label           — string | null          — reverse-geocoded place name
-//   setLabel        — (string) => void       — called after geocoding resolves
-// ─────────────────────────────────────────────────────────────────────────────
-
-export default function BloodMap({ coords, setCoords, label, setLabel }) {
+//   coords    — { lat, lng } | null — current pin position
+//   setCoords — (coords) => void     — called on map click or GPS fix
+export default function BloodMap({ coords, setCoords }) {
+  // A unique key gives every mount a fresh DOM node, which avoids Leaflet's
+  // "Map container is being reused by another instance" error.
   const [mapKey] = useState(() => `map-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const [leafletReady, setLeafletReady] = useState(false);
+  const [pinIcon] = useState(makePinIcon);
+  const [place, setPlace] = useState(null); // { key, label } for the last geocoded pin
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState("");
-  const iconRef = useRef(null);
-  const mapRef = useRef(null);
 
+  // Reverse-geocode the pin once it settles; a newer pin cancels the older lookup.
   useEffect(() => {
-    return () => {
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
-    };
-  }, []);
-
-  // Initialise Leaflet (CSS + icon fix + build icon instance) once on mount.
-  useEffect(() => {
-    ensureLeafletCss();
-    fixLeafletIcon();
-    iconRef.current = redPinIcon();
-    setLeafletReady(true);
-  }, []);
-
-  // ── Reverse-geocode a { lat, lng } pair ────────────────────────────────────
-  async function geocode(lat, lng) {
-    setIsGeocoding(true);
-    try {
-      const { data } = await axios.get(
-        "https://nominatim.openstreetmap.org/reverse",
-        {
-          params: { format: "json", lat, lon: lng },
+    if (!coords) return undefined;
+    const key = coordsKey(coords);
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setIsGeocoding(true);
+      try {
+        const { data } = await axios.get("https://nominatim.openstreetmap.org/reverse", {
+          params: { format: "json", lat: coords.lat, lon: coords.lng },
           headers: { "Accept-Language": "en" },
-        }
-      );
-      const addr = data.address ?? {};
-      const resolved =
-        addr.city ||
-        addr.city_district ||
-        addr.town ||
-        addr.village ||
-        addr.county ||
-        addr.state ||
-        data.display_name?.split(",")[0] ||
-        `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-      setLabel?.(resolved);
-    } catch {
-      // Geocoding failed — coords already set, label stays as coordinate string
-      setLabel?.(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-    } finally {
-      setIsGeocoding(false);
-    }
-  }
+          signal: controller.signal,
+        });
+        const addr = data.address ?? {};
+        const label =
+          addr.city || addr.city_district || addr.town || addr.village || addr.county || addr.state ||
+          data.display_name?.split(",")[0] || null;
+        setPlace({ key, label });
+      } catch (err) {
+        if (!axios.isCancel(err)) setPlace({ key, label: null });
+      } finally {
+        setIsGeocoding(false);
+      }
+    }, GEOCODE_DELAY_MS);
 
-  // ── Handle map click ───────────────────────────────────────────────────────
-  function handleMapClick({ lat, lng }) {
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [coords]);
+
+  function handleMapClick(next) {
     setGpsError("");
-    setCoords({ lat, lng });
-    setLabel?.(`${lat.toFixed(4)}, ${lng.toFixed(4)}`); // optimistic label
-    geocode(lat, lng);
+    setCoords(next);
   }
 
-  // ── Handle GPS button ──────────────────────────────────────────────────────
   function handleGps() {
     if (!navigator.geolocation) {
-      setGpsError("Geolocation is not supported by your browser.");
+      setGpsError("Your browser can't share its location. Click the map instead.");
       return;
     }
     setGpsLoading(true);
     setGpsError("");
     navigator.geolocation.getCurrentPosition(
       ({ coords: c }) => {
-        const lat = c.latitude;
-        const lng = c.longitude;
-        setCoords({ lat, lng });
-        setLabel?.(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
-        geocode(lat, lng);
+        setCoords({ lat: c.latitude, lng: c.longitude });
         setGpsLoading(false);
       },
       (err) => {
-        setGpsError(err.message || "Could not get location. Try clicking the map instead.");
+        setGpsError(
+          (err.message || "Could not get your location.") + " You can click the map to drop a pin instead."
+        );
         setGpsLoading(false);
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
   }
 
-  // ── Loading placeholder ────────────────────────────────────────────────────
-  if (!leafletReady) {
-    return (
-      <div style={{
-        height: 300, display: "flex", alignItems: "center",
-        justifyContent: "center", background: "#f7fafc",
-        color: "#a0aec0", fontSize: 14, borderRadius: 8,
-      }}>
-        Loading map…
-      </div>
-    );
-  }
+  const label =
+    coords && place?.key === coordsKey(coords) && place.label ? place.label : coords ? formatCoords(coords) : null;
 
   return (
-    <div style={{ position: "relative" }}>
-
-      {/*
-        key={instanceId} forces React to create a brand-new DOM node whenever
-        this component is mounted, preventing Leaflet's "container reused" error.
-        useMapEvents is called inside ClickHandler (a plain component child of
-        MapContainer) — it must never be wrapped in dynamic().
-      */}
-      <MapContainer
-        ref={mapRef}
-        key={mapKey}
-        center={[20.5937, 78.9629]}   // India centroid
-        zoom={5}
-        style={{ height: 300, width: "100%", borderRadius: 8 }}
-      >
-        <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>'
-        />
-        <ClickHandler onMapClick={handleMapClick} />
-        {coords && iconRef.current && (
-          <Marker
-            position={[coords.lat, coords.lng]}
-            icon={iconRef.current}
+    <div>
+      <div className="map-box" style={{ position: "relative", height: 300 }}>
+        <MapContainer key={mapKey} center={INDIA_CENTER} zoom={5} style={{ height: "100%", width: "100%" }}>
+          <TileLayer
+            url={tileUrl}
+            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>'
           />
+          <ClickHandler onMapClick={handleMapClick} />
+          {coords && <Marker position={[coords.lat, coords.lng]} icon={pinIcon} />}
+        </MapContainer>
+
+        <button
+          type="button"
+          onClick={handleGps}
+          disabled={gpsLoading}
+          className="map-button"
+          style={{ top: 8, right: 8, zIndex: 1000 }}
+        >
+          {gpsLoading ? "📡 Locating…" : "📍 Use My Location"}
+        </button>
+
+        {isGeocoding && (
+          <div
+            className="map-button"
+            style={{
+              bottom: 8, left: 8, zIndex: 1000, fontWeight: "normal",
+              color: "#666", display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            <span className="spinner" />
+            Looking up location…
+          </div>
         )}
-      </MapContainer>
+      </div>
 
-      {/* GPS button overlaid on the map */}
-      <button
-        type="button"
-        onClick={handleGps}
-        disabled={gpsLoading}
-        style={{
-          position: "absolute", top: 8, right: 8, zIndex: 1000,
-          background: "white", border: "none", borderRadius: 6,
-          padding: "6px 10px", fontSize: 12, fontWeight: 700,
-          cursor: gpsLoading ? "not-allowed" : "pointer",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-          display: "flex", alignItems: "center", gap: 4,
-        }}
-      >
-        {gpsLoading ? "📡 Locating…" : "📍 Use My Location"}
-      </button>
-
-      {/* Geocoding spinner overlaid on the map */}
-      {isGeocoding && (
-        <div style={{
-          position: "absolute", bottom: 8, left: 8, zIndex: 1000,
-          background: "white", borderRadius: 6, padding: "5px 10px",
-          fontSize: 12, color: "#718096",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
-          display: "flex", alignItems: "center", gap: 6,
-        }}>
-          <span style={{
-            width: 12, height: 12,
-            border: "2px solid #e2e8f0",
-            borderTopColor: "#c53030",
-            borderRadius: "50%",
-            display: "inline-block",
-            animation: "spin 0.8s linear infinite",
-          }} />
-          Looking up location…
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      )}
-
-      {/* Resolved label below the map */}
       {coords && (
-        <p style={{ margin: "6px 0 0", fontSize: 12, color: "#718096" }}>
-          📌 {label || `${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}`}
+        <p className="text-[13px] text-[#666] mt-2">
+          📌 {label}
           {isGeocoding && " (resolving…)"}
         </p>
       )}
 
-      {/* GPS error message */}
-      {gpsError && (
-        <p style={{ margin: "6px 0 0", fontSize: 12, color: "#e53e3e" }}>
-          ⚠️ {gpsError}
-        </p>
-      )}
+      {gpsError && <p className="notice notice-error mt-2">⚠️ {gpsError}</p>}
     </div>
   );
 }

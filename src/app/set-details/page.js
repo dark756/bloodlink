@@ -1,215 +1,87 @@
-'use client';
-import data from "@/../assets/district_data.json";
-import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
+"use client";
+import { useEffect, useState } from "react";
+import { signIn, useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import axios from "axios";
+import { BLOOD_GROUPS, STATES, districtsFor } from "@/lib/constants";
+import { evaluateEligibility } from "@/lib/eligibility";
 
-const bloodGroups = {
-  "A-Ve": 12,
-  "B+Ve": 13,
-  "B-Ve": 14,
-  "O+Ve": 15,
-  "AB+Ve": 17,
-  "AB-Ve": 18,
-  "A+Ve": 11,
-  "O-Ve": 16,
-  "Oh+VE": 22,
-  "Oh-VE": 23
+const EMPTY_FORM = {
+  fullName: "",
+  dob: "",
+  gender: "male",
+  phone: "",
+  stateCode: "",
+  districtCode: "",
+  emergencyName: "",
+  emergencyPhone: "",
+  isDonor: false,
+  bloodGroupId: "",
+  lastDonationDate: "",
+  donationCamp: "",
+  recentTattoo: false,
+  pregnant: false,
+  underweight: false,
+  onMedication: false,
+  medicationDetails: "",
+  hasDisease: false,
 };
 
-const styles = {
-  page: {
-    minHeight: "100vh",
-    backgroundColor: "#0a0a0a",
-    color: "#e8e8e8",
-    fontFamily: "'DM Mono', 'Fira Mono', 'Courier New', monospace",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    padding: "48px 16px",
-  },
-  card: {
-    width: "100%",
-    maxWidth: "480px",
-    backgroundColor: "#111",
-    border: "1px solid #222",
-    borderRadius: "4px",
-    padding: "36px 32px",
-  },
-  stepIndicator: {
-    display: "flex",
-    gap: "8px",
-    marginBottom: "32px",
-    alignItems: "center",
-  },
-  stepDot: (active, done) => ({
-    width: "24px",
-    height: "24px",
-    borderRadius: "50%",
-    border: `1px solid ${done ? "#2563eb" : active ? "#3b82f6" : "#333"}`,
-    backgroundColor: done ? "#2563eb" : active ? "transparent" : "transparent",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "10px",
-    color: done ? "#fff" : active ? "#3b82f6" : "#444",
-    fontWeight: "600",
-    transition: "all 0.2s",
-    flexShrink: 0,
-  }),
-  stepLine: (done) => ({
-    flex: 1,
-    height: "1px",
-    backgroundColor: done ? "#2563eb" : "#222",
-    transition: "background-color 0.3s",
-  }),
-  heading: {
-    fontSize: "13px",
-    fontWeight: "600",
-    letterSpacing: "0.12em",
-    textTransform: "uppercase",
-    color: "#888",
-    marginBottom: "24px",
-  },
-  fieldGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-    marginBottom: "24px",
-  },
-  label: {
-    fontSize: "11px",
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-    color: "#555",
-    marginBottom: "4px",
-    display: "block",
-  },
-  input: {
-    width: "100%",
-    backgroundColor: "#0d0d0d",
-    border: "1px solid #222",
-    borderRadius: "3px",
-    color: "#e8e8e8",
-    padding: "10px 12px",
-    fontSize: "13px",
-    fontFamily: "inherit",
-    outline: "none",
-    boxSizing: "border-box",
-    transition: "border-color 0.15s",
-  },
-  select: {
-    width: "100%",
-    backgroundColor: "#0d0d0d",
-    border: "1px solid #222",
-    borderRadius: "3px",
-    color: "#e8e8e8",
-    padding: "10px 12px",
-    fontSize: "13px",
-    fontFamily: "inherit",
-    outline: "none",
-    appearance: "none",
-    boxSizing: "border-box",
-    cursor: "pointer",
-    backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' stroke='%23555' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
-    backgroundRepeat: "no-repeat",
-    backgroundPosition: "right 12px center",
-    paddingRight: "32px",
-  },
-  checkboxRow: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: "10px",
-    padding: "10px 12px",
-    border: "1px solid #1a1a1a",
-    borderRadius: "3px",
-    cursor: "pointer",
-    transition: "border-color 0.15s",
-    backgroundColor: "#0d0d0d",
-  },
-  checkbox: {
-    width: "15px",
-    height: "15px",
-    accentColor: "#3b82f6",
-    marginTop: "1px",
-    flexShrink: 0,
-    cursor: "pointer",
-  },
-  checkboxLabel: {
-    fontSize: "12px",
-    color: "#aaa",
-    lineHeight: "1.5",
-    cursor: "pointer",
-  },
-  buttonRow: {
-    display: "flex",
-    gap: "8px",
-    marginTop: "28px",
-  },
-  btnPrimary: {
-    flex: 1,
-    backgroundColor: "#2563eb",
-    color: "#fff",
-    border: "none",
-    borderRadius: "3px",
-    padding: "11px 20px",
-    fontSize: "12px",
-    fontFamily: "inherit",
-    fontWeight: "600",
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-    cursor: "pointer",
-    transition: "background-color 0.15s",
-  },
-  btnSecondary: {
-    backgroundColor: "transparent",
-    color: "#555",
-    border: "1px solid #222",
-    borderRadius: "3px",
-    padding: "11px 16px",
-    fontSize: "12px",
-    fontFamily: "inherit",
-    fontWeight: "600",
-    letterSpacing: "0.08em",
-    textTransform: "uppercase",
-    cursor: "pointer",
-    transition: "border-color 0.15s, color 0.15s",
-  },
-  error: {
-    fontSize: "12px",
-    color: "#f87171",
-    backgroundColor: "#1a0a0a",
-    border: "1px solid #3b1515",
-    borderRadius: "3px",
-    padding: "10px 12px",
-    marginBottom: "20px",
-  },
-  warning: {
-    fontSize: "12px",
-    color: "#fbbf24",
-    backgroundColor: "#141007",
-    border: "1px solid #3d2d0a",
-    borderRadius: "3px",
-    padding: "10px 12px",
-    marginBottom: "16px",
-    lineHeight: "1.5",
-  },
-  sectionDivider: {
-    borderTop: "1px solid #1a1a1a",
-    marginBottom: "16px",
-    marginTop: "4px",
-  },
-  fieldWrapper: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "4px",
-  },
-};
+function formFromDetails(d) {
+  const donor = d.donorDetails ?? {};
+  return {
+    ...EMPTY_FORM,
+    fullName: d.fullName ?? "",
+    dob: d.dob ?? "",
+    gender: d.gender ?? "male",
+    phone: d.phone ?? "",
+    stateCode: d.stateCode ? String(d.stateCode) : "",
+    districtCode: d.districtCode ? String(d.districtCode) : "",
+    emergencyName: d.emergencyContact?.name ?? "",
+    emergencyPhone: d.emergencyContact?.phone ?? "",
+    isDonor: d.isDonor === true,
+    bloodGroupId: d.bloodGroupId ? String(d.bloodGroupId) : "",
+    lastDonationDate: donor.lastDonationDate ?? "",
+    donationCamp: donor.donationCamp ?? "",
+    recentTattoo: donor.recentTattoo === true,
+    pregnant: donor.pregnant === true,
+    underweight: donor.underweight === true,
+    onMedication: donor.onMedication === true,
+    medicationDetails: donor.medicationDetails ?? "",
+    hasDisease: donor.hasDisease === true,
+  };
+}
 
-function Field({ label, children }) {
+function detailsFromForm(f) {
+  return {
+    fullName: f.fullName,
+    dob: f.dob,
+    gender: f.gender,
+    phone: f.phone,
+    stateCode: f.stateCode,
+    districtCode: f.districtCode,
+    emergencyContact: { name: f.emergencyName, phone: f.emergencyPhone },
+    isDonor: f.isDonor,
+    bloodGroupId: f.bloodGroupId,
+    donorDetails: f.isDonor
+      ? {
+          lastDonationDate: f.lastDonationDate || null,
+          donationCamp: f.donationCamp || null,
+          recentTattoo: f.recentTattoo,
+          pregnant: f.pregnant,
+          underweight: f.underweight,
+          onMedication: f.onMedication,
+          medicationDetails: f.onMedication ? f.medicationDetails : null,
+          hasDisease: f.hasDisease,
+        }
+      : null,
+  };
+}
+
+function Field({ label, htmlFor, children }) {
   return (
-    <div style={styles.fieldWrapper}>
-      <label style={styles.label}>{label}</label>
+    <div>
+      <label className="label" htmlFor={htmlFor}>{label}</label>
       {children}
     </div>
   );
@@ -217,169 +89,149 @@ function Field({ label, children }) {
 
 function CheckRow({ checked, onChange, children }) {
   return (
-    <label style={{
-      ...styles.checkboxRow,
-      borderColor: checked ? "#1d3a6e" : "#1a1a1a",
-    }}>
-      <input
-        type="checkbox"
-        style={styles.checkbox}
-        checked={checked}
-        onChange={onChange}
-      />
-      <span style={styles.checkboxLabel}>{children}</span>
+    <label className="check-row">
+      <input type="checkbox" checked={checked} onChange={onChange} />
+      <span>{children}</span>
     </label>
   );
 }
 
 export default function SetDetails() {
-  const { data: session, update } = useSession();
+  const { data: session, status, update } = useSession();
+  const router = useRouter();
+  const [form, setForm] = useState(EMPTY_FORM);
   const [part, setPart] = useState(0);
-  const states = data.statesWithDistricts;
-  const [districts, setDistricts] = useState([]);
-
-  const [fullName, setFullName] = useState("");
-  const [dob, setDob] = useState("");
-  const [gender, setGender] = useState("male");
-  const [phone, setPhone] = useState("");
-  const [stateCode, setStateCode] = useState("");
-  const [districtCode, setDistrictCode] = useState("");
-  const [emergencyName, setEmergencyName] = useState("");
-  const [emergencyPhone, setEmergencyPhone] = useState("");
-
-  const [donor, setDonor] = useState(false);
-  const [bloodGroupId, setBloodGroupId] = useState("");
-
-  const [lastDonationDate, setLastDonationDate] = useState("");
-  const [donationCamp, setDonationCamp] = useState("");
-  const [recentTattoo, setRecentTattoo] = useState(false);
-  const [pregnant, setPregnant] = useState(false);
-  const [underweight, setUnderweight] = useState(false);
-  const [onMedication, setOnMedication] = useState(false);
-  const [medicationDetails, setMedicationDetails] = useState("");
-  const [hasDisease, setHasDisease] = useState(false);
-
-  const [loading, setLoading] = useState(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const isEligibleToDonate =
-    donor && !recentTattoo && !pregnant && !underweight && !hasDisease;
+  const userName = session?.user?.name ?? "";
 
+  // Prefill from the saved profile so editing never starts from a blank form.
   useEffect(() => {
-    const selectedState = states.find(s => s.stateCode === stateCode);
-    if (selectedState) {
-      setDistricts(selectedState.districts);
-      setDistrictCode("");
-    } else {
-      setDistricts([]);
-    }
-  }, [stateCode, states]);
-
-  useEffect(() => {
-    // prefill form if partial data exists
-  }, []);
-
-  const handleSubmit = async () => {
-    setLoading(true);
-    setPart(part + 1);
-
-    const payload = {
-      email: session.user.email,
-      details: {
-        fullName, dob, gender, phone, stateCode, districtCode,
-        emergencyContact: { name: emergencyName, phone: emergencyPhone },
-        isDonor: donor,
-        bloodGroupId,
-        donorDetails: donor ? {
-          lastDonationDate: lastDonationDate || null,
-          donationCamp: donationCamp || null,
-          recentTattoo, pregnant, underweight, onMedication,
-          medicationDetails: onMedication ? medicationDetails : null,
-          hasDisease,
-          isEligibleToDonate,
-        } : null,
-        isProfileComplete: true,
-      }
+    if (status !== "authenticated") return undefined;
+    let cancelled = false;
+    axios
+      .get("/api/details")
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (data.details) {
+          setForm(formFromDetails(data.details));
+          setIsEditing(true);
+        } else if (userName) {
+          setForm((f) => ({ ...f, fullName: f.fullName || userName }));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setError("Could not load your saved details. You can still fill in the form.");
+      })
+      .finally(() => {
+        if (!cancelled) setProfileLoaded(true);
+      });
+    return () => {
+      cancelled = true;
     };
+  }, [status, userName]);
 
-    const response = await axios.post("/api/details", { payload });
-    if (response.status !== 200) {
-      setError("Failed to submit details. Please try again.");
-      setLoading(false);
-      return;
-    }
-    alert("Details submitted!");
-    setLoading(false);
+  const setField = (field) => (e) => {
+    const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    setForm((f) => ({ ...f, [field]: value }));
   };
 
-  const handlePart0Continue = (e) => {
+  const districts = districtsFor(form.stateCode);
+  const eligibility = evaluateEligibility(detailsFromForm(form));
+  const steps = form.isDonor ? [0, 1, 2] : [0, 1];
+
+  async function handleSubmit() {
+    setSaving(true);
+    setError("");
+    try {
+      await axios.post("/api/details", { details: detailsFromForm(form) });
+      await update(); // refresh the session cookie so the middleware sees the completed profile
+      router.push("/peer-to-peer");
+      router.refresh();
+    } catch (err) {
+      setError(err?.response?.data?.error || "Could not save your details. Please try again.");
+      setSaving(false);
+    }
+  }
+
+  function handlePart0Continue(e) {
     e.preventDefault();
-    if (!fullName || !dob || !phone || !stateCode) {
+    if (!form.fullName || !form.dob || !form.phone || !form.stateCode) {
       setError("Please fill in all required fields.");
       return;
     }
     setError("");
     setPart(1);
-  };
+  }
 
-  const handlePart1Continue = (e) => {
+  function handlePart1Continue(e) {
     e.preventDefault();
-    if (!bloodGroupId) {
+    if (!form.bloodGroupId) {
       setError("Please select a blood group.");
       return;
     }
     setError("");
-    donor ? setPart(2) : handleSubmit();
-  };
+    if (form.isDonor) setPart(2);
+    else handleSubmit();
+  }
 
-  const totalSteps = 3;
+  if (status === "unauthenticated") {
+    return (
+      <div className="page-wrap-small">
+        <h1 className="page-title">Complete your profile</h1>
+        <p className="notice notice-warn mt-5">Please sign in to fill in your details.</p>
+        <button className="btn btn-primary mt-4" onClick={() => signIn("google")}>Sign in with Google</button>
+      </div>
+    );
+  }
+
+  if (status === "loading" || !profileLoaded) {
+    return (
+      <div className="page-wrap-small">
+        <p className="text-sm text-[#666] flex items-center gap-2">
+          <span className="spinner" /> Loading your details…
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
+    <div className="page-wrap-small">
+      <h1 className="page-title">{isEditing ? "Edit your profile" : "Complete your profile"}</h1>
+      <p className="page-subtitle">We need a few details before you can use the donor network.</p>
 
-        {/* Step indicator */}
-        <div style={styles.stepIndicator}>
-          {[0, 1, 2].map((step, i) => (
-            <div key={step} style={{ display: "flex", alignItems: "center", flex: i < 2 ? 1 : "none" }}>
-              <div style={styles.stepDot(part === step, part > step)}>
+      <div className="card card-body mt-5">
+        <div className="flex items-center gap-2 mb-6">
+          {steps.map((step, i) => (
+            <div key={step} className="flex items-center gap-2" style={{ flex: i < steps.length - 1 ? 1 : "none" }}>
+              <div className={"step-dot" + (part > step ? " step-dot-done" : part === step ? " step-dot-current" : "")}>
                 {part > step ? "✓" : step + 1}
               </div>
-              {i < 2 && <div style={styles.stepLine(part > step)} />}
+              {i < steps.length - 1 && <div className={"step-line" + (part > step ? " step-line-done" : "")} />}
             </div>
           ))}
         </div>
 
-        {error && <div style={styles.error}>{error}</div>}
+        {error && <p className="notice notice-error mb-4">{error}</p>}
 
-        {/* ───── PART 1 ───── */}
         {part === 0 && (
           <form onSubmit={handlePart0Continue}>
-            <p style={styles.heading}>Personal Details</p>
-            <div style={styles.fieldGroup}>
-              <Field label="Full Name">
-                <input
-                  style={styles.input}
-                  type="text"
-                  placeholder="As on official ID"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                />
+            <h2 className="font-semibold text-[#222] mb-3">Personal Details</h2>
+            <div className="flex flex-col gap-3 mb-5">
+              <Field label="Full Name" htmlFor="fullName">
+                <input id="fullName" className="input" type="text" placeholder="As on official ID"
+                  value={form.fullName} onChange={setField("fullName")} required />
               </Field>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <Field label="Date of Birth">
-                  <input
-                    style={styles.input}
-                    type="date"
-                    value={dob}
-                    onChange={(e) => setDob(e.target.value)}
-                    required
-                  />
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Date of Birth" htmlFor="dob">
+                  <input id="dob" className="input" type="date" value={form.dob} onChange={setField("dob")} required />
                 </Field>
-                <Field label="Gender">
-                  <select style={styles.select} value={gender} onChange={(e) => setGender(e.target.value)}>
+                <Field label="Gender" htmlFor="gender">
+                  <select id="gender" className="select" value={form.gender} onChange={setField("gender")}>
                     <option value="male">Male</option>
                     <option value="female">Female</option>
                     <option value="other">Other</option>
@@ -387,40 +239,31 @@ export default function SetDetails() {
                 </Field>
               </div>
 
-              <Field label="Phone Number">
-                <input
-                  style={styles.input}
-                  type="tel"
-                  placeholder="+91 XXXXX XXXXX"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                />
+              <Field label="Phone Number" htmlFor="phone">
+                <input id="phone" className="input" type="tel" placeholder="+91 XXXXX XXXXX"
+                  value={form.phone} onChange={setField("phone")} required />
               </Field>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-                <Field label="State">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="State" htmlFor="state">
                   <select
-                    style={styles.select}
-                    value={stateCode}
-                    onChange={(e) => { setStateCode(e.target.value); setDistrictCode(""); }}
+                    id="state"
+                    className="select"
+                    value={form.stateCode}
+                    onChange={(e) => setForm((f) => ({ ...f, stateCode: e.target.value, districtCode: "" }))}
                     required
                   >
                     <option value="">Select</option>
-                    {states.map(s => (
+                    {STATES.map((s) => (
                       <option key={s.stateCode} value={s.stateCode}>{s.stateName}</option>
                     ))}
                   </select>
                 </Field>
                 {districts.length > 0 && (
-                  <Field label="District">
-                    <select
-                      style={styles.select}
-                      value={districtCode}
-                      onChange={(e) => setDistrictCode(e.target.value)}
-                    >
+                  <Field label="District" htmlFor="district">
+                    <select id="district" className="select" value={form.districtCode} onChange={setField("districtCode")}>
                       <option value="">Select</option>
-                      {districts.map(d => (
+                      {districts.map((d) => (
                         <option key={d.districtCode} value={d.districtCode}>{d.districtName}</option>
                       ))}
                     </select>
@@ -429,59 +272,43 @@ export default function SetDetails() {
               </div>
             </div>
 
-            <div style={styles.sectionDivider} />
-            <p style={styles.heading}>Emergency Contact</p>
-            <div style={styles.fieldGroup}>
-              <Field label="Full Name">
-                <input
-                  style={styles.input}
-                  type="text"
-                  placeholder="Contact person's name"
-                  value={emergencyName}
-                  onChange={(e) => setEmergencyName(e.target.value)}
-                />
+            <h2 className="font-semibold text-[#222] mb-3">Emergency Contact</h2>
+            <div className="flex flex-col gap-3">
+              <Field label="Full Name" htmlFor="emergencyName">
+                <input id="emergencyName" className="input" type="text" placeholder="Contact person's name"
+                  value={form.emergencyName} onChange={setField("emergencyName")} />
               </Field>
-              <Field label="Phone Number">
-                <input
-                  style={styles.input}
-                  type="tel"
-                  placeholder="+91 XXXXX XXXXX"
-                  value={emergencyPhone}
-                  onChange={(e) => setEmergencyPhone(e.target.value)}
-                />
+              <Field label="Phone Number" htmlFor="emergencyPhone">
+                <input id="emergencyPhone" className="input" type="tel" placeholder="+91 XXXXX XXXXX"
+                  value={form.emergencyPhone} onChange={setField("emergencyPhone")} />
               </Field>
             </div>
 
-            <div style={styles.buttonRow}>
-              <button type="submit" style={styles.btnPrimary}>Continue →</button>
+            <div className="flex gap-2 mt-6">
+              <button type="submit" className="btn btn-primary">Continue →</button>
             </div>
           </form>
         )}
 
-        {/* ───── PART 2 ───── */}
         {part === 1 && (
           <form onSubmit={handlePart1Continue}>
-            <p style={styles.heading}>Blood Details</p>
-            <div style={styles.fieldGroup}>
-              <Field label="Blood Group">
-                <select
-                  style={styles.select}
-                  value={bloodGroupId}
-                  onChange={(e) => setBloodGroupId(e.target.value)}
-                  required
-                >
+            <h2 className="font-semibold text-[#222] mb-3">Blood Details</h2>
+            <div className="flex flex-col gap-3">
+              <Field label="Blood Group" htmlFor="bloodGroup">
+                <select id="bloodGroup" className="select" value={form.bloodGroupId} onChange={setField("bloodGroupId")} required>
                   <option value="">Select Blood Group</option>
-                  {Object.entries(bloodGroups).map(([name, code]) => (
-                    <option key={code} value={code}>{name}</option>
+                  {BLOOD_GROUPS.map((g) => (
+                    <option key={g.code} value={g.code}>{g.name}</option>
                   ))}
                 </select>
               </Field>
 
-              <Field label="Willing to Donate Blood?">
+              <Field label="Willing to Donate Blood?" htmlFor="isDonor">
                 <select
-                  style={styles.select}
-                  value={donor}
-                  onChange={(e) => setDonor(e.target.value === "true")}
+                  id="isDonor"
+                  className="select"
+                  value={String(form.isDonor)}
+                  onChange={(e) => setForm((f) => ({ ...f, isDonor: e.target.value === "true" }))}
                 >
                   <option value="true">Yes</option>
                   <option value="false">No</option>
@@ -489,90 +316,78 @@ export default function SetDetails() {
               </Field>
             </div>
 
-            <div style={styles.buttonRow}>
-              <button type="button" style={styles.btnSecondary} onClick={() => setPart(0)}>← Back</button>
-              <button type="submit" style={styles.btnPrimary}>
-                {donor ? "Continue →" : "Submit Details"}
+            <div className="flex gap-2 mt-6">
+              <button type="button" className="btn btn-outline" onClick={() => setPart(0)} disabled={saving}>← Back</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>
+                {form.isDonor ? "Continue →" : saving ? "Saving…" : "Save Details"}
               </button>
             </div>
           </form>
         )}
 
-        {/* ───── PART 3 (donor only) ───── */}
-        {part === 2 && donor && (
+        {part === 2 && form.isDonor && (
           <div>
-            <p style={styles.heading}>Donor Screening</p>
-            <div style={styles.fieldGroup}>
-              <Field label="Last Donation Date">
-                <input
-                  style={styles.input}
-                  type="date"
-                  value={lastDonationDate}
-                  onChange={(e) => setLastDonationDate(e.target.value)}
-                />
+            <h2 className="font-semibold text-[#222] mb-3">Donor Screening</h2>
+            <div className="flex flex-col gap-3 mb-5">
+              <Field label="Last Donation Date" htmlFor="lastDonation">
+                <input id="lastDonation" className="input" type="date" value={form.lastDonationDate}
+                  onChange={setField("lastDonationDate")} />
               </Field>
-              <Field label="Donation Camp / Organisation">
-                <input
-                  style={styles.input}
-                  type="text"
-                  placeholder="Optional"
-                  value={donationCamp}
-                  onChange={(e) => setDonationCamp(e.target.value)}
-                />
+              <Field label="Donation Camp / Organisation" htmlFor="camp">
+                <input id="camp" className="input" type="text" placeholder="Optional"
+                  value={form.donationCamp} onChange={setField("donationCamp")} />
               </Field>
             </div>
 
-            <div style={styles.sectionDivider} />
-            <p style={{ ...styles.label, marginBottom: "10px" }}>Health Screening</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "20px" }}>
-              <CheckRow checked={recentTattoo} onChange={(e) => setRecentTattoo(e.target.checked)}>
+            <h2 className="font-semibold text-[#222] mb-3">Health Screening</h2>
+            <div className="flex flex-col gap-2 mb-4">
+              <CheckRow checked={form.recentTattoo} onChange={setField("recentTattoo")}>
                 Tattoo or piercing in the last 6 months?
               </CheckRow>
-              <CheckRow checked={pregnant} onChange={(e) => setPregnant(e.target.checked)}>
+              <CheckRow checked={form.pregnant} onChange={setField("pregnant")}>
                 Currently pregnant or breastfeeding?
               </CheckRow>
-              <CheckRow checked={underweight} onChange={(e) => setUnderweight(e.target.checked)}>
+              <CheckRow checked={form.underweight} onChange={setField("underweight")}>
                 Body weight under 50 kg?
               </CheckRow>
-              <CheckRow checked={onMedication} onChange={(e) => setOnMedication(e.target.checked)}>
+              <CheckRow checked={form.onMedication} onChange={setField("onMedication")}>
                 Currently on any medication?
               </CheckRow>
-              {onMedication && (
-                <Field label="Medication Name & Dosage">
-                  <input
-                    style={styles.input}
-                    type="text"
-                    placeholder="e.g. Metformin 500mg"
-                    value={medicationDetails}
-                    onChange={(e) => setMedicationDetails(e.target.value)}
-                  />
+              {form.onMedication && (
+                <Field label="Medication Name & Dosage" htmlFor="medication">
+                  <input id="medication" className="input" type="text" placeholder="e.g. Metformin 500mg"
+                    value={form.medicationDetails} onChange={setField("medicationDetails")} />
                 </Field>
               )}
-              <CheckRow checked={hasDisease} onChange={(e) => setHasDisease(e.target.checked)}>
+              <CheckRow checked={form.hasDisease} onChange={setField("hasDisease")}>
                 Diagnosed with HIV/AIDS, Hepatitis, Malaria, or Syphilis?
               </CheckRow>
             </div>
 
-            {!isEligibleToDonate && (
-              <div style={styles.warning}>
-                ⚠ Based on your responses, you may not be eligible to donate at this time. You can still complete your profile.
+            {eligibility.status !== "eligible" && (
+              <div className="notice notice-warn">
+                <p>
+                  {eligibility.status === "review"
+                    ? "You may be able to donate, but blood bank staff will need to check:"
+                    : "Based on your answers, you may not be able to donate right now:"}
+                </p>
+                <ul className="list-disc ml-5 mt-1">
+                  {eligibility.reasons.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+                <p className="mt-1">You can still save your profile. Eligibility is re-checked automatically.</p>
               </div>
             )}
 
-            <div style={styles.buttonRow}>
-              <button type="button" style={styles.btnSecondary} onClick={() => setPart(1)}>← Back</button>
-              <button
-                type="button"
-                style={{ ...styles.btnPrimary, opacity: loading ? 0.6 : 1, cursor: loading ? "not-allowed" : "pointer" }}
-                onClick={handleSubmit}
-                disabled={loading}
-              >
-                {loading ? "Saving…" : "Submit Details"}
+            <div className="flex gap-2 mt-6">
+              <button type="button" className="btn btn-outline" onClick={() => setPart(1)} disabled={saving}>← Back</button>
+              <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={saving}>
+                {saving ? "Saving…" : "Save Details"}
               </button>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

@@ -1,29 +1,24 @@
-import { NextResponse } from 'next/server';
-import axios from 'axios';
+import { NextResponse } from "next/server";
+import { fetchNearest, parseNearestQuery } from "@/lib/eraktkosh";
+import { checkRateLimit, tooManyRequests } from "@/lib/rateLimit";
 
-
+// Blood banks around a point. Accepts latitude, longitude and radius in meters.
 export async function GET(request) {
-    const { searchParams } = new URL(request.url);
-    const queryString = searchParams.toString();
-    const api_url = process.env.NEXT_PUBLIC_API_URL || "https://eraktkosh.mohfw.gov.in/eraktkoshPortal/eraktkosh/";
-    if (!queryString) {
-        return NextResponse.json({ error: 'No query parameters provided' }, { status: 400 });
-    }
-    try {
-        console.log(`${api_url}bloodbank/nearest?${queryString}`)
-        const response = await axios.get(
-            `${api_url}bloodbank/nearest?${queryString}`,
-            {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0',
-                    'Accept': 'application/json',
-                }
-            }
-        );
-        console.log(response.data.length);  
-        return NextResponse.json(response.data);
-    } catch (error) {
-        console.log('Error fetching data:', error);
-        return NextResponse.json({ error: 'Failed to fetch' }, { status: 500 });
-    }
+  const limit = checkRateLimit(request, { key: "nearest", limit: 60, windowMs: 60_000 });
+  if (!limit.ok) return tooManyRequests(limit);
+
+  const { searchParams } = new URL(request.url);
+  const { params, error } = parseNearestQuery(searchParams);
+  if (error) return NextResponse.json({ error }, { status: 400 });
+
+  try {
+    const { data, stale } = await fetchNearest(params);
+    return NextResponse.json(data, { headers: stale ? { "X-Data-Stale": "1" } : undefined });
+  } catch (err) {
+    console.error(err.message);
+    return NextResponse.json(
+      { error: "The eRaktKosh blood bank service is not responding. Please try again shortly." },
+      { status: 502 }
+    );
+  }
 }

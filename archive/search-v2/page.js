@@ -137,88 +137,120 @@ export default function Search() {
     };
 
     return (
-        <div className="flex flex-col gap-4 p-10">
-            <select //blood component dropdown
-                value={bloodComponentId}
-                onChange={(e) => setBloodComponentId(e.target.value)}
-            >
-                <option value="">Select Blood Component</option>
-                {Object.entries(bloodComponents).map(([name, code]) => (
-                    <option key={code} value={code}>
-                        {name}
-                    </option>
-                ))}
-            </select>
-            <select //blood group dropdown
-                value={bloodGroupId}
-                onChange={(e) => setBloodGroupId(e.target.value)}
-            >
-                <option value="">Select Blood Group</option>
-                {Object.entries(bloodGroups).map(([name, code]) => (
-                    <option key={code} value={code}>
-                        {name}
-                    </option>
-                ))}
-            </select>
-            <select //state dropdown
-                value={stateCode}
-                onChange={(e) => setStateCode(e.target.value)}
-            >
-                <option value="">Select State</option>
-                {states.map(s => (
-                    <option key={s.stateCode} value={s.stateCode}>
-                        {s.stateName}
-                    </option>
-                ))}
-            </select>
+        <div className="page-wrap">
 
-            {districts.length > 0 && ( //district dropdown, only shown if a state with districts is selected
-                <select
-                    value={districtCode}
-                    onChange={(e) => setDistrictCode(e.target.value)}
-                >
-                    <option value="">Select District</option>
-                    {districts.map(d => (
-                        <option key={d.districtCode} value={d.districtCode}>
-                            {d.districtName}
-                        </option>
-                    ))}
-                </select>
-            )}
+            <h1 className="page-title">Search Blood Availability</h1>
+            <p className="page-subtitle">
+                Search by state and district, or use your current location instead.
+            </p>
 
-            <button className="bg-blue-500 text-white px-4 py-2 rounded disabled:bg-gray-400" //search button, disabled if no state is selected 
-                disabled={!stateCode || loading}
-                onClick={() => handleSearch(stateCode, districtCode, bloodComponentId, bloodGroupId)}
-            >
-                Search
-            </button>
+            <div className="card card-body mt-5 max-w-xl">
+                <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                        <label className="label">Blood Component</label>
+                        <select //blood component dropdown
+                            className="select"
+                            value={bloodComponentId}
+                            onChange={(e) => setBloodComponentId(e.target.value)}
+                        >
+                            <option value="">Select Blood Component</option>
+                            {Object.entries(bloodComponents).map(([name, code]) => (
+                                <option key={code} value={code}>
+                                    {name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
 
-            <button className="bg-blue-500 text-white px-4 py-2 rounded disabled:bg-gray-400" //search with location button, disabled if location is not available
-                disabled={coords === null || error !== "" || loading}
-                onClick={() => handleSearchWithLocation(bloodComponentId, bloodGroupId)}
-            >
-                Search with current location instead
-            </button>
+                    <div>
+                        <label className="label">Blood Group</label>
+                        <select //blood group dropdown
+                            className="select"
+                            value={bloodGroupId}
+                            onChange={(e) => setBloodGroupId(e.target.value)}
+                        >
+                            <option value="">Select Blood Group</option>
+                            {Object.entries(bloodGroups).map(([name, code]) => (
+                                <option key={code} value={code}>
+                                    {name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="label">State</label>
+                        <select //state dropdown
+                            className="select"
+                            value={stateCode}
+                            onChange={(e) => setStateCode(e.target.value)}
+                        >
+                            <option value="">Select State</option>
+                            {states.map(s => (
+                                <option key={s.stateCode} value={s.stateCode}>
+                                    {s.stateName}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {districts.length > 0 && ( //district dropdown, only shown if a state with districts is selected
+                        <div>
+                            <label className="label">District</label>
+                            <select
+                                className="select"
+                                value={districtCode}
+                                onChange={(e) => setDistrictCode(e.target.value)}
+                            >
+                                <option value="">Select District</option>
+                                {districts.map(d => (
+                                    <option key={d.districtCode} value={d.districtCode}>
+                                        {d.districtName}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 mt-5">
+                    <button className="btn btn-primary" //search button, disabled if no state is selected
+                        disabled={!stateCode || loading}
+                        onClick={() => handleSearch(stateCode, districtCode, bloodComponentId, bloodGroupId)}
+                    >
+                        {loading ? "Searching..." : "Search"}
+                    </button>
+
+                    <button className="btn btn-outline" //search with location button, disabled if location is not available
+                        disabled={coords === null || error !== "" || loading}
+                        onClick={() => handleSearchWithLocation(bloodComponentId, bloodGroupId)}
+                    >
+                        📍 Search with current location instead
+                    </button>
+                </div>
+            </div>
 
 
 
             {loaded && searchResults.length === 0 && locationSearchResults.length === 0 && (
-                <p>No results found.</p>
+                <p className="text-sm text-[#666] mt-5">No results found.</p>
             )}
             {loaded && searchResults.length > 0 && (
-                <div>
-                    <h2 className="text-xl font-bold mb-2">Search Results:</h2>
+                <div className="card mt-5 max-w-xl">
+                    <h2 className="card-title">
+                        Search Results ({searchResults.length})
+                    </h2>
                     <ul>
                         {searchResults.map((result) => (
-                            <li key={result.hospitalCode} className="p-4 border-b">
-                                <h3 className="font-bold">{result.hospitalname}</h3>
-                                <p className="text-sm text-gray-600">{result.hospitaladd}</p>
+                            <li key={result.hospitalCode} className="result-item">
+                                <h3 className="result-name">{result.hospitalname}</h3>
+                                <p className="result-address">{result.hospitaladd}</p>
 
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     {Object.entries(result.components).map(([name, info]) => {
                                         const isAvailable = info?.available_WithQty && info.available_WithQty.trim() !== "";
                                         return isAvailable ? (
-                                            <span key={name} className="bg-green-100 text-green-800 px-2 py-1 rounded text-xs">
+                                            <span key={name} className="badge badge-green">
                                                 <strong>{name}:</strong> {info.available_WithQty}
                                             </span>
                                         ) : null;
@@ -230,15 +262,22 @@ export default function Search() {
                 </div>
             )}
             {loaded && locationSearchResults.length > 0 && (
-                <div>
-                    <h2 className="text-xl font-bold mb-2">Search Results based on location:</h2>
+                <div className="card mt-5 max-w-xl">
+                    <h2 className="card-title">
+                        Search Results based on location ({locationSearchResults.length})
+                    </h2>
                     <ul>
                         {locationSearchResults.map((result) => (
-                            <li key={result.hospitalCode}>{result.name}<br />{result.address}   {round(result.dist / 1000, 2)} km <br/>
-                            <button onClick={() => getInfo(result.hospitalCode,result.stateCode)}
-                                className="bg-green-500 text-white px-4 py-2 rounded">Get info
+                            <li key={result.hospitalCode} className="result-item">
+                                <h3 className="result-name">{result.name}</h3>
+                                <p className="result-address">{result.address}</p>
+                                <p className="text-sm text-[#d32f2f] mt-1">
+                                    {round(result.dist / 1000, 2)} km away
+                                </p>
+                                <button onClick={() => getInfo(result.hospitalCode, result.stateCode)}
+                                    className="btn btn-outline btn-small mt-2">Get info
                                 </button>
-                                </li>
+                            </li>
                         ))}
                     </ul>
                 </div>
