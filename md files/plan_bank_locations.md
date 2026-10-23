@@ -231,6 +231,7 @@ Access, in the style of the existing migrations:
 - A **human-confirmed** fix (`manual` or `bank_confirmed`) always wins, even over a later eRaktKosh point.
 - A **machine** fix applies only while eRaktKosh's own point is unusable (`missing`, `wrong_state` or `outside_india`).
 - The weekly directory run adds one step: if eRaktKosh now gives a usable point for a machine-fixed bank, mark the fix `superseded`. If the new point is more than 2 km from the fix, log it for review instead of deciding.
+  - If `supabase_scheduler.md` has been carried out by then, this step goes in the shared `src/lib/collector.js`, not in `scripts/snapshot.mjs`, so the cloud and laptop runs both do it.
 
 ### The review page
 
