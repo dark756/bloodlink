@@ -220,7 +220,7 @@ Two stages: **gates** a method must pass to be considered at all, then **weighte
 | Gate | Pass when |
 |---|---|
 | G1 · Licence | Its terms allow this use: a public, non-commercial emergency search, shown on the app's Leaflet and CARTO map, with results cached as long as `routing.js` caches them (24 h today). Google fails this gate: its Routes content must not be used with a non-Google map |
-| G2 · Privacy | It doesn't need more than the search pin (rounded to about 100 m) and bank positions. It must not need a user id or a phone number. (Today `routing.js` sends the pin to the public OSRM server at 5 decimals, about 1 m; rounding to 3 decimals is a cheap improvement worth making whatever wins.) |
+| G2 · Privacy | It doesn't need more than the search pin (rounded to about 100 m) and bank positions. It must not need a user id or a phone number. (Today `parseCoordinates` in `src/lib/eraktkosh.js` rounds the pin to 4 decimals, about 11 m, and `routing.js` sends that to the public OSRM server; rounding to 3 decimals, about 110 m, is a cheap improvement worth making whatever wins.) |
 | G3 · India coverage | It returns a route for at least 95% of the bench's trips |
 | G4 · Fallback | When it fails, the app can still answer (M1 behind it, as today) |
 | G5 · Budget | Running it for the demo and the evaluation costs nothing beyond a free tier, or the team has agreed the spend |
