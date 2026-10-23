@@ -1,24 +1,18 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
 import axios from "axios";
 import { getBloodGroupName, getDistrictName, getStateName } from "@/lib/constants";
+import { capitalize, formatDate, getInitials } from "@/lib/format";
 
-function formatDate(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
+const ROLE_LABELS = {
+  hospital: "Verified hospital account",
+  blood_bank: "Verified blood bank account",
+  admin: "Administrator",
+};
 
-function capitalise(value) {
-  if (!value) return "-";
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function Row({ label, children }) {
+function DetailRow({ label, children }) {
   return (
     <tr className="border-t border-[#e0e0e0]">
       <td className="py-2 text-[#666] w-1/2">{label}</td>
@@ -34,45 +28,38 @@ function EligibilityBadge({ eligibility }) {
   return <span className="badge">Not right now</span>;
 }
 
-export default function PeerToPeer() {
-  const { data: session, status } = useSession();
+export default function PeerToPeerPage() {
   const [profile, setProfile] = useState(undefined); // undefined = loading, null = failed
   const [loadError, setLoadError] = useState("");
 
-  const initials = session?.user?.name
-    ?.split(" ")
-    .map((n) => n[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
-
   useEffect(() => {
-    if (status !== "authenticated") return undefined;
-    let cancelled = false;
+    let isCancelled = false;
     axios
       .get("/api/details")
       .then(({ data }) => {
-        if (!cancelled) setProfile(data);
+        if (!isCancelled) setProfile(data);
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!isCancelled) {
           setProfile(null);
           setLoadError("Could not load your profile. Please refresh the page.");
         }
       });
     return () => {
-      cancelled = true;
+      isCancelled = true;
     };
-  }, [status]);
+  }, []);
 
-  const loading = status === "loading" || (status === "authenticated" && profile === undefined);
   const details = profile?.details ?? null;
   const eligibility = profile?.eligibility ?? null;
+  const displayName = details?.fullName || profile?.name || profile?.email || "";
+  const initials = getInitials(displayName);
 
   return (
     <div className="page-wrap-small">
       <p className="notice notice-warn">
-        🚧 This site is still under development. Donor matching is not working yet, so nothing here reaches a real donor.
+        🚧 This site is still under development. Donor matching is not working yet, so nothing here
+        reaches a real donor.
       </p>
 
       <h1 className="page-title mt-5">Peer to Peer</h1>
@@ -82,19 +69,17 @@ export default function PeerToPeer() {
         <h2 className="card-title">Your profile</h2>
 
         <div className="card-body">
-          {loading ? (
+          {profile === undefined ? (
             <p className="text-sm text-[#666]">Loading your profile...</p>
-          ) : !session ? (
-            <p className="text-sm text-[#666]">You are not signed in.</p>
           ) : loadError ? (
             <p className="notice notice-error">{loadError}</p>
           ) : (
             <>
               <div className="flex items-center gap-3">
-                {session.user?.image ? (
+                {profile.avatarUrl ? (
                   <Image
-                    src={session.user.image}
-                    alt={session.user.name ?? "User"}
+                    src={profile.avatarUrl}
+                    alt={displayName || "User"}
                     width={48}
                     height={48}
                     className="h-12 w-12 rounded-full object-cover"
@@ -105,45 +90,56 @@ export default function PeerToPeer() {
                   </div>
                 )}
                 <div className="min-w-0">
-                  <p className="result-name truncate">{details?.fullName || session.user?.name}</p>
-                  <p className="result-address truncate">{session.user?.email}</p>
+                  <p className="result-name truncate">{displayName}</p>
+                  <p className="result-address truncate">{profile.email}</p>
+                  {ROLE_LABELS[profile.role] && (
+                    <span className="badge badge-green mt-1">{ROLE_LABELS[profile.role]}</span>
+                  )}
                 </div>
               </div>
 
               {!details ? (
                 <p className="text-sm text-[#666] mt-4">
                   You haven&apos;t filled in your details yet.{" "}
-                  <Link href="/set-details" className="text-[#d32f2f] font-semibold">Complete your profile</Link>
+                  <Link href="/set-details" className="text-[#d32f2f] font-semibold">
+                    Complete your profile
+                  </Link>
                 </p>
               ) : (
                 <>
                   <h3 className="font-semibold text-[#222] mt-5 mb-1">Personal</h3>
                   <table className="w-full text-sm">
                     <tbody>
-                      <Row label="Full name">{details.fullName || "-"}</Row>
-                      <Row label="Date of birth">{formatDate(details.dob)}</Row>
-                      <Row label="Gender">{capitalise(details.gender)}</Row>
-                      <Row label="Phone">{details.phone || "-"}</Row>
-                      <Row label="State">{getStateName(details.stateCode) ?? "-"}</Row>
-                      <Row label="District">{getDistrictName(details.stateCode, details.districtCode) ?? "-"}</Row>
+                      <DetailRow label="Full name">{details.fullName || "-"}</DetailRow>
+                      <DetailRow label="Date of birth">{formatDate(details.dob)}</DetailRow>
+                      <DetailRow label="Gender">{capitalize(details.gender)}</DetailRow>
+                      <DetailRow label="Phone">{details.phone || "-"}</DetailRow>
+                      <DetailRow label="State">{getStateName(details.stateCode) ?? "-"}</DetailRow>
+                      <DetailRow label="District">
+                        {getDistrictName(details.stateCode, details.districtCode) ?? "-"}
+                      </DetailRow>
                     </tbody>
                   </table>
 
                   <h3 className="font-semibold text-[#222] mt-5 mb-1">Blood</h3>
                   <table className="w-full text-sm">
                     <tbody>
-                      <Row label="Blood group">
-                        <span className="badge badge-red">{getBloodGroupName(details.bloodGroupId) ?? "-"}</span>
-                      </Row>
-                      <Row label="Willing to donate">{details.isDonor ? "Yes" : "No"}</Row>
+                      <DetailRow label="Blood group">
+                        <span className="badge badge-red">
+                          {getBloodGroupName(details.bloodGroupId) ?? "-"}
+                        </span>
+                      </DetailRow>
+                      <DetailRow label="Willing to donate">
+                        {details.isDonor ? "Yes" : "No"}
+                      </DetailRow>
                     </tbody>
                   </table>
 
                   <h3 className="font-semibold text-[#222] mt-5 mb-1">Emergency contact</h3>
                   <table className="w-full text-sm">
                     <tbody>
-                      <Row label="Name">{details.emergencyContact?.name || "-"}</Row>
-                      <Row label="Phone">{details.emergencyContact?.phone || "-"}</Row>
+                      <DetailRow label="Name">{details.emergencyContact?.name || "-"}</DetailRow>
+                      <DetailRow label="Phone">{details.emergencyContact?.phone || "-"}</DetailRow>
                     </tbody>
                   </table>
 
@@ -152,20 +148,26 @@ export default function PeerToPeer() {
                       <h3 className="font-semibold text-[#222] mt-5 mb-1">Donor info</h3>
                       <table className="w-full text-sm">
                         <tbody>
-                          <Row label="Last donation">{formatDate(details.donorDetails.lastDonationDate)}</Row>
-                          <Row label="Donation camp">{details.donorDetails.donationCamp || "-"}</Row>
-                          <Row label="Eligible to donate">
+                          <DetailRow label="Last donation">
+                            {formatDate(details.donorDetails.lastDonationDate)}
+                          </DetailRow>
+                          <DetailRow label="Donation camp">
+                            {details.donorDetails.donationCamp || "-"}
+                          </DetailRow>
+                          <DetailRow label="Eligible to donate">
                             <EligibilityBadge eligibility={eligibility} />
-                          </Row>
+                          </DetailRow>
                           {eligibility?.nextEligibleDate && (
-                            <Row label="Eligible again from">{formatDate(eligibility.nextEligibleDate)}</Row>
+                            <DetailRow label="Eligible again from">
+                              {formatDate(eligibility.nextEligibleDate)}
+                            </DetailRow>
                           )}
                         </tbody>
                       </table>
                       {eligibility?.reasons?.length > 0 && (
                         <ul className="text-xs text-[#666] mt-2 list-disc ml-5">
-                          {eligibility.reasons.map((r) => (
-                            <li key={r}>{r}</li>
+                          {eligibility.reasons.map((reason) => (
+                            <li key={reason}>{reason}</li>
                           ))}
                         </ul>
                       )}
@@ -174,7 +176,9 @@ export default function PeerToPeer() {
 
                   <p className="text-xs text-[#666] mt-4">
                     Need to change something?{" "}
-                    <Link href="/set-details" className="text-[#d32f2f] font-semibold">Edit your details</Link>
+                    <Link href="/set-details" className="text-[#d32f2f] font-semibold">
+                      Edit your details
+                    </Link>
                   </p>
                 </>
               )}

@@ -4,8 +4,8 @@ import { checkRateLimit, tooManyRequests } from "@/lib/rateLimit";
 
 // Blood banks around a point. Accepts latitude, longitude and radius in meters.
 export async function GET(request) {
-  const limit = checkRateLimit(request, { key: "nearest", limit: 60, windowMs: 60_000 });
-  if (!limit.ok) return tooManyRequests(limit);
+  const rateLimitResult = checkRateLimit(request, { key: "nearest", limit: 60, windowMs: 60_000 });
+  if (!rateLimitResult.ok) return tooManyRequests(rateLimitResult);
 
   const { searchParams } = new URL(request.url);
   const { params, error } = parseNearestQuery(searchParams);
@@ -18,7 +18,7 @@ export async function GET(request) {
     console.error(err.message);
     return NextResponse.json(
       { error: "The eRaktKosh blood bank service is not responding. Please try again shortly." },
-      { status: 502 }
+      { status: 502 },
     );
   }
 }

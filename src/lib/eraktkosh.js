@@ -9,23 +9,25 @@ import { BLOOD_GROUPS, COMPONENTS, findState } from "./constants";
 // - Responses are cached briefly; if eRaktKosh fails, the last good response
 //   is served and marked stale.
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "https://eraktkosh.mohfw.gov.in/eraktkoshPortal/eraktkosh/";
+const BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "https://eraktkosh.mohfw.gov.in/eraktkoshPortal/eraktkosh/";
 // Large states are slow: Uttar Pradesh took about 12 s for 1.4 MB when measured.
 const TIMEOUT_MS = 25_000;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 300;
 export const MAX_NEAREST_RADIUS_M = 200_000;
 
-const cache = globalThis._bloodlinkEraktkoshCache ?? new Map();
-globalThis._bloodlinkEraktkoshCache = cache;
+// Kept on globalThis so the cache survives hot reloads in development.
+const responseCache = globalThis._bloodlinkEraktkoshCache ?? new Map();
+globalThis._bloodlinkEraktkoshCache = responseCache;
 
 export class UpstreamError extends Error {}
 
 async function cachedGet(path, params) {
-  const key = `${path}?${new URLSearchParams(params).toString()}`;
-  const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-    return { data: hit.data, stale: false, fetchedAt: hit.at };
+  const cacheKey = `${path}?${new URLSearchParams(params).toString()}`;
+  const cachedEntry = responseCache.get(cacheKey);
+  if (cachedEntry && Date.now() - cachedEntry.fetchedAt < CACHE_TTL_MS) {
+    return { data: cachedEntry.data, stale: false, fetchedAt: cachedEntry.fetchedAt };
   }
 
   try {
@@ -37,21 +39,24 @@ async function cachedGet(path, params) {
     if (!Array.isArray(response.data)) {
       throw new Error("Unexpected response shape");
     }
-    const at = Date.now();
-    cache.delete(key);
-    cache.set(key, { data: response.data, at });
-    if (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
-    return { data: response.data, stale: false, fetchedAt: at };
+    const fetchedAt = Date.now();
+    responseCache.delete(cacheKey);
+    responseCache.set(cacheKey, { data: response.data, fetchedAt });
+    if (responseCache.size > MAX_CACHE_ENTRIES) {
+      responseCache.delete(responseCache.keys().next().value);
+    }
+    return { data: response.data, stale: false, fetchedAt };
   } catch (error) {
-    if (hit) {
+    if (cachedEntry) {
       console.warn(`eRaktKosh ${path} failed (${error.message}); serving cached data`);
-      return { data: hit.data, stale: true, fetchedAt: hit.at };
+      return { data: cachedEntry.data, stale: true, fetchedAt: cachedEntry.fetchedAt };
     }
     throw new UpstreamError(`eRaktKosh ${path} failed: ${error.message}`);
   }
 }
 
-function firstValue(searchParams, ...names) {
+// The first non-empty value among several accepted parameter names.
+function getFirstParam(searchParams, ...names) {
   for (const name of names) {
     const value = searchParams.get(name);
     if (value !== null && value.trim() !== "") return value.trim();
@@ -61,13 +66,13 @@ function firstValue(searchParams, ...names) {
 
 // componentId and bloodGroupId, shared by region and location search.
 export function parseStockFilters(searchParams) {
-  const componentId = firstValue(searchParams, "componentId", "ComponentId");
-  const bloodGroupId = firstValue(searchParams, "bloodGroupId");
+  const componentId = getFirstParam(searchParams, "componentId", "ComponentId");
+  const bloodGroupId = getFirstParam(searchParams, "bloodGroupId");
 
-  if (componentId && !COMPONENTS.some((c) => c.code === componentId)) {
+  if (componentId && !COMPONENTS.some((component) => component.code === componentId)) {
     return { error: "Unknown blood component." };
   }
-  if (bloodGroupId && !BLOOD_GROUPS.some((g) => g.code === bloodGroupId)) {
+  if (bloodGroupId && !BLOOD_GROUPS.some((group) => group.code === bloodGroupId)) {
     return { error: "Unknown blood group." };
   }
 
@@ -78,12 +83,15 @@ export function parseStockFilters(searchParams) {
 }
 
 export function parseAvailabilityQuery(searchParams) {
-  const stateCode = firstValue(searchParams, "stateCode");
+  const stateCode = getFirstParam(searchParams, "stateCode");
   const state = stateCode ? findState(stateCode) : null;
   if (!state) return { error: "Select a valid state." };
 
-  const districtId = firstValue(searchParams, "districtId", "districtCode");
-  if (districtId && !state.districts.some((d) => String(d.districtCode) === districtId)) {
+  const districtId = getFirstParam(searchParams, "districtId", "districtCode");
+  if (
+    districtId &&
+    !state.districts.some((district) => String(district.districtCode) === districtId)
+  ) {
     return { error: "That district is not in the selected state." };
   }
 
@@ -96,8 +104,8 @@ export function parseAvailabilityQuery(searchParams) {
 }
 
 export function parseCoordinates(searchParams, latName = "latitude", lngName = "longitude") {
-  const rawLat = firstValue(searchParams, latName, "lat");
-  const rawLng = firstValue(searchParams, lngName, "lng");
+  const rawLat = getFirstParam(searchParams, latName, "lat");
+  const rawLng = getFirstParam(searchParams, lngName, "lng");
   // Number(null) is 0, so a missing value must be rejected before converting.
   const lat = rawLat === null ? NaN : Number(rawLat);
   const lng = rawLng === null ? NaN : Number(rawLng);
@@ -111,9 +119,11 @@ export function parseCoordinates(searchParams, latName = "latitude", lngName = "
 export function parseNearestQuery(searchParams) {
   const coords = parseCoordinates(searchParams);
   if (coords.error) return coords;
-  const radius = Number(firstValue(searchParams, "radius"));
+  const radius = Number(getFirstParam(searchParams, "radius"));
   if (!Number.isInteger(radius) || radius < 100 || radius > MAX_NEAREST_RADIUS_M) {
-    return { error: `Radius must be a whole number of meters between 100 and ${MAX_NEAREST_RADIUS_M}.` };
+    return {
+      error: `Radius must be a whole number of meters between 100 and ${MAX_NEAREST_RADIUS_M}.`,
+    };
   }
   return { params: { ...coords, radius } };
 }

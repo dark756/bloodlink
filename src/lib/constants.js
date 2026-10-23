@@ -1,22 +1,26 @@
-import data from "../../assets/district_data.json";
+import districtData from "../../assets/district_data.json";
 
 // Lookup tables come from assets/district_data.json, which uses the same
 // codes as eRaktKosh. Codes are strings everywhere.
 
-const byNumericCode = (a, b) => Number(a.code) - Number(b.code);
+const compareByNumericCode = (a, b) => Number(a.code) - Number(b.code);
 
-export const STATES = data.statesWithDistricts;
+export const STATES = districtData.statesWithDistricts;
 
-export const BLOOD_GROUPS = data.bloodGroups
-  .map((g) => ({ code: String(g.bloodGroupCode), name: g.bloodGroupName }))
-  .sort(byNumericCode);
+export const BLOOD_GROUPS = districtData.bloodGroups
+  .map((group) => ({ code: String(group.bloodGroupCode), name: group.bloodGroupName }))
+  .sort(compareByNumericCode);
 
-export const COMPONENTS = data.componentList
-  .map((c) => ({ code: String(c.componentCode), name: c.componentName, shortName: c.componentShortName }))
-  .sort(byNumericCode);
+export const COMPONENTS = districtData.componentList
+  .map((component) => ({
+    code: String(component.componentCode),
+    name: component.componentName,
+    shortName: component.componentShortName,
+  }))
+  .sort(compareByNumericCode);
 
 export function findState(stateCode) {
-  return STATES.find((s) => String(s.stateCode) === String(stateCode)) ?? null;
+  return STATES.find((state) => String(state.stateCode) === String(stateCode)) ?? null;
 }
 
 export function districtsFor(stateCode) {
@@ -28,13 +32,17 @@ export function getStateName(stateCode) {
 }
 
 export function getDistrictName(stateCode, districtCode) {
-  return districtsFor(stateCode).find((d) => String(d.districtCode) === String(districtCode))?.districtName ?? null;
+  return (
+    districtsFor(stateCode).find(
+      (district) => String(district.districtCode) === String(districtCode),
+    )?.districtName ?? null
+  );
 }
 
 export function getBloodGroupName(code) {
-  return BLOOD_GROUPS.find((g) => g.code === String(code))?.name ?? null;
+  return BLOOD_GROUPS.find((group) => group.code === String(code))?.name ?? null;
 }
 
 export function getComponentName(code) {
-  return COMPONENTS.find((c) => c.code === String(code))?.name ?? null;
+  return COMPONENTS.find((component) => component.code === String(code))?.name ?? null;
 }

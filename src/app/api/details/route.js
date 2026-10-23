@@ -1,48 +1,52 @@
 import { NextResponse } from "next/server";
-import { getToken } from "next-auth/jwt";
-import { getDb } from "@/lib/db";
+import { createClient } from "@/lib/supabase/server";
+import { jsonError, requireUser } from "@/lib/auth";
 import { sanitizeDetails } from "@/lib/profile";
+import { detailsToRows, rowsToDetails } from "@/lib/profileStore";
 import { evaluateEligibility } from "@/lib/eligibility";
 
-// The user is always identified from the session cookie, never from the
-// request body or query string, so nobody can read or overwrite someone
-// else's profile.
-async function signedInEmail(request) {
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-  return token?.email ?? null;
-}
+// The signed-in user's own profile. Queries run as that user, so row-level
+// security limits them to their own rows; there is no way to name another user.
 
-const notSignedIn = () => NextResponse.json({ error: "Not signed in" }, { status: 401 });
+export async function GET() {
+  const supabase = await createClient();
+  const { user, response } = await requireUser(supabase);
+  if (response) return response;
 
-export async function GET(request) {
-  try {
-    const email = await signedInEmail(request);
-    if (!email) return notSignedIn();
-
-    const db = await getDb();
-    const user = await db.collection("users").findOne({ email }, { projection: { details: 1 } });
-    const details = user?.details ?? null;
-
-    return NextResponse.json({
-      email,
-      details,
-      eligibility: details ? evaluateEligibility(details) : null,
-    });
-  } catch (error) {
+  const [{ data: profile, error }, { data: screening }] = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
+    supabase.from("donor_screening").select("*").eq("user_id", user.id).maybeSingle(),
+  ]);
+  if (error) {
     console.error("GET /api/details failed:", error.message);
-    return NextResponse.json({ error: "Could not load your profile. Please try again." }, { status: 500 });
+    return jsonError("Could not load your profile. Please try again.", 500);
   }
+
+  const draft = rowsToDetails(profile, screening);
+  const details = profile?.is_profile_complete ? draft : null;
+
+  return NextResponse.json({
+    email: user.email,
+    name: profile?.full_name || user.name,
+    avatarUrl: user.avatarUrl,
+    role: profile?.role ?? "user",
+    details,
+    // Partial answers (for example the name from Google) to prefill the form.
+    draft,
+    eligibility: details ? evaluateEligibility(details) : null,
+  });
 }
 
 export async function POST(request) {
-  const email = await signedInEmail(request);
-  if (!email) return notSignedIn();
+  const supabase = await createClient();
+  const { user, response } = await requireUser(supabase);
+  if (response) return response;
 
   let body;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return jsonError("Invalid request body.", 400);
   }
 
   const { details, errors } = sanitizeDetails(body?.details);
@@ -50,21 +54,32 @@ export async function POST(request) {
     return NextResponse.json({ error: errors[0], errors }, { status: 400 });
   }
 
-  try {
-    const db = await getDb();
-    const result = await db
-      .collection("users")
-      .updateOne({ email }, { $set: { details, isProfileComplete: true, updatedAt: new Date() } });
+  const rows = detailsToRows(details);
+  const { data: updated, error: profileError } = await supabase
+    .from("profiles")
+    .update(rows.profile)
+    .eq("id", user.id)
+    .select("id");
 
-    if (result.matchedCount === 0) {
-      return NextResponse.json(
-        { error: "Your account was not found. Please sign out and sign in again." },
-        { status: 404 }
-      );
-    }
-    return NextResponse.json({ message: "Details saved", eligibility: evaluateEligibility(details) });
-  } catch (error) {
-    console.error("POST /api/details failed:", error.message);
-    return NextResponse.json({ error: "Could not save your details. Please try again." }, { status: 500 });
+  if (profileError) {
+    console.error("profile update failed:", profileError.message);
+    return jsonError("Could not save your details. Please check the form and try again.", 400);
   }
+  if (!updated || updated.length === 0) {
+    return jsonError("Your profile was not found. Please sign out and sign in again.", 404);
+  }
+
+  // Keep health answers only while the person is a donor.
+  const screeningResult = rows.screening
+    ? await supabase.from("donor_screening").upsert({ user_id: user.id, ...rows.screening })
+    : await supabase.from("donor_screening").delete().eq("user_id", user.id);
+  if (screeningResult.error) {
+    console.error("screening save failed:", screeningResult.error.message);
+    return jsonError(
+      "Your details were saved, but the donor screening answers were not. Please try again.",
+      500,
+    );
+  }
+
+  return NextResponse.json({ message: "Details saved", eligibility: evaluateEligibility(details) });
 }

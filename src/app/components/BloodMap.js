@@ -11,10 +11,12 @@ import axios from "axios";
 // ── CARTO basemap tiles ───────────────────────────────────────────────────────
 // Without NEXT_PUBLIC_CARTO_API_KEY, CARTO stamps an "API key required"
 // watermark over the map. The key is public by design: the browser fetches tiles.
-const cartoApiKey = process.env.NEXT_PUBLIC_CARTO_API_KEY;
-const tileUrl =
+const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY;
+const TILE_URL =
   "https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png" +
-  (cartoApiKey ? `?key=${cartoApiKey}` : "");
+  (CARTO_API_KEY ? `?key=${CARTO_API_KEY}` : "");
+const TILE_ATTRIBUTION =
+  '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>';
 
 // Nominatim's public server allows about one request per second, so reverse
 // geocoding waits until the pin has stopped moving for this long.
@@ -22,7 +24,8 @@ const GEOCODE_DELAY_MS = 800;
 
 const INDIA_CENTER = [20.5937, 78.9629];
 
-function coordsKey({ lat, lng }) {
+// Identifies a pin position, so a geocoded label is only shown for the pin it belongs to.
+function toCoordsKey({ lat, lng }) {
   return `${lat.toFixed(5)},${lng.toFixed(5)}`;
 }
 
@@ -30,7 +33,7 @@ function formatCoords({ lat, lng }) {
   return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 }
 
-function makePinIcon() {
+function createPinIcon() {
   return L.divIcon({
     className: "",
     html: `<div style="width:18px;height:18px;background:#d32f2f;border:3px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
@@ -40,32 +43,32 @@ function makePinIcon() {
 }
 
 // useMapEvents is a hook, so it lives in a child rendered inside MapContainer.
-function ClickHandler({ onMapClick }) {
+function MapClickHandler({ onMapClick }) {
   useMapEvents({
-    click(e) {
-      onMapClick({ lat: e.latlng.lat, lng: e.latlng.lng });
+    click(event) {
+      onMapClick({ lat: event.latlng.lat, lng: event.latlng.lng });
     },
   });
   return null;
 }
 
 // Props:
-//   coords    — { lat, lng } | null — current pin position
-//   setCoords — (coords) => void     — called on map click or GPS fix
-export default function BloodMap({ coords, setCoords }) {
+//   coords          — { lat, lng } | null — current pin position
+//   onCoordsChange  — (coords) => void     — called on map click or GPS fix
+export default function BloodMap({ coords, onCoordsChange }) {
   // A unique key gives every mount a fresh DOM node, which avoids Leaflet's
   // "Map container is being reused by another instance" error.
   const [mapKey] = useState(() => `map-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  const [pinIcon] = useState(makePinIcon);
-  const [place, setPlace] = useState(null); // { key, label } for the last geocoded pin
+  const [pinIcon] = useState(createPinIcon);
+  const [geocodedPlace, setGeocodedPlace] = useState(null); // { coordsKey, label } for the last geocoded pin
   const [isGeocoding, setIsGeocoding] = useState(false);
-  const [gpsLoading, setGpsLoading] = useState(false);
+  const [isLocating, setIsLocating] = useState(false);
   const [gpsError, setGpsError] = useState("");
 
   // Reverse-geocode the pin once it settles; a newer pin cancels the older lookup.
   useEffect(() => {
     if (!coords) return undefined;
-    const key = coordsKey(coords);
+    const coordsKey = toCoordsKey(coords);
     const controller = new AbortController();
     const timer = setTimeout(async () => {
       setIsGeocoding(true);
@@ -75,13 +78,19 @@ export default function BloodMap({ coords, setCoords }) {
           headers: { "Accept-Language": "en" },
           signal: controller.signal,
         });
-        const addr = data.address ?? {};
+        const address = data.address ?? {};
         const label =
-          addr.city || addr.city_district || addr.town || addr.village || addr.county || addr.state ||
-          data.display_name?.split(",")[0] || null;
-        setPlace({ key, label });
+          address.city ||
+          address.city_district ||
+          address.town ||
+          address.village ||
+          address.county ||
+          address.state ||
+          data.display_name?.split(",")[0] ||
+          null;
+        setGeocodedPlace({ coordsKey, label });
       } catch (err) {
-        if (!axios.isCancel(err)) setPlace({ key, label: null });
+        if (!axios.isCancel(err)) setGeocodedPlace({ coordsKey, label: null });
       } finally {
         setIsGeocoding(false);
       }
@@ -93,64 +102,74 @@ export default function BloodMap({ coords, setCoords }) {
     };
   }, [coords]);
 
-  function handleMapClick(next) {
+  function handleMapClick(nextCoords) {
     setGpsError("");
-    setCoords(next);
+    onCoordsChange(nextCoords);
   }
 
-  function handleGps() {
+  function handleUseMyLocation() {
     if (!navigator.geolocation) {
       setGpsError("Your browser can't share its location. Click the map instead.");
       return;
     }
-    setGpsLoading(true);
+    setIsLocating(true);
     setGpsError("");
     navigator.geolocation.getCurrentPosition(
-      ({ coords: c }) => {
-        setCoords({ lat: c.latitude, lng: c.longitude });
-        setGpsLoading(false);
+      ({ coords: position }) => {
+        onCoordsChange({ lat: position.latitude, lng: position.longitude });
+        setIsLocating(false);
       },
       (err) => {
         setGpsError(
-          (err.message || "Could not get your location.") + " You can click the map to drop a pin instead."
+          (err.message || "Could not get your location.") +
+            " You can click the map to drop a pin instead.",
         );
-        setGpsLoading(false);
+        setIsLocating(false);
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000 },
     );
   }
 
-  const label =
-    coords && place?.key === coordsKey(coords) && place.label ? place.label : coords ? formatCoords(coords) : null;
+  const hasPlaceLabel =
+    coords && geocodedPlace?.coordsKey === toCoordsKey(coords) && geocodedPlace.label;
+  const pinLabel = hasPlaceLabel ? geocodedPlace.label : coords ? formatCoords(coords) : null;
 
   return (
     <div>
       <div className="map-box" style={{ position: "relative", height: 300 }}>
-        <MapContainer key={mapKey} center={INDIA_CENTER} zoom={5} style={{ height: "100%", width: "100%" }}>
-          <TileLayer
-            url={tileUrl}
-            attribution='&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>'
-          />
-          <ClickHandler onMapClick={handleMapClick} />
+        <MapContainer
+          key={mapKey}
+          center={INDIA_CENTER}
+          zoom={5}
+          style={{ height: "100%", width: "100%" }}
+        >
+          <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
+          <MapClickHandler onMapClick={handleMapClick} />
           {coords && <Marker position={[coords.lat, coords.lng]} icon={pinIcon} />}
         </MapContainer>
 
         <button
           type="button"
-          onClick={handleGps}
-          disabled={gpsLoading}
+          onClick={handleUseMyLocation}
+          disabled={isLocating}
           className="map-button"
           style={{ top: 8, right: 8, zIndex: 1000 }}
         >
-          {gpsLoading ? "📡 Locating…" : "📍 Use My Location"}
+          {isLocating ? "📡 Locating…" : "📍 Use My Location"}
         </button>
 
         {isGeocoding && (
           <div
             className="map-button"
             style={{
-              bottom: 8, left: 8, zIndex: 1000, fontWeight: "normal",
-              color: "#666", display: "flex", alignItems: "center", gap: 6,
+              bottom: 8,
+              left: 8,
+              zIndex: 1000,
+              fontWeight: "normal",
+              color: "#666",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
             }}
           >
             <span className="spinner" />
@@ -161,7 +180,7 @@ export default function BloodMap({ coords, setCoords }) {
 
       {coords && (
         <p className="text-[13px] text-[#666] mt-2">
-          📌 {label}
+          📌 {pinLabel}
           {isGeocoding && " (resolving…)"}
         </p>
       )}

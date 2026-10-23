@@ -6,8 +6,8 @@ const nextConfig = {
   },
   async redirects() {
     // The old search iterations now live in archive/; keep their URLs working.
-    return ["v1", "v2", "v3"].map((v) => ({
-      source: `/search/${v}`,
+    return ["v1", "v2", "v3"].map((version) => ({
+      source: `/search/${version}`,
       destination: "/search",
       permanent: false,
     }));
