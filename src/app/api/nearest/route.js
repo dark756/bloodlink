@@ -12,8 +12,14 @@ export async function GET(request) {
   if (error) return NextResponse.json({ error }, { status: 400 });
 
   try {
-    const { data, stale } = await fetchNearest(params);
-    return NextResponse.json(data, { headers: stale ? { "X-Data-Stale": "1" } : undefined });
+    const { data, stale, source, fetchedAt, upstream } = await fetchNearest(params);
+    const headers = {
+      "X-Data-Source": source,
+      "X-Data-Fetched-At": new Date(fetchedAt).toISOString(),
+      "X-Data-Upstream": upstream,
+    };
+    if (stale) headers["X-Data-Stale"] = "1";
+    return NextResponse.json(data, { headers });
   } catch (err) {
     console.error(err.message);
     return NextResponse.json(

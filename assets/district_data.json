@@ -32,7 +32,7 @@
                 },
                 {
                     "districtCode": "553",
-                    "districtName": "Anantapur"
+                    "districtName": "Ananthapuramu"
                 },
                 {
                     "districtCode": "753",
@@ -45,6 +45,10 @@
                 {
                     "districtCode": "554",
                     "districtName": "Chittoor"
+                },
+                {
+                    "districtCode": "682",
+                    "districtName": "Dr. B. R. Ambedkar Konaseema"
                 },
                 {
                     "districtCode": "545",
@@ -63,16 +67,16 @@
                     "districtName": "Kakinada"
                 },
                 {
-                    "districtCode": "682",
-                    "districtName": "Konaseema"
-                },
-                {
                     "districtCode": "547",
                     "districtName": "Krishna"
                 },
                 {
                     "districtCode": "552",
                     "districtName": "Kurnool"
+                },
+                {
+                    "districtCode": "536",
+                    "districtName": "Markapuram"
                 },
                 {
                     "districtCode": "755",
@@ -89,6 +93,10 @@
                 {
                     "districtCode": "743",
                     "districtName": "Parvathipuram Manyam"
+                },
+                {
+                    "districtCode": "532",
+                    "districtName": "Polavaram"
                 },
                 {
                     "districtCode": "549",
@@ -343,10 +351,6 @@
                     "districtName": "Lakhimpur"
                 },
                 {
-                    "districtCode": "746",
-                    "districtName": "Majuli"
-                },
-                {
                     "districtCode": "713",
                     "districtName": "Majuli"
                 },
@@ -373,6 +377,10 @@
                 {
                     "districtCode": "714",
                     "districtName": "South Salmara"
+                },
+                {
+                    "districtCode": "716",
+                    "districtName": "Tamulpur"
                 },
                 {
                     "districtCode": "309",
@@ -3527,6 +3535,10 @@
     ],
     "bloodGroups": [
         {
+            "bloodGroupName": "A+Ve",
+            "bloodGroupCode": "11"
+        },
+        {
             "bloodGroupName": "A-Ve",
             "bloodGroupCode": "12"
         },
@@ -3543,20 +3555,16 @@
             "bloodGroupCode": "15"
         },
         {
+            "bloodGroupName": "O-Ve",
+            "bloodGroupCode": "16"
+        },
+        {
             "bloodGroupName": "AB+Ve",
             "bloodGroupCode": "17"
         },
         {
             "bloodGroupName": "AB-Ve",
             "bloodGroupCode": "18"
-        },
-        {
-            "bloodGroupName": "A+Ve",
-            "bloodGroupCode": "11"
-        },
-        {
-            "bloodGroupName": "O-Ve",
-            "bloodGroupCode": "16"
         },
         {
             "bloodGroupName": "Oh+VE",

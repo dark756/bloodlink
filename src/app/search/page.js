@@ -12,9 +12,12 @@ import {
   getDistrictName,
   getStateName,
 } from "@/lib/constants";
-import { formatUpdatedAgo, normalizeAvailabilityRow } from "@/lib/stock";
+import { formatUpdatedAgo, isDormant, normalizeAvailabilityRow } from "@/lib/stock";
+import { formatTimeAgo, hoursSince } from "@/lib/format";
 
 const MAX_UNITS = 50;
+// A saved copy older than this gets a red warning instead of a yellow one.
+const SAVED_COPY_WARNING_HOURS = 24;
 
 function MapPlaceholder() {
   return (
@@ -63,10 +66,7 @@ function StockBadges({ stock }) {
     <span key={componentStock.component} className="badge badge-green">
       <strong>{componentStock.component}:</strong>{" "}
       {componentStock.units
-        .map(
-          (groupStock) =>
-            `${groupStock.group} ${groupStock.units}${groupStock.exact === false ? " (compatible)" : ""}`,
-        )
+        .map((groupStock) => `${groupStock.group} ${groupStock.units}`)
         .join(", ")}
     </span>
   ));
@@ -96,13 +96,7 @@ function PlanCard({ plan, label }) {
       <ol className="text-sm mt-2 list-decimal ml-5">
         {plan.steps.map((step) => (
           <li key={step.hospitalCode} className="mt-1">
-            <strong>{step.name}</strong>:{" "}
-            {step.allocations
-              .map(
-                (allocation) =>
-                  `${allocation.units} × ${allocation.name}${allocation.exact ? "" : " (compatible)"}`,
-              )
-              .join(", ")}
+            <strong>{step.name}</strong>: {step.units} {step.units === 1 ? "unit" : "units"}
             <span className="text-[#666]"> · about {step.etaMinutes} min</span>
             {step.phone && <span className="text-[#666]"> · call {step.phone}</span>}
           </li>
@@ -119,16 +113,41 @@ function PlanCard({ plan, label }) {
         </p>
       )}
       <p className="text-xs text-[#666] mt-2">
-        Ranking weighs compatibility, travel time, stock and how recently stock was updated. Travel
-        times are estimates. Compatibility is informational; the blood bank must cross-match before
-        transfusion.
+        Only banks listing the exact blood group are shown. Ranking weighs travel time at this hour,
+        whether the bank covers the request, spare stock beyond it (weighted more when urgent) and
+        how recently stock was updated. The blood bank must still cross-match before transfusion.
       </p>
     </div>
   );
 }
 
+// "6.2 km by road · about 24 min now", or the straight-line distance when there is no route.
+function describeDistance(bank) {
+  if (bank.roadDistanceM) {
+    return `${formatKm(bank.roadDistanceM)} km by road · about ${bank.etaMinutes} min now`;
+  }
+  const eta = bank.etaMinutes ? ` · about ${bank.etaMinutes} min now (estimated)` : "";
+  return `${formatKm(bank.distanceM)} km away (straight line)${eta}`;
+}
+
+// "Travel times use road routes and Mumbai traffic for Fri 6:05 pm (rush-hour traffic, +112%)."
+function TravelNote({ travel }) {
+  const place = travel.city ? `${travel.city} traffic` : `typical ${travel.zone}-area traffic`;
+  const basis =
+    travel.roadRoutes > 0 ? "road routes" : "straight-line distance (road routing unavailable)";
+  return (
+    <p className="text-xs font-normal text-[#666] mt-1">
+      Travel times use {basis} and {place} for {travel.localTime} ({travel.label}, +
+      {Math.round(travel.congestionPercent)}%)
+      {travel.rainFactor > 1 && `, slowed for rain (${travel.rainMmPerHour} mm/h)`}. They are
+      estimates.
+    </p>
+  );
+}
+
 function BankItem({ bank }) {
   const updatedAgo = formatUpdatedAgo(bank.entryDate);
+  const checkedAgo = formatTimeAgo(bank.checkedAt);
   const hasCoords =
     Number.isFinite(Number(bank.latitude)) && Number.isFinite(Number(bank.longitude));
   return (
@@ -136,16 +155,24 @@ function BankItem({ bank }) {
       <h3 className="result-name">{bank.name}</h3>
       <p className="result-address">{bank.address}</p>
       {bank.distanceM !== undefined && (
-        <p className="text-sm text-[#d32f2f] mt-1">
-          {formatKm(bank.distanceM)} km away (straight line)
-        </p>
+        <p className="text-sm text-[#d32f2f] mt-1">{describeDistance(bank)}</p>
       )}
       <div className="mt-2 flex flex-wrap gap-2">
         <StockBadges stock={bank.stock} />
+        {bank.isDormant && (
+          <span className="badge badge-red">
+            Not updated for 30+ days: call before relying on it
+          </span>
+        )}
       </div>
       {bank.rank && <RankingDetails bank={bank} />}
       <p className="text-xs text-[#666] mt-2 flex flex-wrap gap-x-3 gap-y-1">
-        {updatedAgo && <span>Stock {updatedAgo}</span>}
+        {updatedAgo && (
+          <span>
+            Bank {updatedAgo}
+            {checkedAgo && ` · checked ${checkedAgo}`}
+          </span>
+        )}
         {bank.phone && (
           <a
             href={`tel:${bank.phone.replace(/[^\d+]/g, "")}`}
@@ -172,7 +199,7 @@ function BankItem({ bank }) {
 // The heading above the result list, which depends on the kind of search.
 function describeResults({ mode, banks, meta, label, place }) {
   if (meta?.mode === "ranked") {
-    return `${banks.length} ranked source(s) within ${formatKm(meta.ringRadiusM)} km (${meta.area} search). Accepted groups: ${meta.acceptedGroups.join(", ")}`;
+    return `${banks.length} ranked source(s) with ${meta.bloodGroup} within ${formatKm(meta.ringRadiusM)} km (${meta.area} search)`;
   }
   if (mode === "location") {
     return `${label} within ${formatKm(meta.ringRadiusM)} km (${meta.area} search, ${banks.length} found)`;
@@ -181,22 +208,46 @@ function describeResults({ mode, banks, meta, label, place }) {
   return `Blood banks in ${place}: ${stockedCount} of ${banks.length} have ${label}`;
 }
 
+// Where the stock came from and how old it is. Nothing when it is live. The age
+// shown is the oldest stock copy used, so it is never flattering.
+function FreshnessBanner({ freshness }) {
+  if (!freshness) return null;
+  const isBackup = freshness.source === "memory" || freshness.source === "saved";
+  const savedAgo = formatTimeAgo(freshness.oldestFetchedAt);
+  const savedHours = hoursSince(freshness.oldestFetchedAt);
+  const reason =
+    freshness.upstream === "degraded"
+      ? "eRaktKosh is slow right now"
+      : "eRaktKosh isn't responding";
+  const failedStates = freshness.failedStates ?? [];
+  return (
+    <>
+      {isBackup &&
+        (savedHours !== null && savedHours < SAVED_COPY_WARNING_HOURS ? (
+          <p className="notice notice-warn mb-3">
+            {reason}, so this shows stock bloodLink saved {savedAgo}.
+          </p>
+        ) : (
+          <p className="notice notice-error mb-3">
+            {reason}, and some of the stock shown was saved {savedAgo ?? "at an unknown time"}. It
+            has probably changed: call every bank before travelling.
+          </p>
+        ))}
+      {failedStates.length > 0 && (
+        <p className="notice notice-warn mb-3">
+          Couldn&apos;t check {failedStates.join(", ")}. Banks there may be missing.
+        </p>
+      )}
+    </>
+  );
+}
+
 function SearchResults({ result }) {
-  const { mode, banks, meta, stale, label } = result;
-  const isStale = stale || meta?.stale;
+  const { mode, banks, meta, label } = result;
 
   return (
     <div className="mt-5 max-w-xl">
-      {isStale && (
-        <p className="notice notice-warn mb-3">
-          eRaktKosh did not respond just now, so some of this is the last data we saved.
-        </p>
-      )}
-      {meta?.partial && (
-        <p className="notice notice-warn mb-3">
-          Some nearby states could not be checked. Results may be incomplete.
-        </p>
-      )}
+      <FreshnessBanner freshness={result.freshness ?? meta?.freshness} />
 
       {mode === "location" && banks.length === 0 ? (
         <p className="notice notice-warn">
@@ -210,7 +261,17 @@ function SearchResults({ result }) {
         <>
           {meta?.mode === "ranked" && <PlanCard plan={meta.plan} label={label} />}
           <div className="card">
-            <h2 className="card-title">{describeResults(result)}</h2>
+            <div className="card-title">
+              <h2>{describeResults(result)}</h2>
+              {meta?.travel && <TravelNote travel={meta.travel} />}
+              {meta?.misplacedBanks > 0 && (
+                <p className="text-xs font-normal text-[#666] mt-1">
+                  {meta.misplacedBanks} more {meta.misplacedBanks === 1 ? "bank is" : "banks are"}{" "}
+                  left out: eRaktKosh places them outside their own state, so their distance is
+                  unknown. Search by state to see them.
+                </p>
+              )}
+            </div>
             <ul>
               {banks.map((bank) => (
                 <BankItem key={bank.hospitalCode} bank={bank} />
@@ -230,11 +291,11 @@ export default function SearchPage() {
   const [districtCode, setDistrictCode] = useState("");
   const [coords, setCoords] = useState(null);
   const [activeSearch, setActiveSearch] = useState(null); // "region" | "location" | null
+  const [lastSearch, setLastSearch] = useState(null); // what Retry runs again
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [unitsNeeded, setUnitsNeeded] = useState(1);
   const [urgency, setUrgency] = useState("urgent");
-  const [includeCompatible, setIncludeCompatible] = useState(true);
 
   const districts = districtsFor(stateCode);
   const canRank = Boolean(componentId && bloodGroupId);
@@ -248,6 +309,7 @@ export default function SearchPage() {
   }
 
   function startSearch(mode) {
+    setLastSearch(mode);
     setActiveSearch(mode);
     setError("");
     setResult(null);
@@ -265,13 +327,24 @@ export default function SearchPage() {
       params.set("stateCode", stateCode);
       if (districtCode) params.set("districtId", districtCode);
       const response = await axios.get(`/api/search?${params}`);
+      const fetchedAt = response.headers["x-data-fetched-at"] ?? null;
       const banks = response.data
-        .map((row) => normalizeAvailabilityRow(row, stockFilters))
+        .map((row) => ({
+          ...normalizeAvailabilityRow(row, stockFilters),
+          checkedAt: fetchedAt,
+          isDormant: isDormant(row.entrydate),
+        }))
         .sort((a, b) => b.stock.totalUnits - a.stock.totalUnits);
       setResult({
         mode: "region",
         banks,
-        stale: response.headers["x-data-stale"] === "1",
+        freshness: {
+          source: response.headers["x-data-source"] ?? "live",
+          fetchedAt,
+          oldestFetchedAt: fetchedAt,
+          upstream: response.headers["x-data-upstream"] ?? "ok",
+          failedStates: [],
+        },
         label: describeFilters(componentId, bloodGroupId),
         place: districtCode
           ? `${getDistrictName(stateCode, districtCode)}, ${getStateName(stateCode)}`
@@ -294,7 +367,6 @@ export default function SearchPage() {
       if (canRank) {
         params.set("units", String(unitsNeeded));
         params.set("urgency", urgency);
-        params.set("compatible", includeCompatible ? "1" : "0");
       }
       const { data } = await axios.get(`/api/blood-search?${params}`);
       setResult({
@@ -403,7 +475,7 @@ export default function SearchPage() {
         </div>
 
         {canRank ? (
-          <div className="grid gap-4 sm:grid-cols-3 mt-4 pt-4 border-t border-[#e0e0e0]">
+          <div className="grid gap-4 sm:grid-cols-2 mt-4 pt-4 border-t border-[#e0e0e0]">
             <div>
               <label className="label" htmlFor="units">
                 Units needed
@@ -435,14 +507,6 @@ export default function SearchPage() {
                 <option value="routine">Routine</option>
               </select>
             </div>
-            <label className="check-row self-end">
-              <input
-                type="checkbox"
-                checked={includeCompatible}
-                onChange={(event) => setIncludeCompatible(event.target.checked)}
-              />
-              <span>Include compatible groups</span>
-            </label>
           </div>
         ) : (
           <p className="text-xs text-[#666] mt-3">
@@ -478,12 +542,30 @@ export default function SearchPage() {
         <BloodMap coords={coords} onCoordsChange={setCoords} />
       </div>
 
-      {error && <p className="notice notice-error mt-5 max-w-xl">{error}</p>}
+      {error && (
+        <div className="notice notice-error mt-5 max-w-xl flex items-center justify-between gap-3">
+          <span>{error}</span>
+          {lastSearch && (
+            <button
+              className="btn btn-outline btn-small"
+              disabled={isSearching}
+              onClick={lastSearch === "region" ? handleRegionSearch : handleLocationSearch}
+            >
+              Retry
+            </button>
+          )}
+        </div>
+      )}
       {result && <SearchResults result={result} />}
 
       <p className="text-xs text-[#666] mt-6 max-w-xl">
         Stock comes from eRaktKosh and may be out of date. Always call the blood bank before
         travelling.
+      </p>
+      <p className="text-xs text-[#999] mt-2 max-w-xl">
+        Routes: OSRM, map data © OpenStreetMap contributors. Traffic patterns: TomTom Traffic Index
+        2025. Weather: Open-Meteo. State outlines: DataMeet India community via geoBoundaries (CC BY
+        2.5 IN).
       </p>
     </div>
   );

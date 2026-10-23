@@ -1,57 +1,60 @@
-import { parseEntryDate } from "./stock";
+// The ".js" lets Node scripts (scripts/ranking-sensitivity.mjs) import this file too.
+import { parseEntryDate } from "./stock.js";
 
 // Emergency blood-source ranking.
 //
-// Each candidate blood bank gets four scores from 0 to 100:
-//   compatibility  100 if exact-group stock covers the request, 85 if some of it
-//                  is exact, 70 if only compatible substitute groups are available
-//   eta            100 * e^(-minutes / tau): falls as travel time grows; tau is
-//                  shorter for more urgent requests, so distance matters more
-//   stock          100 * min(1, usable units / units needed)
-//   freshness      100 when stock was updated within 6 h, falling linearly to 0
-//                  at 72 h; 30 when the bank gives no update time
+// Only banks that list the patient's exact blood group are ranked. Compatible
+// substitute groups are not counted. Each bank gets four scores from 0 to 100:
+//   eta        100 * e^(-minutes / tau): falls as travel time grows; tau is
+//              shorter for more urgent requests. etaMinutes is set beforehand by
+//              src/lib/traffic.js (OSRM road route, time of day, area, rain).
+//   coverage   100 * min(1, units / units needed)
+//   surplus    100 * (1 - e^(-spare / units needed)), where spare is the units
+//              beyond the request: one request's worth spare scores 63, two
+//              score 86. Spare stock is a buffer against stock that changed
+//              since the bank last updated it, and against the patient needing
+//              more, so it is weighted more for critical and urgent requests.
+//   freshness  100 when stock was updated within 6 h, falling linearly to 0
+//              at 72 h; 30 when the bank gives no update time
 // The total is a weighted sum; weights depend on urgency (they add up to 1).
-// Until a routing service is added, ETA is estimated from straight-line distance
-// times a detour factor at an assumed average speed.
 //
 // Then buildResponsePlan() walks the ranked list and takes units from each bank
-// (exact group first) until the request is covered, so one request can be split
-// across banks.
+// until the request is covered, so one request can be split across banks.
+// Dormant banks (stock not updated for 30 days, src/lib/stock.js) stay in the
+// list but are left out of the plan.
 
 export const URGENCY_LEVELS = ["critical", "urgent", "routine"];
 
 export const WEIGHTS = {
-  critical: { compatibility: 0.1, eta: 0.45, stock: 0.25, freshness: 0.2 },
-  urgent: { compatibility: 0.2, eta: 0.35, stock: 0.25, freshness: 0.2 },
-  routine: { compatibility: 0.25, eta: 0.25, stock: 0.25, freshness: 0.25 },
+  critical: { eta: 0.45, coverage: 0.15, surplus: 0.2, freshness: 0.2 },
+  urgent: { eta: 0.35, coverage: 0.25, surplus: 0.15, freshness: 0.25 },
+  routine: { eta: 0.25, coverage: 0.35, surplus: 0.05, freshness: 0.35 },
 };
 
-export const TRAVEL = {
-  detourFactor: 1.4, // road distance / straight-line distance
-  speedKmh: { urban: 25, rural: 45 },
-  decayMinutes: { critical: 30, urgent: 45, routine: 60 },
-};
+// tau for the ETA score, in minutes.
+export const ETA_DECAY_MINUTES = { critical: 30, urgent: 45, routine: 60 };
 
 export const FRESHNESS = { fullHours: 6, zeroHours: 72, unknownScore: 30 };
 
 const MS_PER_HOUR = 3_600_000;
 
 const roundToTenth = (value) => Math.round(value * 10) / 10;
-
-export function estimateEtaMinutes(distanceM, area = "urban") {
-  const roadKm = (distanceM / 1000) * TRAVEL.detourFactor;
-  const speedKmh = TRAVEL.speedKmh[area] ?? TRAVEL.speedKmh.urban;
-  return Math.max(1, Math.round((roadKm / speedKmh) * 60));
-}
+const unitWord = (count) => (count === 1 ? "unit" : "units");
 
 export function etaScore(minutes, urgency = "urgent") {
-  const tau = TRAVEL.decayMinutes[urgency] ?? TRAVEL.decayMinutes.urgent;
+  const tau = ETA_DECAY_MINUTES[urgency] ?? ETA_DECAY_MINUTES.urgent;
   return roundToTenth(100 * Math.exp(-minutes / tau));
 }
 
-export function stockScore(units, unitsNeeded) {
+export function coverageScore(units, unitsNeeded) {
   if (unitsNeeded <= 0) return 100;
   return roundToTenth(100 * Math.min(1, units / unitsNeeded));
+}
+
+export function surplusScore(units, unitsNeeded) {
+  const spareUnits = Math.max(0, units - unitsNeeded);
+  if (unitsNeeded <= 0) return spareUnits > 0 ? 100 : 0;
+  return roundToTenth(100 * (1 - Math.exp(-spareUnits / unitsNeeded)));
 }
 
 export function freshnessScore(entryDate, now = new Date()) {
@@ -63,12 +66,6 @@ export function freshnessScore(entryDate, now = new Date()) {
   return roundToTenth(
     (100 * (FRESHNESS.zeroHours - hours)) / (FRESHNESS.zeroHours - FRESHNESS.fullHours),
   );
-}
-
-export function compatibilityScore(exactUnits, unitsNeeded) {
-  if (exactUnits >= unitsNeeded) return 100;
-  if (exactUnits > 0) return 85;
-  return 70;
 }
 
 function hoursSinceUpdate(entryDate, now) {
@@ -83,59 +80,58 @@ function formatAge(hours) {
   return `${Math.round(hours / 24)} days`;
 }
 
-// Four plain-language reasons for a bank's rank: compatibility, travel, stock, freshness.
-function buildReasons(source, metrics, unitsNeeded, now) {
-  const reasons = [];
-  const exactGroups = source.groups.filter((group) => group.exact);
-  const substituteGroups = source.groups.filter((group) => !group.exact);
-  const unitWord = (count) => (count === 1 ? "unit" : "units");
-  const namesOf = (groups) => groups.map((group) => group.name).join(", ");
+// "About 42 min by road at this hour (heavy traffic)".
+function describeEta(source, trafficLabel) {
+  const condition = trafficLabel ? ` (${trafficLabel})` : "";
+  return source.etaSource === "road"
+    ? `About ${source.etaMinutes} min by road at this hour${condition}`
+    : `About ${source.etaMinutes} min at this hour${condition}, estimated from straight-line distance`;
+}
 
-  // With no substitutes (exact-only searches, or O- red cells), the stock reason covers any shortfall.
-  if (metrics.exactUnits >= unitsNeeded || substituteGroups.length === 0) {
-    reasons.push(`Exact ${namesOf(exactGroups)} match`);
-  } else if (metrics.exactUnits > 0) {
-    reasons.push(
-      `${metrics.exactUnits} exact ${unitWord(metrics.exactUnits)}, plus compatible ${namesOf(substituteGroups)}`,
-    );
-  } else {
-    reasons.push(`Compatible groups only: ${namesOf(substituteGroups)}`);
-  }
+// "6 O-Ve units listed: covers the 3 needed, with 3 to spare".
+function describeStock(source, unitsNeeded) {
+  const listed = `${source.units} ${source.groupName ?? ""} ${unitWord(source.units)} listed`
+    .replace(/\s+/g, " ")
+    .trim();
+  if (source.units < unitsNeeded) return `${listed}: ${source.units} of the ${unitsNeeded} needed`;
+  const spareUnits = source.units - unitsNeeded;
+  return spareUnits === 0
+    ? `${listed}: exactly the ${unitsNeeded} needed, none to spare`
+    : `${listed}: covers the ${unitsNeeded} needed, with ${spareUnits} to spare`;
+}
 
-  reasons.push(`About ${metrics.etaMinutes} min away by road (estimated from distance)`);
-
-  reasons.push(
-    metrics.totalUnits >= unitsNeeded
-      ? `${metrics.totalUnits} ${unitWord(metrics.totalUnits)} available, enough for the ${unitsNeeded} needed`
-      : `${metrics.totalUnits} of the ${unitsNeeded} ${unitWord(unitsNeeded)} needed`,
-  );
-
+// Three plain-language reasons for a bank's rank: travel, stock, freshness.
+function buildReasons(source, freshness, unitsNeeded, now, trafficLabel) {
+  const reasons = [describeEta(source, trafficLabel), describeStock(source, unitsNeeded)];
   const age = formatAge(hoursSinceUpdate(source.entryDate, now));
-  if (age === null) reasons.push("No stock update time listed, so call to confirm");
-  else if (metrics.freshness >= 100) reasons.push(`Stock updated ${age} ago`);
+  if (source.isDormant) reasons.push(`Stock not updated for ${age}, so it is left out of the plan`);
+  else if (age === null) reasons.push("No stock update time listed, so call to confirm");
+  else if (freshness >= 100) reasons.push(`Stock updated ${age} ago`);
   else reasons.push(`Stock last updated ${age} ago, so call to confirm`);
-
   return reasons;
 }
 
-// sources: [{ hospitalCode, name, distanceM, entryDate, groups: [{ code, name, units, exact }] }]
-// Returns the sources sorted by score, each with score, breakdown, reasons and etaMinutes.
+// sources: [{ hospitalCode, name, units, groupName, etaMinutes, etaSource, entryDate, ... }]
+// where units is the bank's stock of the exact group asked for.
+// Returns the sources sorted by score, each with score, breakdown and reasons.
+// weights overrides the urgency's weights, for sensitivity analysis.
 export function rankSources(
   sources,
-  { urgency = "urgent", unitsNeeded = 1, area = "urban", now = new Date() } = {},
+  {
+    urgency = "urgent",
+    unitsNeeded = 1,
+    now = new Date(),
+    trafficLabel = null,
+    weights = WEIGHTS[urgency] ?? WEIGHTS.urgent,
+  } = {},
 ) {
-  const weights = WEIGHTS[urgency] ?? WEIGHTS.urgent;
-  const sumUnits = (groups) => groups.reduce((sum, group) => sum + group.units, 0);
-
   return sources
+    .filter((source) => source.units > 0)
     .map((source) => {
-      const totalUnits = sumUnits(source.groups);
-      const exactUnits = sumUnits(source.groups.filter((group) => group.exact));
-      const etaMinutes = estimateEtaMinutes(source.distanceM, area);
       const breakdown = {
-        compatibility: compatibilityScore(exactUnits, unitsNeeded),
-        eta: etaScore(etaMinutes, urgency),
-        stock: stockScore(totalUnits, unitsNeeded),
+        eta: etaScore(source.etaMinutes, urgency),
+        coverage: coverageScore(source.units, unitsNeeded),
+        surplus: surplusScore(source.units, unitsNeeded),
         freshness: freshnessScore(source.entryDate, now),
       };
       const score = roundToTenth(
@@ -144,44 +140,30 @@ export function rankSources(
           0,
         ),
       );
-      const reasons = buildReasons(
-        source,
-        { ...breakdown, totalUnits, exactUnits, etaMinutes },
-        unitsNeeded,
-        now,
-      );
-      return { ...source, totalUnits, exactUnits, etaMinutes, score, breakdown, reasons };
+      const reasons = buildReasons(source, breakdown.freshness, unitsNeeded, now, trafficLabel);
+      return { ...source, score, breakdown, reasons };
     })
-    .sort((a, b) => b.score - a.score || a.distanceM - b.distanceM);
+    .sort((a, b) => b.score - a.score || a.etaMinutes - b.etaMinutes);
 }
 
-// Greedy allocation down the ranked list, exact group first within each bank.
+// Greedy allocation down the ranked list, skipping dormant banks.
 export function buildResponsePlan(rankedSources, unitsNeeded) {
   let unitsRemaining = unitsNeeded;
   const steps = [];
 
   for (const source of rankedSources) {
     if (unitsRemaining <= 0) break;
-    const allocations = [];
-    const groupsExactFirst = [...source.groups].sort((a, b) => Number(b.exact) - Number(a.exact));
-    for (const group of groupsExactFirst) {
-      if (unitsRemaining <= 0) break;
-      const units = Math.min(group.units, unitsRemaining);
-      if (units > 0) {
-        allocations.push({ name: group.name, units, exact: group.exact });
-        unitsRemaining -= units;
-      }
-    }
-    if (allocations.length > 0) {
-      steps.push({
-        hospitalCode: source.hospitalCode,
-        name: source.name,
-        phone: source.phone ?? null,
-        etaMinutes: source.etaMinutes,
-        units: allocations.reduce((sum, allocation) => sum + allocation.units, 0),
-        allocations,
-      });
-    }
+    if (source.isDormant) continue;
+    const units = Math.min(source.units, unitsRemaining);
+    if (units <= 0) continue;
+    steps.push({
+      hospitalCode: source.hospitalCode,
+      name: source.name,
+      phone: source.phone ?? null,
+      etaMinutes: source.etaMinutes,
+      units,
+    });
+    unitsRemaining -= units;
   }
 
   const shortfall = Math.max(0, unitsRemaining);

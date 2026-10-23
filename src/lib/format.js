@@ -19,6 +19,21 @@ export function formatDateTime(value) {
   return date.toLocaleString("en-IN", DATE_TIME_OPTIONS);
 }
 
+// Hours since a timestamp, or null when it isn't one.
+export function hoursSince(value, now = new Date()) {
+  const time = value ? new Date(value).getTime() : NaN;
+  return Number.isNaN(time) ? null : Math.max(0, (now.getTime() - time) / 3_600_000);
+}
+
+// A timestamp as "40 min ago", "3 h ago" or "2 days ago". null when empty.
+export function formatTimeAgo(value, now = new Date()) {
+  const hours = hoursSince(value, now);
+  if (hours === null) return null;
+  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))} min ago`;
+  if (hours < 48) return `${Math.round(hours)} h ago`;
+  return `${Math.round(hours / 24)} days ago`;
+}
+
 // "male" -> "Male". "-" when empty.
 export function capitalize(value) {
   if (!value) return "-";
