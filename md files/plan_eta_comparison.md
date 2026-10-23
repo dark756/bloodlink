@@ -1,0 +1,361 @@
+# Plan: a rubric and test bench for comparing ETA methods
+
+**Status: PLAN, not started.** Nothing here has been built or measured. Every number in a results cell below is a placeholder or a figure already measured in `report3.md`, and says which.
+
+- Paths are relative to `bloodlink/` unless they start with `../`.
+- "ETA" means the travel time from the person asking (usually a hospital) to a blood bank, as `src/lib/traffic.js` computes it today.
+
+**Contents**
+1. [Why](#why)
+2. [What the ETA is for](#what-the-eta-is-for)
+3. [The methods to compare](#the-methods-to-compare)
+4. [Ground truth](#ground-truth)
+5. [The rubric](#the-rubric)
+6. [Metrics](#metrics)
+7. [The test bench](#the-test-bench)
+8. [Steps](#steps)
+9. [How to present it](#how-to-present-it)
+10. [Decisions and alternatives](#decisions-and-alternatives)
+11. [Risks and limits](#risks-and-limits)
+12. [Sources](#sources)
+
+---
+
+## Why
+
+- **The reviewer asked for OSRM and a time-aware ETA** (report 3, point 2). That is built, and argued for, but not measured against real trips. Report 3 itself flags the gap: the town free-flow speed and the rural congestion scale (0.29) are assumptions "flagged for calibration", and point 4 sets a target of under 25% error in every zone.
+- **"Why OSRM and not plain Haversine?"** is the obvious viva question. Today the answer is an argument (road networks, rush hours). A measured table, with the old straight-line method as a baseline, turns it into evidence.
+- **A rubric keeps the choice honest.** Accuracy alone would pick a paid, traffic-aware API. Cost, licence, privacy and reliability matter as much for a public emergency tool, and a rubric written before the results makes those trade-offs explicit.
+
+---
+
+## What the ETA is for
+
+The evaluation has to match how the app uses the number, in three places:
+
+1. **The ranking.** `etaScore = 100 · e^(−minutes / τ)` with τ = 30, 45 or 60 minutes, weighted 0.25 to 0.45 (`src/lib/ranking.js`). So what matters most is:
+   - the **order** of the banks within one search (relative error);
+   - the absolute minutes only through τ: a 10-minute error costs a bank 28% of its ETA points when critical, 20% when urgent and 15% when routine.
+2. **The display:** "6.2 km by road · about 24 min now". Here the absolute number matters, and a bias towards optimism is worse than one towards caution.
+3. **The ring and plan don't use the ETA.** Rings are chosen by straight-line distance, so the ETA method can't change which banks are candidates, only their order and the plan.
+
+So the bench scores **absolute accuracy** (for the display) and **decision accuracy** (for the ranking) separately. A method can be 30% off in minutes and still rank banks perfectly, if it is off by the same factor for all of them.
+
+---
+
+## The methods to compare
+
+Every method answers the same question: minutes from an origin to each of a set of banks, departing at a given India time.
+
+| ID | Method | Road network | Time of day | Where it is today | Cost |
+|---|---|---|---|---|---|
+| **M0** | **Straight line, fixed speed** (the original app): Haversine × 1.4, at 25 km/h urban or 45 km/h rural | No | No | Removed from `ranking.js` in report 3; re-created in the bench only | Free |
+| **M1** | **Straight line + traffic model** (today's fallback): Haversine × 1.34, zone free-flow speed, TomTom congestion, rain | No | Yes | `estimateTravel` with no `leg` (`etaSource: "estimate"`) | Free |
+| **M2** | **OSRM raw:** OSRM's free-flow duration, unadjusted | Yes | No | `fetchRoadLegs` output before `traffic.js` | Free (public server: 1 request a second) |
+| **M3** | **OSRM + traffic model** (today's default) | Yes | Yes | `estimateTravel` with a `leg` (`etaSource: "road"`) | Free |
+| M4 | OpenRouteService matrix + traffic model: a second free-flow engine | Yes | Yes | Not built | Free with a key and a daily limit |
+| M5 | **M3, calibrated:** `ZONE_SCALE`, town and rural free-flow speeds and the detour factor refitted on the calibration trips | Yes | Yes | Not built | Free |
+| M6 | **Traffic-aware commercial matrix:** TomTom Matrix Routing, Google Routes, HERE or Mappls, departing at the trip's time | Yes | Yes, with historical and live traffic | Not built | Billed beyond a free tier; needs a key and a card |
+| M7 | Self-hosted OSRM (Geofabrik India extract) | Yes | Yes, via the model | Planned (`CLAUDE.md`, item 7) | A machine with 8 to 12 GB for preprocessing |
+
+Notes:
+- **M7 gives the same answers as M3** if both use the same OpenStreetMap date, so it is scored only on latency, reliability, cost and effort, never on accuracy.
+- **M6 is both a candidate and a possible reference.** It can't be both in the same comparison; see [ground truth](#ground-truth).
+- **Ablations of M3** show which parts of the model earn their place. Each removes one part:
+
+| Ablation | What it removes | The question it answers |
+|---|---|---|
+| M3 − congestion | `congestionPercent` set to 0 (equals M2 with the free-flow floor) | Do the TomTom rush-hour profiles help? |
+| M3 − floor | The free-flow speed floor (OSRM time is used as it is, then congestion) | Was it right to slow OSRM down to TomTom's free-flow speed? |
+| M3 − season | Seasonal factor set to 1 | Does the monthly factor help? (Can only be tested across seasons; see limits.) |
+| M3 − rain | Rain factor set to 1 | Does live rain help? (Needs rainy trips.) |
+| M3 − zone scale | Every non-metro zone uses the Indian average profile unscaled | Does bank density stand in usefully for town size? |
+| M1 with 1.58 for trips under 5 km | The short-trip detour factor measured in report 3 | Is one detour factor enough? |
+
+---
+
+## Ground truth
+
+There is no free, complete record of real Indian trip times. The plan uses three tiers, each checking the one below it.
+
+| Tier | What | How many | Strength | Weakness |
+|---|---|---|---|---|
+| **A · gold** | **Timed trips:** a team member travels from an origin to a bank by car or taxi and logs the time with a phone GPS app | 30 to 60 | Real, at a real time of day | Few; one driver's behaviour; slow to collect |
+| **B · silver** | **A traffic-aware reference** for the same weekday and time: a commercial routing API's typical-traffic time, or Google Maps' "Depart at" range written down by hand | 240 to 480 | Many, every zone and hour | A model, not a measurement |
+| **C · sanity** | Published averages: TomTom city travel times per 10 km, ambulance response studies | A handful | Independent | Too coarse to score a single trip |
+
+How they are used:
+1. **Tier A validates tier B.** On the trips that have both, measure tier B's own error. If B is within about 15% of A, it is fit to score the methods at scale.
+2. **Tier B scores every method**, with enough trips for each zone and time band.
+3. **Tier A re-scores the shortlist,** so the final choice never rests on a model alone.
+4. **Tier C** only catches gross errors, such as a method claiming 60 km/h through central Mumbai at 6 pm.
+
+**The circularity rule.** If tier B comes from a provider, that provider's method (M6) must not be scored against tier B. Either pick a different provider for the reference, or score M6 on tier A only.
+
+**Terms of use.** Read the provider's terms before collecting tier B. Some restrict how long results may be stored or what they may be used for. Recording a small sample by hand from a consumer app, for an academic evaluation, is a grey area; say how it was collected in the report.
+
+### Which trips
+
+Trips should look like the searches the app answers, so origins and destinations come from real use:
+- **Origins:** hospitals, since requests come from them. Take them from the directory and the data.gov.in list.
+- **Destinations:** the banks a ranked search from that origin actually lists. `scripts/ranking-sensitivity.mjs --capture` already saves 52 such candidate sets across 13 places.
+- **Strata:**
+
+| Dimension | Levels |
+|---|---|
+| Zone (`trafficZone`) | metro, city, town, rural |
+| Time band (India time) | night 00:00 to 05:00, midday 11:00 to 15:00, evening peak 17:00 to 20:00 |
+| Day | weekday, Sunday |
+| Distance | under 5 km, 5 to 15 km, 15 to 40 km, over 40 km |
+
+- **How many.** Report 3 asked for at least 20 trips per zone and time band, which is 240. The tighter figure: to tell apart two methods whose average percentage errors differ by 5 points, when the paired differences have a spread of about 15 points, needs about (1.96 + 0.84)² × 15² / 5² ≈ **71 paired trips** per comparison. 240 trips are enough overall; 480 (40 per cell) give usable per-zone figures. Tier A can't reach this, which is why it validates rather than scores.
+
+### How a timed trip is recorded
+
+- **Vehicle:** car or taxi, not a two-wheeler, because the model estimates a car.
+- **Start and stop:** the origin's gate to the bank's gate. Record departure time to the minute, in India time.
+- **Logger:** any GPS app that exports GPX, so the route can be checked afterwards.
+- **Notes:** stops (fuel, a wrong turn), weather, anything unusual. A trip with a long unplanned stop is kept but flagged and left out of scoring.
+- **Safety:** this is not an emergency drive. Normal speeds, normal routes, and no entering hospital areas beyond the gate.
+
+One line per trip in `../blood_data/eta_calibration/trips.ndjson`:
+
+```json
+{
+  "tripId": "mum-0007",
+  "tier": "A",
+  "origin": { "name": "KEM Hospital", "latitude": 19.0025, "longitude": 72.8417 },
+  "hospitalCode": "1234",
+  "destination": { "latitude": 19.0176, "longitude": 72.8562 },
+  "departAt": "2026-11-06T18:10:00+05:30",
+  "observedMinutes": 27,
+  "observedRangeMinutes": null,
+  "vehicle": "car",
+  "rainObserved": "none",
+  "flags": [],
+  "collectedBy": "team member initials",
+  "notes": ""
+}
+```
+
+Tier B rows use the same shape, with `tier: "B"`, the provider in `source` and, where the reference gives a range ("typically 22 to 35 min"), both ends in `observedRangeMinutes` and the middle in `observedMinutes`.
+
+---
+
+## The rubric
+
+Two stages: **gates** a method must pass to be considered at all, then **weighted criteria** scored on anchored scales. The rubric, weights and decision rule are fixed **before** any results are seen, and committed to the repository with that date.
+
+### Stage 1: gates (pass or fail)
+
+| Gate | Pass when |
+|---|---|
+| G1 · Licence | Its terms allow this use: a public, non-commercial emergency search, with results cached as long as `routing.js` caches them (24 h today) |
+| G2 · Privacy | It doesn't need more than the search pin (rounded to about 100 m) and bank positions. It must not need a user id or a phone number. (Today `routing.js` sends the pin to the public OSRM server at 5 decimals, about 1 m; rounding to 3 decimals is a cheap improvement worth making whatever wins.) |
+| G3 · India coverage | It returns a route for at least 95% of the bench's trips |
+| G4 · Fallback | When it fails, the app can still answer (M1 behind it, as today) |
+| G5 · Budget | Running it for the demo and the evaluation costs nothing beyond a free tier, or the team has agreed the spend |
+
+A method that fails a gate is still reported, with the reason, because "the most accurate option fails on licence" is a finding worth showing.
+
+### Stage 2: weighted criteria
+
+Each criterion is scored 0 to 4 against the anchors below, multiplied by its weight, and summed to a score out of 100.
+
+| # | Criterion | Weight | 4 | 3 | 2 | 1 | 0 |
+|---|---|---|---|---|---|---|---|
+| C1 | **Absolute accuracy:** MAPE on test trips, every zone | 25 | ≤ 15% in every zone and \|bias\| ≤ 5% | ≤ 25% in every zone (report 3's target) | ≤ 25% overall, one zone above | 25% to 40% overall | > 40% |
+| C2 | **Ranking fidelity:** first choice matches the ranking under true times | 20 | ≥ 95% | ≥ 90% | ≥ 80% | ≥ 70% | < 70% |
+| C3 | **Peak-hour accuracy:** MAPE in the evening peak band | 10 | ≤ 20% | ≤ 30% | ≤ 40% | ≤ 50% | > 50% |
+| C4 | **Latency:** 95th-percentile time for one search's table (up to 38 banks) | 10 | ≤ 300 ms | ≤ 1 s | ≤ 3 s (`MAX_QUEUE_WAIT_MS`) | ≤ 6 s (`TIMEOUT_MS`) | > 6 s |
+| C5 | **Reliability:** share of calls that succeed over a 200-call run | 10 | ≥ 99.5% | ≥ 99% | ≥ 97% | ≥ 90% | < 90% |
+| C6 | **Running cost** at 10,000 searches a month | 10 | ₹0, no card | ₹0 within a free tier, card needed | < ₹1,000 | < ₹5,000 | more |
+| C7 | **Explainability:** can the app say why the ETA is what it is? | 5 | Every factor shown and cited | Most factors shown | Engine output plus one adjustment | Opaque but stable | Opaque and changes without notice |
+| C8 | **Operating effort** for a student team | 5 | Nothing to run | A key and a quota to watch | A small service to run | A server to maintain | A cluster or a licence negotiation |
+| C9 | **Reproducibility:** same inputs, same answer, testable offline | 5 | Deterministic, runs in unit tests | Deterministic with a pinned data date | Mostly stable | Changes with live traffic | Can't be repeated |
+
+**Why these weights.**
+- **Accuracy and ranking fidelity carry 45 points between them**, plus 10 for peak hours, because the ETA's job is to send people to the right bank and tell them truthfully how long it takes.
+- **Ranking fidelity is separate from accuracy** because the ranking is what changes outcomes. A method can have a 30% error and still rank well if the error is uniform; the reverse also happens.
+- **Peak hours get their own line** because they are when a time-aware method should earn its keep, and when an emergency is likeliest to be delayed. A method that is fine at 3 am and poor at 6 pm shouldn't hide behind its average.
+- **Operations (C4 to C6, 30 points)** matter because this runs on free tiers with no on-call engineer.
+- **Time-awareness has no line of its own.** Its value shows up in C3 and C1; scoring it separately would count it twice.
+- **Privacy and licence are gates, not points.** No amount of accuracy should buy sending patient locations where they can't go.
+
+**Checking the rubric itself.** As `scripts/ranking-sensitivity.mjs` did for the ranking weights, move each criterion weight by ±20% (rescaling the rest) and report whether the winner changes. If a ±20% change flips the winner, say so and show both.
+
+### The decision rule, agreed before the results
+
+1. Drop methods that fail a gate.
+2. Among the rest, the highest total wins.
+3. **If two totals are within 5 points, take the simpler and cheaper one** (lower C6 + C8 cost, then higher C9).
+4. A paid method is adopted only if it beats the best free one by at least 10 points **and** clears C1 at level 3 where the free one doesn't.
+5. Whatever wins must beat M0 on C1 and C2. If it doesn't, the road network isn't earning its complexity, and that is the finding.
+
+---
+
+## Metrics
+
+For trip *i*, *p* is a method's predicted minutes and *t* the true minutes.
+
+**Absolute accuracy**
+
+| Metric | Formula | Reads as |
+|---|---|---|
+| MAE | mean \|p − t\| | Minutes off, on average |
+| MAPE | mean \|p − t\| / t | Share off, on average |
+| Median APE | median \|p − t\| / t | Robust to a few bad trips |
+| Bias (MPE) | mean (p − t) / t | Positive means pessimistic, negative optimistic |
+| P90 APE | 90th percentile of \|p − t\| / t | The bad cases |
+| Within 25% | share with \|p − t\| / t ≤ 0.25 | Report 3's target |
+| Interval coverage | share of trips where *t* falls in the method's range, for methods that give one | Whether a range can be trusted |
+
+**Decision accuracy**, per candidate set (one search's banks), using tier B for every bank in the set:
+
+| Metric | How |
+|---|---|
+| **First-choice agreement** | Rank the set with `rankSources`, once with the method's ETAs and once with the true ETAs, keeping stock and freshness as captured. Do the two pick the same first bank? |
+| **Kendall's τ** | Between the two orders, as `ranking-sensitivity.mjs` computes it |
+| **Regret** | Two numbers. **Score regret:** the true score of the true ranking's first choice minus the true score of the method's first choice (0 when they agree). **Minutes regret:** true minutes to the method's first choice minus true minutes to the true first choice, when positive. "How much did trusting this method cost?" |
+| **Plan agreement** | Does `buildResponsePlan` take the same units from the same banks? |
+| **ETA-score error** | mean \|etaScore(p) − etaScore(t)\| per urgency. The error as the ranking feels it |
+
+**Operational:** median and 95th-percentile latency per table call, failure rate and failure kinds over a 200-call run spaced as the provider requires, and cost per 1,000 searches from the provider's price list on the day.
+
+**Statistics**
+- **Paired:** every method is scored on the same trips, so compare methods trip by trip.
+- **Confidence intervals:** bootstrap 2,000 resamples, **resampling origins, not trips**, because trips from one origin share its roads.
+- **Pairwise tests:** Wilcoxon signed-rank on absolute percentage errors, with Holm's correction for the number of pairs.
+- **No tuning on test trips.** Split trips 60/40 into calibration and test, grouped by origin so one hospital's trips are all on one side. M5 is fitted on calibration only, and **every reported figure is from the test side.**
+
+---
+
+## The test bench
+
+### Files
+
+| File | What it does |
+|---|---|
+| `scripts/eta-bench.mjs` (new) | Runner: reads trips, calls each method, saves predictions, computes metrics, writes the scorecard |
+| `scripts/eta-methods.mjs` (new) | One adapter per method, all with the same interface |
+| `src/lib/etaMetrics.js` (new, pure) | MAE, MAPE, bias, Kendall's τ, regret, bootstrap. Unit-tested in `tests/eta-metrics.test.js` |
+| `../blood_data/eta_calibration/` | `trips.ndjson`, `cache/<method>.ndjson` (raw provider answers), `runs/<date>/` (predictions, metrics, scorecard) |
+
+### A prerequisite: plain Node can't load the traffic model yet
+
+`src/lib/traffic.js` imports `assets/traffic_profiles.json` directly. Checked for this plan with Node 22: importing it from a script fails with `ERR_IMPORT_ATTRIBUTE_MISSING`, because Node needs `with { type: "json" }` on a JSON import. Next and Vitest load it fine, which is why nothing has noticed.
+
+Fix it the way `src/lib/stateBounds.js` already does: export a `createTrafficModel(profiles)` that takes the profiles as an argument, and keep today's exports as thin wrappers bound to the imported file. The bench then evaluates **exactly the code the app runs**, not a copy. Add a unit test that the wrapper and the factory agree.
+
+### The adapter interface
+
+```js
+// scripts/eta-methods.mjs
+// Each method: { id, label, needs: ["OSRM_URL"] | ["TOMTOM_KEY"] | [], estimate }
+// estimate(origin, destinations, departAt) resolves to
+//   [{ minutes, distanceM, source, raw }]  in the same order as destinations;
+//   minutes is null where the method found no route.
+```
+
+- **Batching:** trips are grouped by origin and departure time, so each provider sees one matrix call per group, as the app makes one OSRM table call per search.
+- **Departure time for the model methods (M1, M3, M5):** pass the trip's `departAt` as `now` to `congestionPercent` and `trafficConditions`. Rain comes from Open-Meteo's historical archive for that place and hour, so the model gets the same weather the trip had.
+- **Departure time for traffic-aware APIs (M6):** most refuse a time in the past. Ask for the next date with the same weekday and time ("typical traffic"), and record the date actually asked.
+- **Caching:** every provider answer is saved before it is used. A re-run reads the cache, so scoring is free and repeatable, and a paid API is called once per trip at most.
+- **Rate limits:** one gate per provider, reusing the spacing logic of `routing.js` (1 request a second for the public OSRM server).
+- **Versions:** each run records the git commit, the date of `assets/traffic_profiles.json`, and OSRM's `data_version` where the response carries it, because the public server's map data changes.
+
+### Outputs
+
+- `predictions.ndjson`: one line per trip and method.
+- `metrics.json`: every metric, overall and per stratum, with intervals.
+- `scorecard.md`: gates, criterion scores, totals, the decision-rule outcome and the rubric's sensitivity check.
+- CSV files for the charts listed under [How to present it](#how-to-present-it).
+
+---
+
+## Steps
+
+| Phase | What | Time | Needs |
+|---|---|---|---|
+| 0 | Fix the traffic-model import (above). Write `etaMetrics.js` and its tests, the runner, and adapters for M0 to M3. Dry run on the 52 saved candidate sets with M3 as a stand-in truth, to test the plumbing | 1 day | Nothing |
+| 1 | **Commit the rubric, weights and decision rule** with the date, before any truth is collected | 1 h | The team's agreement |
+| 2 | Tier B collection: 240 to 480 trips across zones, bands and days | 2 days, spread over a week to cover the time bands | A provider choice and, if it's an API, a key |
+| 3 | Tier A collection: 30 to 60 timed trips, chosen to overlap tier B | Two weekends plus weekday evenings | Team members with a car or taxi budget |
+| 4 | Split, fit M5 on calibration, run the bench, ablations, statistics, scorecard, rubric sensitivity | 1 day | Nothing |
+| 5 | Write it up for the report; if the winner isn't M3, plan the change in `routing.js` and `traffic.js` | Half a day | Nothing |
+
+If time is short, phases 0, 1, 2 and 4 alone give a defensible answer; tier A then becomes "planned".
+
+---
+
+## How to present it
+
+**One table per question:**
+
+| Method | Gates | MAPE (test) | Bias | Within 25% | First choice agrees | Regret (median, p90 min) | p95 latency | Cost / month | Total /100 |
+|---|---|---|---|---|---|---|---|---|---|
+| M0 straight line, fixed speed | | | | | | | | ₹0 | |
+| M1 straight line + model | | | | | | | | ₹0 | |
+| M2 OSRM raw | | | | | | | 0.7 s (report 3, one call) | ₹0 | |
+| M3 OSRM + model (today) | | | | | | | | ₹0 | |
+| … | | | | | | | | | |
+
+**Charts:**
+- MAPE by zone and time band, one line per method: shows where time-awareness pays.
+- Predicted against true minutes, log scale, one panel per method, with the 45° line.
+- Error distribution (cumulative share of trips within *x*% error).
+- Regret by urgency: does a method's error ever cost a critical patient minutes?
+- Ablation bars: how much each part of M3 changes MAPE.
+
+**The sentence for the viva**, filled in from the results: "Against N timed and M reference trips, plain distance at a fixed speed was X% off and picked the wrong first bank in Y% of searches; OSRM with the traffic model was X′% off and Y′%, at no cost and with every factor explained."
+
+---
+
+## Decisions and alternatives
+
+**E1 · Score decisions as well as minutes.**
+- *Why:* the ranking only feels the ETA through the order and τ. A method that is uniformly slow ranks perfectly but displays badly; both need a number.
+- *Alternative:* MAPE alone. Simpler, but it can't show whether an error ever changed which bank a patient was sent to.
+
+**E2 · Gates before points.**
+- *Why:* licence and privacy aren't trade-offs. A weighted score would let enough accuracy outweigh a breach.
+- *Alternative:* everything weighted. More flexible, and easier to game.
+
+**E3 · Anchored 0-to-4 scales.**
+- *Why:* two people scoring the same results get the same number, and the anchors tie to thresholds already in the code (`TIMEOUT_MS`, `MAX_QUEUE_WAIT_MS`) and in report 3 (25%).
+- *Alternative:* free 1-to-10 marks. Quick, but not repeatable.
+
+**E4 · Fix the rubric before collecting truth.**
+- *Why:* otherwise weights drift towards whatever won. The same rule report 3 used for the forecast models.
+
+**E5 · Two-tier truth.**
+- *Why:* timed trips are the only real measurement but too few to score strata; a reference model gives scale but must itself be checked.
+- *Alternatives:* timed trips only (honest, too small); a reference only (large, circular if the reference is also a candidate); ambulance GPS logs (best of all, but not available to a student project; worth asking a 108 service).
+
+**E6 · Evaluate the app's own code, not a re-implementation.**
+- *Why:* a copy can drift from what users get. Hence the `createTrafficModel` refactor.
+
+**E7 · Hold out by origin.**
+- *Why:* trips from one hospital share roads and traffic. A random split would let M5 learn a road it is then tested on, and flatter it.
+
+---
+
+## Risks and limits
+
+| Limit | Effect | What to do |
+|---|---|---|
+| **Season can't be tested before the next monsoon** | The seasonal factor and rain factor stay unvalidated | Report them as untested; re-run tier B in July to September 2027 |
+| One driver's habits in tier A | Systematic bias | Spread trips across team members; report bias per driver |
+| Taxi and car, not ambulance | An ambulance with a siren is faster in traffic | Say the model estimates a private car or taxi, which is how most blood is fetched |
+| Provider terms change | A method may fail G1 later | Record the terms' date with the run |
+| The public OSRM server's map data changes | Results drift | Record `data_version`; self-hosting (M7) pins it |
+| Origins only where the team can travel | Few rural and hill trips | Use tier B for rural strata; mark tier A coverage honestly |
+
+---
+
+## Sources
+
+- `md files/report3.md`, point 2 (the model and its measurements: 1.34 detour, 65 km/h OSRM, 33.7 km/h TomTom Mumbai, zone scales) and point 4 (the ETA calibration test it planned).
+- [TomTom Traffic Index](https://www.tomtom.com/traffic-index/ranking/): the profiles in `assets/traffic_profiles.json`.
+- [FOSSGIS routing usage policy](https://routing.openstreetmap.de/about.html): the public OSRM server's limits.
+- [Google Maps Platform service specific terms](https://cloud.google.com/maps-platform/terms/maps-service-terms/index-20240522): an example of caching limits to check under gate G1.
