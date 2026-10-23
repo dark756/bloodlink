@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   WEIGHTS,
   buildResponsePlan,
-  compatibilityScore,
-  estimateEtaMinutes,
+  coverageScore,
   etaScore,
   freshnessScore,
   rankSources,
-  stockScore,
+  surplusScore,
 } from "@/lib/ranking";
+import { exactGroupUnits } from "@/lib/stock";
 
 const MS_PER_HOUR = 3_600_000;
 const IST_OFFSET_MS = 5.5 * MS_PER_HOUR;
@@ -22,36 +22,50 @@ function hoursBefore(hours) {
   return indiaWallClock.toISOString().slice(0, 19).replace("T", " ");
 }
 
-function makeBank(hospitalCode, distanceKm, groups, updatedHoursAgo = 1) {
+// A bank holding `units` of the patient's exact group (O-Ve), etaMinutes away by road.
+function makeBank(hospitalCode, etaMinutes, units, updatedHoursAgo = 1) {
   return {
     hospitalCode,
     name: `Bank ${hospitalCode}`,
-    distanceM: distanceKm * 1000,
+    etaMinutes,
+    etaSource: "road",
+    units,
+    groupName: "O-Ve",
     entryDate: hoursBefore(updatedHoursAgo),
-    groups,
   };
 }
 
-const exactGroup = (units) => ({ code: "16", name: "O-Ve", units, exact: true });
-const substituteGroup = (name, units) => ({ code: "x", name, units, exact: false });
+const rank = (banks, urgency, unitsNeeded) =>
+  rankSources(banks, { urgency, unitsNeeded, now: NOW });
 
-describe("component scores", () => {
-  it("weights add up to 1 for every urgency", () => {
+describe("weights", () => {
+  it("add up to 1 for every urgency, with no compatibility term", () => {
     for (const weights of Object.values(WEIGHTS)) {
       expect(Object.values(weights).reduce((sum, weight) => sum + weight, 0)).toBeCloseTo(1, 10);
+      expect(Object.keys(weights).sort()).toEqual(["coverage", "eta", "freshness", "surplus"]);
     }
   });
-  it("estimates ETA from distance, slower in cities", () => {
-    expect(estimateEtaMinutes(3000, "urban")).toBe(10);
-    expect(estimateEtaMinutes(3000, "rural")).toBe(6);
+  it("reward spare stock most when critical and least when routine", () => {
+    expect(WEIGHTS.critical.surplus).toBeGreaterThan(WEIGHTS.urgent.surplus);
+    expect(WEIGHTS.urgent.surplus).toBeGreaterThan(WEIGHTS.routine.surplus);
   });
+});
+
+describe("component scores", () => {
   it("ETA score falls with time, faster when critical", () => {
+    expect(etaScore(10, "critical")).toBe(71.7);
     expect(etaScore(10, "critical")).toBeGreaterThan(etaScore(40, "critical"));
     expect(etaScore(30, "critical")).toBeLessThan(etaScore(30, "routine"));
   });
-  it("stock score caps at the units needed", () => {
-    expect(stockScore(1, 2)).toBe(50);
-    expect(stockScore(6, 2)).toBe(100);
+  it("coverage caps at the units needed", () => {
+    expect(coverageScore(1, 2)).toBe(50);
+    expect(coverageScore(6, 2)).toBe(100);
+  });
+  it("surplus rewards units beyond the request, with diminishing returns", () => {
+    expect(surplusScore(1, 2)).toBe(0); // short
+    expect(surplusScore(2, 2)).toBe(0); // exactly enough, nothing spare
+    expect(surplusScore(4, 2)).toBe(63.2); // one request's worth spare
+    expect(surplusScore(6, 2)).toBe(86.5); // two requests' worth spare
   });
   it("freshness is full within 6 h, zero after 72 h, 30 when unknown", () => {
     expect(freshnessScore(hoursBefore(2), NOW)).toBe(100);
@@ -59,32 +73,48 @@ describe("component scores", () => {
     expect(freshnessScore(hoursBefore(80), NOW)).toBe(0);
     expect(freshnessScore(null, NOW)).toBe(30);
   });
-  it("compatibility prefers exact stock that covers the request", () => {
-    expect(compatibilityScore(2, 2)).toBe(100);
-    expect(compatibilityScore(1, 2)).toBe(85);
-    expect(compatibilityScore(0, 2)).toBe(70);
+});
+
+describe("exact group only", () => {
+  const stockRow = {
+    components: {
+      "Packed Red Blood Cells": { available_WithQty: "O-Ve : 3, A+Ve : 86, O+Ve : 74" },
+    },
+  };
+  it("counts only the patient's own group", () => {
+    expect(exactGroupUnits(stockRow, "Packed Red Blood Cells", "A+Ve")).toBe(86);
+    expect(exactGroupUnits(stockRow, "Packed Red Blood Cells", "o-ve")).toBe(3);
+  });
+  it("does not match a bank that holds only compatible groups", () => {
+    // O- and O+ red cells could be given to an A+ patient, but they no longer count.
+    expect(exactGroupUnits(stockRow, "Packed Red Blood Cells", "AB+Ve")).toBe(0);
+  });
+  it("leaves banks without the exact group out of the ranking", () => {
+    const ranked = rank([makeBank("None", 5, 0), makeBank("Some", 9, 2)], "urgent", 2);
+    expect(ranked.map((bank) => bank.hospitalCode)).toEqual(["Some"]);
   });
 });
 
 describe("scenario: critical request for 2 units of O- red cells", () => {
-  const nearBank = makeBank("A", 3, [exactGroup(1)], 1); // close, 1 unit, fresh
-  const farBank = makeBank("B", 12, [exactGroup(6)], 30); // farther, plenty, 30 h old
-  const ranked = rankSources([farBank, nearBank], {
-    urgency: "critical",
-    unitsNeeded: 2,
-    area: "urban",
-    now: NOW,
-  });
+  const nearBank = makeBank("A", 10, 1, 1); // 10 min, 1 unit, fresh
+  const farBank = makeBank("B", 40, 6, 30); // 40 min, plenty, 30 h old
+  const ranked = rank([farBank, nearBank], "critical", 2);
 
   it("ranks the nearby bank first", () => {
+    // A: 0.45·71.7 + 0.15·50 + 0.20·0 + 0.20·100 = 59.8
+    // B: 0.45·26.4 + 0.15·100 + 0.20·86.5 + 0.20·63.6 = 56.9
     expect(ranked.map((bank) => bank.hospitalCode)).toEqual(["A", "B"]);
-    expect(ranked[0].score).toBeCloseTo(73.3, 1);
-    expect(ranked[1].score).toBeCloseTo(59.6, 1);
+    expect(ranked[0].score).toBeCloseTo(59.8, 1);
+    expect(ranked[1].score).toBeCloseTo(56.9, 1);
   });
   it("explains each rank", () => {
-    expect(ranked[0].reasons[0]).toBe("Exact O-Ve match");
-    expect(ranked[0].reasons.join(" ")).toMatch(/1 of the 2 units needed/);
-    expect(ranked[1].reasons.join(" ")).toMatch(/call to confirm/);
+    expect(ranked[0].reasons).toEqual([
+      "About 10 min by road at this hour",
+      "1 O-Ve unit listed: 1 of the 2 needed",
+      "Stock updated 1 h ago",
+    ]);
+    expect(ranked[1].reasons[1]).toBe("6 O-Ve units listed: covers the 2 needed, with 4 to spare");
+    expect(ranked[1].reasons[2]).toMatch(/call to confirm/);
   });
   it("splits the request across both banks", () => {
     const plan = buildResponsePlan(ranked, 2);
@@ -96,70 +126,80 @@ describe("scenario: critical request for 2 units of O- red cells", () => {
   });
 });
 
-describe("scenario: same distance and stock, different freshness", () => {
+describe("scenario: spare stock is rewarded more when urgent", () => {
+  // Same travel time and freshness; one bank has exactly the 3 units, the other 9.
+  const exactBank = makeBank("Exact", 15, 3);
+  const spareBank = makeBank("Spare", 15, 9);
+  const margin = (urgency) => {
+    const [first, second] = rank([exactBank, spareBank], urgency, 3);
+    expect(first.hospitalCode).toBe("Spare");
+    return first.score - second.score;
+  };
+
+  it("adds the most points when critical and the fewest when routine", () => {
+    // surplus(9, 3) = 86.5, times the urgency's surplus weight.
+    expect(margin("critical")).toBeCloseTo(17.3, 0);
+    expect(margin("urgent")).toBeCloseTo(13, 0);
+    expect(margin("routine")).toBeCloseTo(4.3, 0);
+  });
+  it("is worth a longer trip when critical than when routine", () => {
+    // 4 units for a 2-unit request (one request's worth spare) against
+    // exactly 2 units 10 min away: the spare bank still wins at 22 min when
+    // critical, but not when routine.
+    const closeExact = makeBank("Close", 10, 2);
+    const fartherSpare = makeBank("Farther", 22, 4);
+    expect(rank([closeExact, fartherSpare], "critical", 2)[0].hospitalCode).toBe("Farther");
+    expect(rank([closeExact, fartherSpare], "routine", 2)[0].hospitalCode).toBe("Close");
+  });
+});
+
+describe("scenario: same travel time and stock, different freshness", () => {
   it("prefers the bank that updated recently", () => {
-    const ranked = rankSources(
-      [makeBank("Old", 5, [exactGroup(4)], 60), makeBank("New", 5, [exactGroup(4)], 1)],
-      { urgency: "urgent", unitsNeeded: 2, now: NOW },
-    );
+    const ranked = rank([makeBank("Old", 17, 4, 60), makeBank("New", 17, 4, 1)], "urgent", 2);
     expect(ranked[0].hospitalCode).toBe("New");
   });
 });
 
-describe("scenario: exact group versus compatible substitute", () => {
-  it("prefers exact stock at equal distance and freshness", () => {
-    const ranked = rankSources(
-      [makeBank("Sub", 5, [substituteGroup("O-Ve", 4)]), makeBank("Exact", 5, [exactGroup(4)])],
-      { urgency: "routine", unitsNeeded: 2, now: NOW },
-    );
-    expect(ranked[0].hospitalCode).toBe("Exact");
-    expect(ranked[1].reasons[0]).toMatch(/compatible groups only/i);
-  });
-});
-
 describe("scenario: urgency changes the trade-off", () => {
-  const closeBank = makeBank("Close", 2, [exactGroup(1)], 50); // near but stale and short
-  // At 15 km the well-stocked bank still wins even when critical; at 25 km
-  // (about 84 min by the estimate) the closer bank takes over.
-  const idealBank = makeBank("Ideal", 25, [exactGroup(5)], 1); // farther but well stocked and fresh
+  const closeBank = makeBank("Close", 7, 1, 50); // near, but stale and short
+  const idealBank = makeBank("Ideal", 101, 5, 1); // far, but well stocked and fresh
   it("critical favours the closer bank", () => {
-    const ranked = rankSources([closeBank, idealBank], {
-      urgency: "critical",
-      unitsNeeded: 3,
-      now: NOW,
-    });
-    expect(ranked[0].hospitalCode).toBe("Close");
+    expect(rank([closeBank, idealBank], "critical", 3)[0].hospitalCode).toBe("Close");
   });
   it("routine favours the better-stocked, fresher bank", () => {
-    const ranked = rankSources([closeBank, idealBank], {
-      urgency: "routine",
-      unitsNeeded: 3,
-      now: NOW,
-    });
-    expect(ranked[0].hospitalCode).toBe("Ideal");
+    expect(rank([closeBank, idealBank], "routine", 3)[0].hospitalCode).toBe("Ideal");
   });
 });
 
 describe("response plan", () => {
-  it("uses exact units first inside a bank", () => {
-    const ranked = rankSources(
-      [makeBank("Mixed", 4, [substituteGroup("O-Ve", 5), exactGroup(1)])],
-      { unitsNeeded: 3, now: NOW },
+  it("takes units in rank order and stops when covered", () => {
+    const ranked = rank(
+      [makeBank("A", 5, 2), makeBank("B", 8, 5), makeBank("C", 9, 5)],
+      "urgent",
+      4,
     );
-    const plan = buildResponsePlan(ranked, 3);
-    expect(plan.steps[0].allocations).toEqual([
-      { name: "O-Ve", units: 1, exact: true },
-      { name: "O-Ve", units: 2, exact: false },
-    ]);
-    expect(ranked[0].reasons[0]).toBe("1 exact unit, plus compatible O-Ve");
+    const plan = buildResponsePlan(ranked, 4);
+    expect(plan.unitsCovered).toBe(4);
+    expect(plan.steps.reduce((sum, step) => sum + step.units, 0)).toBe(4);
+    expect(plan.steps[0].hospitalCode).toBe(ranked[0].hospitalCode);
   });
   it("reports a shortfall when nearby stock is not enough", () => {
-    const ranked = rankSources(
-      [makeBank("A", 3, [exactGroup(1)]), makeBank("B", 6, [exactGroup(1)])],
-      { unitsNeeded: 5, now: NOW },
-    );
+    const ranked = rank([makeBank("A", 10, 1), makeBank("B", 20, 1)], "urgent", 5);
     const plan = buildResponsePlan(ranked, 5);
     expect(plan.unitsCovered).toBe(2);
     expect(plan.shortfall).toBe(3);
+  });
+});
+
+describe("dormant banks", () => {
+  it("stay listed but are left out of the plan", () => {
+    const dormantBank = { ...makeBank("Dormant", 5, 9, 24 * 45), isDormant: true };
+    const activeBank = makeBank("Active", 25, 3);
+    const ranked = rank([dormantBank, activeBank], "critical", 3);
+    expect(ranked.map((bank) => bank.hospitalCode)).toContain("Dormant");
+    expect(ranked.find((bank) => bank.hospitalCode === "Dormant").reasons[2]).toBe(
+      "Stock not updated for 45 days, so it is left out of the plan",
+    );
+    expect(buildResponsePlan(ranked, 3).steps.map((step) => step.hospitalCode)).toEqual(["Active"]);
   });
 });

@@ -11,7 +11,9 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "db:migrate": "node scripts/migrate.mjs",
-    "db:make-admin": "node scripts/make-admin.mjs"
+    "db:make-admin": "node scripts/make-admin.mjs",
+    "snapshot": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/snapshot.mjs",
+    "measure": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-search.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

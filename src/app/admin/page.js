@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/format";
+import { getStateName } from "@/lib/constants";
 import OrganizationCard, { ORGANIZATION_SELECT } from "./OrganizationCard";
 
 // Select options that return only the row count, not the rows.
@@ -21,6 +22,51 @@ function StatCard({ label, value, href }) {
   return href ? <Link href={href}>{card}</Link> : card;
 }
 
+// eRaktKosh health over the last 24 hours, from the collector's call log
+// (the upstream_stats view; admins only). Worst-served states first.
+function CollectionHealthCard({ stats }) {
+  if (stats.error) {
+    return (
+      <p className="card-body notice notice-error">
+        Could not load collection health: {stats.error.message}
+      </p>
+    );
+  }
+  const rows = stats.data ?? [];
+  if (rows.length === 0) {
+    return (
+      <p className="card-body text-sm text-[#666]">
+        No eRaktKosh calls in the last 24 hours. Is the hourly collector (npm run snapshot) running?
+      </p>
+    );
+  }
+  const totalCalls = rows.reduce((sum, row) => sum + row.calls, 0);
+  const okCalls = rows.reduce((sum, row) => sum + row.ok_calls, 0);
+  const stateRows = rows
+    .filter((row) => row.endpoint === "blood-availability")
+    .sort((a, b) => (a.last_ok_at ?? "").localeCompare(b.last_ok_at ?? ""));
+  return (
+    <>
+      <p className="card-body text-sm">
+        {totalCalls} calls, {((100 * okCalls) / totalCalls).toFixed(1)}% succeeded. Slowest
+        95th-percentile time: {Math.max(...rows.map((row) => Number(row.p95_ms)))} ms.
+      </p>
+      <ul>
+        {stateRows.slice(0, 8).map((row) => (
+          <li key={row.state_code} className="result-item text-sm">
+            <span className="font-semibold">{getStateName(row.state_code) ?? row.state_code}</span>
+            <span className="text-[#666]">
+              {" "}
+              · {row.success_pct}% ok · median {row.median_ms} ms · last good fetch{" "}
+              {row.last_ok_at ? formatDateTime(row.last_ok_at) : "none"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 export default async function AdminOverviewPage() {
   const supabase = await createClient();
 
@@ -33,6 +79,7 @@ export default async function AdminOverviewPage() {
     approvedCount,
     pendingApplications,
     recentAuditEntries,
+    collectionStats,
   ] = await Promise.all([
     countRows(supabase.from("profiles").select("id", COUNT_ONLY)),
     countRows(supabase.from("profiles").select("id", COUNT_ONLY).eq("is_profile_complete", true)),
@@ -51,6 +98,7 @@ export default async function AdminOverviewPage() {
       .select("id, action, target_type, created_at, actor:profiles!audit_log_actor_id_fkey(email)")
       .order("created_at", { ascending: false })
       .limit(8),
+    supabase.from("upstream_stats").select("*"),
   ]);
   const auditEntries = recentAuditEntries.data ?? [];
 
@@ -90,6 +138,11 @@ export default async function AdminOverviewPage() {
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="card mt-5">
+        <h2 className="card-title">eRaktKosh data collection, last 24 hours</h2>
+        <CollectionHealthCard stats={collectionStats} />
       </div>
 
       <div className="card mt-5">

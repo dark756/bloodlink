@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  exactGroupUnits,
   extractPhone,
   formatUpdatedAgo,
+  keepOnlyComponent,
   parseQuantities,
   summarizeStock,
   unitsForComponent,
@@ -37,8 +39,26 @@ describe("stock parsing", () => {
   });
   it("reads one component's units", () => {
     expect(unitsForComponent(bank, "Plasma")).toEqual([{ group: "O-Ve", units: 2 }]);
-    const singleComponentBank = { components: { Other: { available_WithQty: "B+Ve : 4" } } };
-    expect(unitsForComponent(singleComponentBank, "Plasma")).toEqual([{ group: "B+Ve", units: 4 }]);
+  });
+  // A saved row holds every component. Saifai (1702) lists only plasma, and was
+  // once counted as 408 units of A+ red cells when eRaktKosh was down.
+  const plasmaOnlyBank = {
+    hospitalCode: "1702",
+    components: { "Fresh Frozen Plasma": { available_WithQty: "A+Ve : 408, B+Ve : 648" } },
+  };
+  it("never counts a bank's only component as a different one", () => {
+    expect(unitsForComponent(plasmaOnlyBank, "Packed Red Blood Cells")).toEqual([]);
+    expect(exactGroupUnits(plasmaOnlyBank, "Packed Red Blood Cells", "A+Ve")).toBe(0);
+    expect(
+      summarizeStock(plasmaOnlyBank, { componentName: "Packed Red Blood Cells" }).totalUnits,
+    ).toBe(0);
+    expect(exactGroupUnits(plasmaOnlyBank, "fresh frozen plasma", "A+Ve")).toBe(408);
+  });
+  it("cuts saved rows down to one component, like a filtered eRaktKosh answer", () => {
+    const rows = keepOnlyComponent([bank, plasmaOnlyBank], "Packed Red Blood Cells");
+    expect(rows).toHaveLength(1);
+    expect(Object.keys(rows[0].components)).toEqual(["Packed Red Blood Cells"]);
+    expect(keepOnlyComponent([plasmaOnlyBank], "Fresh Frozen Plasma")[0].hospitalCode).toBe("1702");
   });
   it("extracts phone numbers and formats update times in Indian time", () => {
     expect(extractPhone("Phone: 9763245312 ,Fax: -, Email: a@b.com")).toBe("9763245312");
