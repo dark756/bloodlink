@@ -128,7 +128,7 @@ sequenceDiagram
 | Type | Raised by | Group rule | Typical urgency | Notes |
 |---|---|---|---|---|
 | **Shortfall** | Verified hospital or blood centre | Exact group; compatible groups only if the centre allows it | Critical, urgent | The emergency path, from a response plan |
-| **Platelet apheresis (SDP)** | Verified blood centre with apheresis | Exact ABO by default | Urgent | Dengue season makes this common. Donors must opt in to apheresis; extra screening at the centre |
+| **Platelet apheresis** (single donor platelets: eRaktKosh component 14, short name "PLA") | Verified blood centre with apheresis | Exact ABO by default | Urgent | Dengue season makes this common. Donors must opt in to apheresis; extra screening at the centre. Don't abbreviate this as "SDP": in eRaktKosh's component list "SDP" is Single Donor *Plasma* (component 18) |
 | **Centre appeal** | Verified blood centre | One or more groups, or any group | Routine | For stock running low over days, with booked slots |
 | **Forecast appeal** (later) | The forecast job, approved by the centre | The groups at risk | Routine | Report 3, point 5: "donor alerts" |
 | **Camp** (later) | Verified blood centre | Any | Routine | From eRaktKosh's camp data or created in the panel |
