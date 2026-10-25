@@ -5,6 +5,11 @@
 - Paths are relative to `bloodlink/` unless they start with `../`.
 - New findings carry the next free issue IDs from `CLAUDE.md` (#42 onwards), with a severity and a tier, so they can be copied into its known-issues list as they are. Nothing in `CLAUDE.md` itself was edited.
 
+> **Status update, 26 October 2026.** A follow-up review checked these findings against the code and added #56 to #60. The documents now live in `docs/`; this file says `md files/`, the folder's name when it was written.
+> - **Fixed on 26 October:** #42, #43, #44, #46, #47, #48 and #53 in the code and two new migrations, and the document findings #55 a to e, g and h.
+> - **Open, now in `CLAUDE.md`'s issue list:** #45, #49, #50, #51 and #52, and #54, now only the unpushed tag. #55f is done: `supabase-migration` became GitHub's default branch on 26 October.
+> - **Plans:** the amendments under "Soundness of the plans" are made, including the CPU check and #26 and #28 before the scheduler. #28 and #35 are now P1. The panels and donor-network plans still differ on account deletion (a request queue against self-service); settle it when either is built.
+
 **Contents**
 1. [Verdict](#verdict)
 2. [What was checked](#what-was-checked)

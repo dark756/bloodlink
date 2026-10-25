@@ -224,7 +224,7 @@ Access, in the style of the existing migrations:
 |---|---|
 | Anyone (publishable key) | Read rows with `status = 'accepted'`, through a policy. Bank positions are public, as in `blood_banks`. |
 | Admins | Read every row. Accept, reject or move a pin only through `review_bank_location(code, decision, lat, lng, note)`, a `security definer` function that checks `is_admin()` and writes `audit_log`, like `review_organization()`. |
-| `bloodlink_ingest` | Insert `proposed` and `accepted` rows (the script), and set `superseded` (the weekly directory run). Nothing else. |
+| `bloodlink_ingest` | Insert `proposed` and `accepted` rows (the script), and set `superseded` (the weekly directory run). Nothing else. Grant it SELECT on the columns its `UPDATE … WHERE` reads (`hospital_code`, `status`, `method`) as well as INSERT and UPDATE: Postgres checks SELECT for a `WHERE`. A missing grant of exactly this kind kept the weekly prune from ever running (#56). |
 | A verified blood-bank account | Later: confirm its own bank's pin through a function that checks the account's linked eRaktKosh code (see `plan_panels.md`). |
 
 **Which position wins.**
@@ -320,7 +320,7 @@ group by 1
 order by 1;
 ```
 
-Before the fixes table exists, drop its join. Expect about 3,820 usable (4,028 in both lists, minus the wrong-state and outside-India banks that also have stock) and 679 with no coordinates.
+Before the fixes table exists, drop its join. Expect about 3,820 usable (4,028 in both lists, minus the wrong-state and outside-India banks that also have stock) and 679 with no coordinates. The fact check's live sweep on 24 October measured 3,850 visible and 874 hidden: 681 without coordinates, 191 wrong-state banks with stock and 2 outside India (`docs/verify_facts.md`). The counts drift as banks are added, so Phase 1 measures them again.
 
 ### Why replay offline rather than compare live searches
 
@@ -418,9 +418,9 @@ Lint, the format check, the tests and the build must pass after phases 2, 5 and 
 ## What to update when it's done
 
 - **`CLAUDE.md`:** delete #33 and #34, or shrink them to what remains, without renumbering. Add `BANK_LOCATION_FIXES` to the environment table, the new table to the data model, `bankLocations.js` to the modules, the review page to the routes, and a verification step ("a missing bank with an accepted fix appears in a nearby location search").
-- **`md files/CODE_REFERENCE.md`:** every new function and variable.
-- **`md files/data_integrity.md`:** "What remains" and the before-and-after table.
-- **`md files/report3.md`** (point 3) and **`md files/features.md`:** the new numbers and the accuracy table.
+- **`docs/CODE_REFERENCE.md`:** every new function and variable.
+- **`docs/data_integrity.md`:** "What remains" and the before-and-after table.
+- **`docs/report3.md`** (point 3) and **`docs/features.md`:** the new numbers and the accuracy table.
 
 ---
 

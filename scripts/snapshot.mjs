@@ -379,7 +379,10 @@ async function snapshotStates(client) {
       await client.query("commit");
     } catch (error) {
       await client.query("rollback");
-      throw error;
+      // One state's bad row or failed write mustn't stop the rest of the sweep.
+      sweep.states.push({ stateCode, ok: false, failureKind: "save", ms: call.durationMs });
+      console.error(`${stateNames.get(stateCode)}: save failed (${error.message})`);
+      continue;
     }
 
     appendArchive(
@@ -413,10 +416,12 @@ async function snapshotStates(client) {
   return okCount > 0 || stateCodes.length === 0;
 }
 
+// Errors from here on are logged before the process exits, so a failed run shows in
+// --log as well as in the exit code the scheduled task records.
 const client = new pg.Client({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
-await client.connect();
 let isSuccess = true;
 try {
+  await client.connect();
   await client.query("set role bloodlink_ingest");
   if (isDirectoryRun) isSuccess = (await snapshotDirectory(client)) && isSuccess;
   if (stateCodes.length > 0) isSuccess = (await snapshotStates(client)) && isSuccess;
@@ -424,7 +429,10 @@ try {
     const { rows } = await client.query("select public.prune_stock_store() as result");
     console.log("pruned:", rows[0].result);
   }
+} catch (error) {
+  console.error(`fatal: ${error.message}`);
+  isSuccess = false;
 } finally {
-  await client.end();
+  await client.end().catch(() => {});
 }
 process.exit(isSuccess ? 0 : 1);

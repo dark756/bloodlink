@@ -47,14 +47,13 @@ export async function requireAdmin(supabase) {
 }
 
 // Only allow same-site relative redirects, never "//evil.com" or absolute URLs.
+// Backslashes and control characters are refused too: URL parsers drop tabs and
+// newlines, so "/<tab>/evil.com" would otherwise become "//evil.com".
+const REDIRECT_BASE = "http://bloodlink.invalid";
 export function safeNextPath(value, fallback = "/") {
-  if (
-    typeof value !== "string" ||
-    !value.startsWith("/") ||
-    value.startsWith("//") ||
-    value.includes("\\")
-  ) {
+  if (typeof value !== "string" || !value.startsWith("/") || /[\p{Cc}\\]/u.test(value)) {
     return fallback;
   }
-  return value;
+  const url = new URL(value, REDIRECT_BASE);
+  return url.origin === REDIRECT_BASE ? url.pathname + url.search + url.hash : fallback;
 }

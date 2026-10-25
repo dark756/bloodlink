@@ -258,7 +258,7 @@ Server-only reads of the copy `scripts/snapshot.mjs` saves, with the publishable
 | `savedRows`, `componentName` | variable | `loadSavedAvailability` | The eRaktKosh rows, and the requested component's name. |
 | `supabase` | variable | `loadSavedAvailability`, `loadSavedNearest` | The public client. |
 | `directoryCache` | variable | module | `{ banks, loadedAt }`. Kept on `globalThis`. |
-| `loadDirectory(supabase)` | function | module | The saved directory, without banks placed outside India or outside their own state, or missing coordinates. |
+| `loadDirectory(supabase)` | function | module | The saved directory, without banks that have no coordinates. Banks flagged `wrong_state` or `outside_india` are kept, as eRaktKosh's own answer keeps them, so `/api/blood-search` leaves them out and counts them as misplaced, in saved mode as in live mode. |
 | `banks` | variable | `loadDirectory`, `loadSavedNearest` | The directory rows. |
 | `loadSavedNearest({ latitude, longitude, radius })` | function | module | Saved banks within a radius, in eRaktKosh's `nearest` shape, with straight-line distances. |
 | `origin`, `data` | variable | `loadSavedNearest` | The search point, and the banks found. |
@@ -309,7 +309,7 @@ Pure choice of the search ring for `/api/blood-search`. Dormant banks are listed
 | `activeUnitsWithin(radiusM)` | function | `rankedModeRing` | Units held by active banks inside a radius. |
 
 ### `src/lib/compatibility.js`
-Which blood groups a patient can receive, for each type of component. Informational only. Since report 3 the search uses exact groups only, so nothing in the app imports this module; it is kept, with its tests, for donor matching.
+Which blood groups a patient can receive, for each type of component. Informational only. Since report 3 the search uses exact groups only, so nothing in the app imports this module; it is kept, with its tests, for donor matching. The rules are conservative: they never allow the emergency substitutions transfusion services sometimes make.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
@@ -379,8 +379,8 @@ Pure travel-time model: ETA = free-flow time × (1 + congestion / 100) × rain f
 | `DETOUR_FACTOR` | constant | module | 1.34; road distance ÷ straight-line distance, the median of 94 Mumbai bank trips. Used when there is no route. |
 | `METRO_MARGIN_KM` | constant | module | 10 km; how far outside a TomTom metro's box its own profile still applies. |
 | `ZONE_MIN_BANKS` | constant | module | Banks within 15 km that make a city (11) or a town (3). |
-| `ZONE_SCALE` | constant | module | Share of the Indian average congestion: metro 1, city 0.89, town 0.73, rural 0.29. |
-| `RAIN` | constant | module | Moderate rain from 2.5 mm/h adds 15%; heavy rain from 7.6 mm/h adds 30%. |
+| `ZONE_SCALE` | constant | module | Share of the Indian average congestion: metro 1, city 0.89, town 0.73, rural 0.29. City and town come from TomTom's within-country fit, which gives about 0.88 and 0.74; rural is an assumption. |
+| `RAIN` | constant | module | Moderate rain from 2.5 mm/h adds 15%; heavy rain from 7.6 mm/h adds 30%. The bands are the American Meteorological Society's rain rates. |
 | `IST_OFFSET_MS` | constant | module | India's +5:30 offset, in milliseconds. |
 | `KM_PER_DEGREE` | constant | module | 111.32 km per degree of latitude. |
 | `DAY_NAMES` | constant | module | `"Sun"` to `"Sat"`. |
@@ -474,11 +474,14 @@ Validates the profile form; anything not listed is dropped.
 | `PHONE_PATTERN` | constant | module | Allowed phone format: an optional `+`, then 7–20 digits, spaces or dashes. The database checks the same pattern. |
 | `DATE_PATTERN` | constant | module | `YYYY-MM-DD`. |
 | `GENDERS` | constant | module | `["male", "female", "other"]`. |
+| `IST_OFFSET_MS` | constant | module | India's +5:30 offset, in milliseconds. |
+| `indiaToday(now)` | function | module | Today's date in India as `YYYY-MM-DD`. Between midnight and 05:30 it is a day ahead of UTC's. |
 | `trimText(value, maxLength)` | function | module | Trims text and cuts it to a maximum length. Anything that isn't a string becomes `""`. |
-| `parsePastDate(value, today)` | function | module | A valid past date, `null` if empty, or `false` if invalid or in the future. |
+| `parsePastDate(value, today)` | function | module | A real calendar date on or before today, `null` if empty, or `false` if invalid (such as 30 February) or in the future. |
+| `date` | variable | `parsePastDate` | The value read as a UTC date, used to check it round-trips to the same text. |
 | `sanitizeDetails(input, now)` | function | module | Validates and cleans a [`details`](#data-shapes) object. Returns `{ errors, details }`. |
 | `fields` | variable | `sanitizeDetails` | The submitted form, or `{}` if it wasn't an object. |
-| `today` | variable | `sanitizeDetails` | Today's date as `YYYY-MM-DD`. |
+| `today` | variable | `sanitizeDetails` | Today's date in India as `YYYY-MM-DD`. |
 | `errors` | variable | `sanitizeDetails` | The error messages found. |
 | `fullName`, `dob`, `gender`, `phone` | variable | `sanitizeDetails` | The cleaned personal fields. |
 | `state`, `districtCode` | variable | `sanitizeDetails` | The state object, and the district code checked against it. |
@@ -542,7 +545,9 @@ Server-side identity helpers.
 | `requireUser(supabase)` | function | module | `{ user }` if signed in; otherwise `{ response }` with a 401. |
 | `requireAdmin(supabase)` | function | module | `{ user, profile }` for an admin; otherwise a 401 or 403 `{ response }`. |
 | `profile` | variable | `requireAdmin` | The caller's profile, used to check the role. |
-| `safeNextPath(value, fallback)` | function | module | Allows only same-site redirect paths, which blocks open redirects. |
+| `REDIRECT_BASE` | constant | module | A dummy origin that `safeNextPath` resolves paths against. |
+| `safeNextPath(value, fallback)` | function | module | Allows only same-site redirect paths, which blocks open redirects. It refuses `//`, backslashes, control characters (URL parsers drop tabs and newlines, so `"/<tab>/evil.com"` would become `"//evil.com"`) and anything that resolves to another site, and returns the normalized path, query and hash. |
+| `url` | variable | `safeNextPath` | The value resolved against `REDIRECT_BASE`. |
 
 ### `src/lib/rateLimit.js`
 Per-IP request limits, kept in server memory. The IP is read from `X-Forwarded-For` only behind trusted proxies; otherwise every caller shares one limit, because the client could write the header.
@@ -578,7 +583,7 @@ Runs before every page request.
 |---|---|---|---|
 | `PROTECTED_PATHS` | constant | module | Pages that need sign-in: `/peer-to-peer`, `/set-details`, `/organization`, `/admin`. |
 | `isUnderPath(pathname, basePath)` | function | module | Whether a path is that path or below it. `/admin` matches `/admin/users`. |
-| `proxy(request)` | function | module | Refreshes the session, then sends people to `/login`, `/set-details` or `/` as needed. |
+| `proxy(request)` | function | module | Refreshes the session, then sends people to `/login`, `/set-details` or `/` as needed, and a signed-in user on `/login` to the page its `?next=` names, checked by `safeNextPath`. |
 | `response` | variable | `proxy` | The pass-through response that carries refreshed cookies. |
 | `getAll()`, `setAll(cookiesToSet, headers)` | function | `proxy` | The cookie adapter Supabase calls. |
 | `userId` | variable | `proxy` | The signed-in user's id, or `null`. |
@@ -699,7 +704,7 @@ Runs before every page request.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `rpcErrorResponse(error)` | function | module | Turns a database-function error into HTTP 403, 400, 404 or 500. |
+| `rpcErrorResponse(error)` | function | module | Turns a database-function error into HTTP 403, 400, 404, 409 or 500. 409 is the one-open-application index (23505), hit when an old application is approved while the same person has another open one. |
 
 ### `src/app/api/admin/organizations/review/route.js`
 
@@ -854,11 +859,11 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `signInError`, `signUpError` | variable | `handleSubmit` | Why sign-in or sign-up failed. |
 | `handleToggleMode()` | function | `LoginForm` | Switches between sign-in and sign-up. |
 
-### `src/app/set-details/page.js`: the 3-step profile form
+### `src/app/set-details/page.js`: the profile form, in two steps or three for donors
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `EMPTY_FORM` | constant | module | Blank values for every field. |
+| `EMPTY_FORM` | constant | module | Blank values for every field. No gender is preselected, since it sets the donation gap. |
 | `PERSONAL_STEP`, `BLOOD_STEP`, `SCREENING_STEP` | constant | module | Step numbers 0, 1 and 2. The screening step is for donors only. |
 | `formFromDetails(details)` | function | module | Flattens a saved `details` object into the form's fields. |
 | `donorDetails` | variable | `formFromDetails` | The saved screening answers. |
@@ -880,7 +885,7 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `eligibility` | variable | `SetDetailsPage` | Live eligibility for the answers so far. |
 | `stepCount` | variable | `SetDetailsPage` | 3 for donors, 2 for everyone else. |
 | `handleSubmit()` | function | `SetDetailsPage` | Saves through `/api/details`, then opens `/peer-to-peer`. |
-| `handlePersonalStepSubmit(event)` | function | `SetDetailsPage` | Checks step 1's required fields, then moves on. |
+| `handlePersonalStepSubmit(event)` | function | `SetDetailsPage` | Checks step 1's required fields, gender included, then moves on. |
 | `handleBloodStepSubmit(event)` | function | `SetDetailsPage` | Checks the blood group, then moves on or saves. |
 
 ### `src/app/peer-to-peer/page.js`: "My profile"
@@ -1073,6 +1078,14 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `options` | constant | rate-limit tests | A limit of 2 a minute at a fixed time. |
 | `results` | variable | rate-limit tests | Three requests' results, from three different claimed addresses. |
 
+### `tests/auth.test.js`
+`safeNextPath` keeps same-site paths with their query and hash, and refuses other sites, backslashes, tabs and newlines. `rpcErrorResponse` maps 23505 to 409 and keeps the admin functions' own codes.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `value` | variable | loops | One redirect value to try. |
+| `response` | variable | `rpcErrorResponse` test | The 409 response. |
+
 ### `tests/stock-quality.test.js`
 
 | Name | Kind | Inside | What it is / does |
@@ -1100,6 +1113,8 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `result` | variable | eligibility test | One eligibility result. |
 | `validProfile` | constant | profile tests | A valid form submission, plus a forbidden `role` field. |
 | `rows`, `roundTrip` | variable | profile test | Database rows, and the `details` read back from them. |
+| `afterMidnightInIndia` | constant | India-date test | 01:30 on 24 October in India, still 23 October in UTC. |
+| `withDonation(lastDonationDate)` | function | India-date test | `validProfile` with that last donation date. |
 | `validApplication` | constant | organization tests | A valid blood-bank application. |
 
 ---
@@ -1150,10 +1165,10 @@ Saves eRaktKosh stock and the directory into the stock store, as `bloodlink_inge
 | `appendArchive(fileName, lines)` | function | module | Appends JSON lines to a file in the archive folder. |
 | `snapshotDirectory(client)` | function | module | Saves the nationwide directory, flagging `missing`, `outside_india`, `wrong_state` (outside its own state, from `stateChecker.locationProblem`) and `shared` locations. |
 | `pointCounts`, `pointKey`, `seenAt`, `banksByCode`, `locationQuality`, `qualityCounts` | variable | `snapshotDirectory` | Banks per coordinate point, its key, the run time, rows by code, one bank's flag, and flag totals. |
-| `snapshotStates(client)` | function | module | Saves each state: validates, uploads changed rows in full, updates the fetch time of the rest, and adds history. |
+| `snapshotStates(client)` | function | module | Saves each state: validates, uploads changed rows in full, updates the fetch time of the rest, and adds history. A state whose save fails is rolled back, logged and skipped, and the sweep goes on. |
 | `districtByCode`, `sweepStartedAt`, `sweep`, `okCount` | variable | `snapshotStates` | District per bank from the directory, when the sweep began, the sweep summary, and states saved. |
 | `previousEntry`, `isChanged`, `changedRows`, `unchangedCodes`, `latestRows`, `historyRows` | variable | `snapshotStates` | Saved update times, the change test, and the rows to write. |
-| `client`, `isSuccess` | variable | module | The Postgres connection, and the exit status. |
+| `client`, `isSuccess` | variable | module | The Postgres connection, and the exit status. An error from connecting onwards is logged as `fatal: …` and makes the exit status 1, which the Task Scheduler wrapper passes on. |
 
 ### `scripts/measure-search.mjs`: response times, `npm run measure`
 Point it at a server started with `TRUSTED_PROXY_HOPS=1`, so each simulated user's `X-Forwarded-For` gets its own rate limit.
@@ -1260,7 +1275,7 @@ Downloads geoBoundaries' India state outlines (DataMeet, CC BY 2.5 IN), matches 
 
 ## Database
 
-Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stock_store.sql`, `20261023000300_blood_bank_locations.sql` and `20261024000100_wrong_state_locations.sql`. All are applied to the live project, so changes go in a new migration file, never into an existing one. SQL uses `snake_case`. Function parameters start with `p_` and local variables with `v_`.
+Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stock_store.sql`, `20261023000300_blood_bank_locations.sql`, `20261024000100_wrong_state_locations.sql`, `20261026000100_ingest_prune_grant.sql` and `20261026000200_review_and_india_dates.sql`. All are applied to the live project, so changes go in a new migration file, never into an existing one. SQL uses `snake_case`. Function parameters start with `p_` and local variables with `v_`.
 
 ### Tables and columns
 
@@ -1315,19 +1330,19 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | Name | Kind | What it does |
 |---|---|---|
 | `set_updated_at()` | trigger function | Stamps `updated_at` on `organizations`. |
-| `profiles_before_write()` | trigger function | Rejects a future date of birth, and sets `is_profile_complete` and `updated_at`. |
-| `donor_screening_before_write()` | trigger function | Rejects a future donation date, and sets `updated_at`. |
+| `profiles_before_write()` | trigger function | Rejects a date of birth after today's date in India, and sets `is_profile_complete` and `updated_at`. |
+| `donor_screening_before_write()` | trigger function | Rejects a donation date after today's date in India, and sets `updated_at`. |
 | `handle_new_user()` | trigger function | Creates a `profiles` row for every new sign-up. |
 | `handle_user_email_change()` | trigger function | Copies an email change into `profiles`. |
 | `is_admin()` | function | Whether the caller is an admin. Used by the security policies. |
-| `review_organization(p_organization_id, p_decision, p_note)` | function | Admin only. Approves, rejects or suspends an application, sets or removes the applicant's role, and writes the audit log. |
+| `review_organization(p_organization_id, p_decision, p_note)` | function | Admin only. Approves, rejects or suspends an application, links or unlinks the applicant's `organization_id` and sets or removes their role (an admin keeps the admin role), and writes the audit log. |
 | `v_org` | variable | Inside `review_organization`: the application being reviewed. |
 | `set_user_role(p_user_id, p_role)` | function | Admin only. Grants or removes admin, refuses to remove the last admin, and writes the audit log. |
 | `v_old_role` | variable | Inside `set_user_role`: the user's role before the change. |
-| `prune_stock_store(p_history_days, p_call_days)` | function | `bloodlink_ingest` only. Deletes history older than 60 days and call logs older than 90; returns the counts. |
+| `prune_stock_store(p_history_days, p_call_days)` | function | `bloodlink_ingest` only, with that role's rights. Deletes history older than 60 days and call logs older than 90; returns the counts. Reading `upstream_calls.called_at` in its `WHERE` needs the column grant added on 26 October. |
 | `v_history`, `v_calls` | variable | Inside `prune_stock_store`: rows deleted from each table. |
 | `upstream_stats` | view | eRaktKosh calls in the last 24 hours per endpoint and state: calls, success %, median and 95th-percentile ms, last good call. Runs with the caller's rights, so only admins see rows. |
-| `bloodlink_ingest` | role | No login. The collector switches to it with `set role`; it may write only the stock tables. |
+| `bloodlink_ingest` | role | No login. The collector switches to it with `set role`; it may write only the stock tables. On `upstream_calls` it may insert and delete, and read only `called_at`. |
 | `profiles_before_write`, `donor_screening_before_write`, `organizations_set_updated_at` | trigger | Run those functions before each write. |
 | `on_auth_user_created`, `on_auth_user_email_changed` | trigger | Run `handle_new_user` and `handle_user_email_change` on `auth.users`. |
 

@@ -5,6 +5,21 @@
 - Paths are relative to `bloodlink/` unless they start with `../`.
 - "Docs" means `CLAUDE.md` and the files in `md files/`. Each finding names where the fact is used.
 
+> **Status update, 26 October 2026.** The documents now live in `docs/`; this file says `md files/`, the folder's name when it was written. Since this check:
+> - **Recorded, rules unchanged:** F1 to F4 are listed under #24 in `CLAUDE.md`. The eligibility rules wait for the official NBTC document.
+> - **Corrected in the documents and code comments:**
+>   - F5, the zone scales' derivation;
+>   - F6 and F7, the time of day of the stock-age figures;
+>   - F8, Majuli;
+>   - F9 to F12, TomTom's populations, the weekday and yearly congestion figures, and the rain bands' source;
+>   - F13, a year to restore a paused project;
+>   - F14, the compatibility rules called conservative;
+>   - F18, Realtime's delete events, noted in `plan_donor_network.md`;
+>   - F19, the OSRM policy citation;
+>   - F20, the geoBoundaries metadata;
+>   - F22, the gap for "other".
+> - **Tracked:** F16 under #52 and F17 under #49. F15 was fixed here; F21 needs no change.
+
 **Labels used below**
 
 | Label | Meaning |

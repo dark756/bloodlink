@@ -184,7 +184,7 @@ flowchart TB
 | **pg_cron** | Each minute: next waves, expiries, hold timeouts, retrying stuck notifications | Already planned for the collector (`supabase_scheduler.md`); one scheduler for both |
 | **Outbox + dispatcher** | `notification_outbox` rows become messages; an Edge Function sends them | Sending needs HTTP and provider secrets, which don't belong in SQL or in the browser |
 | **`bloodlink_notifier` role** | The dispatcher connects with `SUPABASE_DB_URL` and runs `set role bloodlink_notifier`, which can only claim and update outbox rows through two functions | The same least-privilege pattern as `bloodlink_ingest` and the collector plan |
-| **Realtime** | Live updates to donors' inboxes and organizations' request boards | Realtime's `postgres_changes` respects row-level security, so no extra filtering service |
+| **Realtime** | Live updates to donors' inboxes and organizations' request boards | Realtime's `postgres_changes` applies row-level security to inserts and updates, so no extra filtering service. Delete events aren't filtered, so the tables the inboxes and boards watch change a row's status instead of deleting it (`verify_facts.md`, F18) |
 
 ---
 
@@ -265,7 +265,7 @@ create table public.blood_requests (
   wave smallint not null default 0,
   next_wave_at timestamptz,
   units_donated smallint not null default 0,
-  created_by uuid not null references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,  -- so deleting an account (#18) isn't blocked
   created_at timestamptz not null default now(),
   closed_at timestamptz,
   close_reason text
@@ -319,7 +319,10 @@ create table public.donations (
   id bigint generated always as identity primary key,
   donor_id uuid not null references public.profiles (id) on delete cascade,
   organization_id uuid references public.organizations (id),
-  donated_on date not null check (donated_on <= current_date),
+  -- "Not in the future" is checked by a trigger against India's date, as for profiles
+  -- (#46), not by a CHECK: current_date is the UTC date, and a CHECK should not
+  -- depend on the clock.
+  donated_on date not null,
   kind text not null check (kind in ('whole_blood', 'apheresis_platelets', 'apheresis_plasma')),
   request_id uuid references public.blood_requests (id) on delete set null,
   source text not null check (source in ('centre_confirmed', 'self_reported')),
@@ -720,8 +723,8 @@ Logged automatically from the tables, shown on the admin and organization panels
 
 ## Sources
 
-- `md files/report3.md`: point 4 (PostGIS benchmark; notification tests) and point 5 (donor-response model R, shadow-mode alerts, UCI data).
-- `md files/supabase_scheduler.md`: pg_cron, pg_net, Edge Functions and the limited-role pattern reused here.
+- `docs/report3.md`: point 4 (PostGIS benchmark; notification tests) and point 5 (donor-response model R, shadow-mode alerts, UCI data).
+- `docs/supabase_scheduler.md`: pg_cron, pg_net, Edge Functions and the limited-role pattern reused here.
 - `src/lib/eligibility.js`, `src/lib/compatibility.js`, `src/lib/ranking.js`, `src/lib/traffic.js`: the modules the matching reuses.
 - [DLT registration for SMS to India](https://www.plivo.com/docs/sms/concepts/dlt-registration-process) (Plivo's guide; check the operator's DLT portal for current rules).
 - [Summary of NBTC's 2017 donor-selection guidelines](https://www.slideshare.net/slideshow/blood-donor-selection-guidelines-2017/182369567) (a secondary summary: age 18 to 65, weight over 45 kg, haemoglobin 12.5 g/dl or more). Use the official NBTC document for #24.

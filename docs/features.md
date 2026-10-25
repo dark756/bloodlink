@@ -3,8 +3,8 @@
 This lists everything added or changed on top of the original app, the version tagged `mongodb-final`. The work came in three rounds:
 
 1. **Bug fixes and cleanup.** This is commit `fdb2b2a` on `master`.
-2. **The move from MongoDB and NextAuth to Supabase.** This is uncommitted, on branch `supabase-migration`.
-3. **New features:** the ranking engine, the response plan, compatibility, and verification with admin tools. These are also uncommitted, on `supabase-migration`.
+2. **The move from MongoDB and NextAuth to Supabase.** This is on branch `supabase-migration`, committed on 24 October as `5af73b9`. It has been GitHub's default branch since 26 October.
+3. **New features:** the ranking engine, the response plan, compatibility, and verification with admin tools. These are in the same commit.
 
 Paths are relative to `bloodlink/`. Everything listed here passes `npm run lint`, `npm test` and `npm run build`.
 
@@ -13,9 +13,11 @@ Paths are relative to `bloodlink/`. Everything listed here passes `npm run lint`
 - It scores spare stock, weighted most when critical.
 - ETA comes from OSRM road routes, adjusted for time of day, day of week, season, area density and rain.
 
-The ranking section below is up to date with report 3. Where the rest of this list disagrees, `../report3.md` is the current record of what changed and why.
+The ranking section below is up to date with report 3. Where the rest of this list disagrees, `docs/report3.md` is the current record of what changed and why.
 
-**Data checks (2026-10-24).** An independent re-check of the data found and fixed six faults, #36 to #41. They are listed under [Found in the 24 October data checks](#found-in-the-24-october-data-checks), and `../data_integrity.md` has the details. There are now 118 tests.
+**Data checks (2026-10-24).** An independent re-check of the data found and fixed six faults, #36 to #41. They are listed under [Found in the 24 October data checks](#found-in-the-24-october-data-checks), and `docs/data_integrity.md` has the details.
+
+**Review fixes (2026-10-26).** Thirteen faults found in the reviews of 24 and 25 October were fixed. They are listed under [Found in the reviews of 24 and 25 October](#found-in-the-reviews-of-24-and-25-october). There are now 125 tests.
 
 ---
 
@@ -24,7 +26,7 @@ The ranking section below is up to date with report 3. Where the rest of this li
 ### Ranked emergency search with a response plan
 Files: `src/lib/ranking.js`, `src/app/api/blood-search/route.js`, `src/app/search/page.js`
 
-The measurements behind the numbers here are in `../report3.md`, points 1 and 4.
+The measurements behind the numbers here are in `docs/report3.md`, points 1 and 4.
 
 On `/search`, pick a location, a component, a blood group, the **units needed** and an **urgency** (Critical, Urgent or Routine). The app then:
 - Finds the nearby banks that list the patient's **exact** blood group for that component. A bank with none of that group is not a match, whatever other groups it holds.
@@ -233,7 +235,7 @@ File: `src/lib/compatibility.js`
 - **Platelets:** plasma rules, plus Rh-negative for Rh-negative patients.
 - **Bombay (Oh):** Bombay patients receive only Bombay blood.
 
-Any use of these rules stays informational: a blood bank must still cross-match before any transfusion.
+Any use of these rules stays informational: a blood bank must still cross-match before any transfusion. The rules are also conservative: in an emergency, transfusion services may give out-of-group platelets or cryoprecipitate, or RhD-positive red cells to an RhD-negative patient, and these rules never do.
 
 ### Density-aware ring search
 Files: `src/app/api/blood-search/route.js`, `src/lib/rings.js`, `src/lib/stateBounds.js`
@@ -253,6 +255,7 @@ Files: `src/app/organization/`, `src/app/api/organization/`, `src/lib/organizati
 - The application stays **Pending** until an admin reviews it. The applicant sees its status and the admin's note.
 - If the admin **approves** it, the user's role becomes Hospital or Blood bank, and a badge appears on their profile.
 - If the admin **rejects** or **suspends** it, the role goes back to User. A rejected applicant can apply again.
+- An applicant who is already an admin keeps the admin role, but is still linked to the organization, so removing the admin role later leaves them its role.
 
 ### Admin dashboard
 Files: `src/app/admin/`, `src/app/api/admin/`
@@ -278,7 +281,7 @@ Eligibility used to be a yes/no value saved when the form was submitted, so it n
 - the gap since the last donation (90 days for men, 120 days otherwise)
 - the health answers
 
-`/peer-to-peer` shows the result, and, if you're deferred, the next date you can donate. The thresholds still need checking against NBTC (National Blood Transfusion Council) guidelines (issue #24).
+`/peer-to-peer` shows the result, and, if you're deferred, the next date you can donate. The thresholds still need checking against NBTC (National Blood Transfusion Council) guidelines: reproductions of the 2017 guidelines differ from the form on four points, listed under issue #24 in `CLAUDE.md`.
 
 ### Better search results
 Files: `src/lib/stock.js`, `src/app/search/page.js`
@@ -292,17 +295,18 @@ Each result card now shows:
 ### Unit tests
 Files: `tests/`
 
-There are 118 Vitest tests. Run them with `npm test`.
+There are 125 Vitest tests. Run them with `npm test`.
 - `ranking.test.js` (20 tests): the weights, each score, exact-group matching, the worked scenarios, urgency changing the first choice, and the response plan.
 - `eraktkosh-client.test.js` (19 tests): the eRaktKosh client's cache, saved copy, retries, per-state and service-wide circuits, freshness summary with stock and directory ages kept apart, and shared calls.
 - `traffic.test.js` (16 tests): the travel-time model. It covers India time, traffic zones, congestion by time, day, season and density, rain, and the travel estimate.
-- `stock-eligibility-profile.test.js` (15 tests): stock parsing, components matched by name only, cutting saved rows to one component, eligibility, and profile and organization validation.
+- `stock-eligibility-profile.test.js` (17 tests): stock parsing, components matched by name only, cutting saved rows to one component, eligibility, and profile and organization validation, including real calendar dates and India's "today".
 - `compatibility.test.js` (13 tests): the rules for each component, Rh, and Bombay blood.
 - `stock-quality.test.js` (10 tests): the eRaktKosh row validator: group names, row checks and dormant stock.
 - `routing.test.js` (8 tests): OSRM route parsing and requests, and Open-Meteo rain.
 - `state-bounds.test.js` (7 tests): whether a bank lies in its own state, the border margin, and points that are missing or outside India.
 - `rings.test.js` (6 tests): ring choice in both modes, with dormant banks never deciding it.
 - `rate-limit.test.js` (4 tests): `X-Forwarded-For` is trusted only behind configured proxies.
+- `auth.test.js` (5 tests): sign-in redirects stay on the site, and the admin routes' database errors map to the right HTTP status.
 
 Separately, a one-off script ran 47 end-to-end checks against the live database. It is not kept in the repo.
 
@@ -310,7 +314,7 @@ Separately, a one-off script ran 47 end-to-end checks against the live database.
 
 ## 2. Bug fixes
 
-The first four groups are in commit `fdb2b2a`. The 23 and 24 October fixes are uncommitted, on `supabase-migration`.
+The first four groups are in commit `fdb2b2a`. The 23 and 24 October fixes are in `5af73b9`, on `supabase-migration`. The fixes from the 24 and 25 October reviews were committed on 26 October, on the same branch.
 
 ### Security
 - **Anyone could overwrite anyone's profile.** `/api/details` trusted the email address sent in the request. It now takes your identity from your sign-in session only.
@@ -342,13 +346,29 @@ The first four groups are in commit `fdb2b2a`. The 23 and 24 October fixes are u
 - **Two files were never formatted.** `.prettierignore` listed `supabase/`, which also matched `src/lib/supabase/`. The entries are now anchored to the app folder, and both Supabase client files are formatted.
 
 ### Found in the 24 October data checks
-`../data_integrity.md` has the evidence for each, before and after.
+`docs/data_integrity.md` has the evidence for each, before and after.
 - **#36 · Banks in the wrong state ranked as nearby.** A Delhi search for O+ put a bank in Muktsar, Punjab, first, "5 min away". Location search now leaves out banks outside their own state, and the collector flags them `wrong_state`.
 - **#37 · The saved copy could count the wrong component.** With eRaktKosh down, a plasma-only bank ranked first for red cells. Components now match by name only, and the saved copy is cut to the requested component.
 - **#38 · One failing state cut every state off from live data.** Each state now has its own circuit. The service-wide one opens only when failures come from two or more places.
 - **#39 · The outage banner could show the directory's age as the stock's.** The two ages are now reported apart.
 - **#40 · A dormant bank could choose the search ring.** Ring choice now ignores dormant banks.
 - **#41 · A made-up `X-Forwarded-For` header dodged the rate limit.** The header is now trusted only on Vercel or behind proxies set in `TRUSTED_PROXY_HOPS`.
+
+### Found in the reviews of 24 and 25 October
+#42 to #55 are from `docs/review_and_next_moves.md`; #56 to #60 were found in the review that checked it. All were fixed on 26 October. The ones left open are in `CLAUDE.md`.
+- **#56 · The weekly prune could never run.** `prune_stock_store()` runs as the collector's role, which couldn't read `upstream_calls.called_at` in its `DELETE … WHERE`, so every prune failed with "permission denied" and nothing was trimmed. A migration grants that one column.
+- **#57 · Collector failures were invisible.** The Task Scheduler wrapper dropped Node's exit code, so every run looked successful, and an error at the top of the collector bypassed its log. Both now report the failure.
+- **#58 · An open redirect after email sign-in.** `/login?next=/%09/evil.com` passed the check, and browsers drop the tab, which leaves `//evil.com`. `safeNextPath` now refuses control characters and anything that resolves to another site.
+- **#59 · Impossible dates were accepted.** JavaScript rolls "2026-02-30" over to 2 March, so it passed the check and then failed in the database with a vague error. Dates must now be real calendar dates.
+- **#60 · One state's save error stopped the rest of the sweep.** It is now logged, and the sweep goes on.
+- **#46 · "Today" was the UTC date.** Between midnight and 05:30 India time, a date of birth or donation of today was refused as being in the future, in the form and in the database. Both now use India's date.
+- **#47 · The profile form preselected "male".** A donor who skipped the field got the 90-day gap instead of 120. Gender must now be chosen.
+- **#42 · An admin's approved organization wasn't linked to them.** If they later lost the admin role, they became a plain user. They are now linked, and keep the admin role.
+- **#43 · Re-approving an old application gave a server error** when the same person had another open one. It now says why (409).
+- **#44 · The misplaced-bank count read 0 during an outage,** because the saved directory had already dropped those banks. It now keeps them, so the route counts them as it does for live data.
+- **#53 · A signed-in user opening `/login?next=…` went to the home page.** They now go to `next`.
+- **#48 · The home page promised direct contact with donors,** which the donor-network plan rules out. It now says donors are asked to give at a blood centre.
+- **#55 · The documents disagreed with the repository.** They now live in `docs/`, point at one copy of each other, and say what is committed.
 
 ---
 
@@ -373,12 +393,18 @@ The app used MongoDB with NextAuth. It now uses **Supabase**, a hosted Postgres 
 ## 4. Documents and planning files
 
 - **`CLAUDE.md`:** how the project works, the commands, and a numbered known-issues list.
-- **`CODE_REFERENCE.md`:** every function and variable, file by file.
-- **`report3.md`:** the answer to each reviewer suggestion, with the decisions, measurements and test results behind it.
-- **`data_integrity.md`:** an independent check of reviewer point 3 (data quality, freshness and failures), with the six faults it found and fixed.
-- **`supabase_scheduler.md`:** the approved plan to move data collection from the laptop to Supabase. It isn't started.
-- **`blood_data/README.md`:** a catalogue of the collected and outside datasets, with their validation results.
-- **`documentation/sem 7 progress reports/report 2/`:** the updated report and slides.
+- **`docs/CODE_REFERENCE.md`:** every function and variable, file by file.
+- **`docs/report3.md`:** the answer to each reviewer suggestion, with the decisions, measurements and test results behind it.
+- **`docs/data_integrity.md`:** an independent check of reviewer point 3 (data quality, freshness and failures), with the faults it found and fixed.
+- **Plans, none started:**
+  - `docs/supabase_scheduler.md`, approved: move data collection from the laptop to Supabase;
+  - `docs/plan_bank_locations.md`: place the banks location search can't see;
+  - `docs/plan_eta_comparison.md`: compare ETA methods against timed trips and Google's predictions;
+  - `docs/plan_panels.md`: tools for admins, blood banks, hospitals and donors;
+  - `docs/plan_donor_network.md`: the peer-to-peer donor network.
+- **Dated reviews:** `docs/review_and_next_moves.md` (code, docs and plans) and `docs/verify_facts.md` (every number and outside fact).
+- **`../blood_data/README.md`:** a catalogue of the collected and outside datasets, with their validation results.
+- **`../documentation/sem 7 progress reports/report 2/`:** the updated report and slides.
   - They add the ranking algorithm and worked examples, verification and admin, test results, and a Completed / In Progress / Planned table.
   - They correct report 1's claims about the stack and about features the app doesn't have.
   - They show the database schema: an entity-relationship diagram (slide 23, report Figure 3) and each table's contents, rules and access (slide 24, report Table 7).
@@ -388,13 +414,14 @@ The app used MongoDB with NextAuth. It now uses **Supabase**, a hosted Postgres 
 ## 5. Not done yet
 
 - **Google sign-in** needs the Supabase dashboard setup (issue #25). Email sign-in works now.
-- **Nothing on `supabase-migration` is committed.**
+- **The `mongodb-final` tag isn't on GitHub yet** (#54). Everything else is committed and pushed, and `supabase-migration` is the default branch.
 - **Hospital and blood-bank roles have no tools yet.** Verified accounts get a badge but no dashboard.
-- **Data collection runs only while the laptop is on** (issue #35). The move to Supabase is planned in `supabase_scheduler.md`.
+- **Data collection runs only while the laptop is on** (issue #35). The move to Supabase is planned in `docs/supabase_scheduler.md`.
+- **Before a public launch:** security headers (#51), less precise locations sent to outside services (#52), and the page-load and egress costs (#49, #50). All are tracked in `CLAUDE.md`.
 - **Banks location search can't place.** 679 stocked banks have no coordinates (#33). The 206 that eRaktKosh puts in the wrong state are left out until they are re-placed (#34). Region search lists them all.
 - **Not built:**
   - donor matching and requests
   - notifications
-  - stock forecasting: the history is collecting, and the approaches to compare are in `report3.md`, point 5
+  - stock forecasting: the history is collecting, and the approaches to compare are in `docs/report3.md`, point 5
 
-  These are planned in `report3.md` and in `CLAUDE.md` under "Where to go next".
+  These are planned in `docs/plan_donor_network.md`, `docs/plan_panels.md` and `docs/report3.md`, and listed in `CLAUDE.md` under "Where to go next".

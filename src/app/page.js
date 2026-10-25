@@ -24,7 +24,7 @@ export default function HomePage() {
           <div className="text-2xl">🤝</div>
           <h2 className="mt-2 font-semibold text-[#222]">Peer to peer donor network</h2>
           <p className="text-sm text-[#666] mt-1">
-            Connect directly with donors in your area. This part of the site is still being built.
+            Ask nearby donors to give at a blood centre. This part of the site is still being built.
           </p>
           <p className="text-sm text-[#d32f2f] font-semibold mt-3">Take a look →</p>
         </Link>

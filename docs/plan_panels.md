@@ -255,7 +255,7 @@ create table public.bank_notes (
   kind text not null check (kind in ('on_hold', 'closed', 'call_first', 'apheresis_today', 'other')),
   text text check (char_length(text) <= 200),
   expires_at timestamptz not null,      -- at most 72 hours ahead, enforced by a trigger
-  created_by uuid not null references public.profiles (id),
+  created_by uuid references public.profiles (id) on delete set null,  -- so deleting an account (#18) isn't blocked
   created_at timestamptz not null default now()
 );
 

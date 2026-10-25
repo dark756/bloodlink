@@ -140,20 +140,21 @@ eRaktKosh's `nearest` call supplies each bank's latitude and longitude. Report 3
 |---|---|---|---|
 | Stock, all 36 states | **Hourly**, at 5 past the hour | `bank_stock_latest`, `stock_history`, and a local archive | 36 of 36 states saved at 23:05 and 00:05 India time. A full sweep takes about 2.5 minutes. |
 | Directory (`nearest`) | Weekly, Mondays 03:35 | `blood_banks` | First scheduled run due Monday 26 October. Run by hand once on 24 October to apply the new flags. |
-| District list (`master/all`) | By hand, now and then | `assets/district_data.json` | Refreshed 23 October: 3 districts added, 1 removed. |
+| District list (`master/all`) | By hand, now and then | `assets/district_data.json` | Refreshed 23 October: 3 districts added, and a duplicate Majuli entry (code 746) removed. |
 
 - **Why hourly.** A bank updates its stock about once a day (median gap 24 h), so more often would mostly re-read unchanged data.
 - **Uploads.** Only banks whose update time changed are uploaded in full; the rest get a new fetch time.
-- **Retention.** History is kept 60 days in Supabase and indefinitely in `eraktkosh/history/`.
+- **Retention.** History is kept 60 days in Supabase and indefinitely in `eraktkosh/history/`. The prune that enforces it could not run until 26 October (#56, below); it works now.
 - **Limits.**
   - Collection runs only while the project laptop is on (#35). A plan to move it to Supabase is approved but not started (`supabase_scheduler.md`).
-  - Two early runs were stopped by a console signal. Since the collector runs in its own hidden console, no run has failed.
+  - Two early runs were stopped by a console signal. Since the collector runs in its own hidden console, no stock sweep has failed.
+  - Until 26 October a failed run would also have gone unnoticed (#57, below). Both are now reported: in Task Scheduler's last result and in the log.
 
 ---
 
 ## Stale data
 
-eRaktKosh stock is what each bank last typed in. The median age is 9.7 hours, but 6.3% of banks haven't updated in 30 days.
+eRaktKosh stock is what each bank last typed in. 6.3% of banks haven't updated in 30 days. The median age depends on the hour, because 73% of banks update between 07:00 and 12:00: it was 9.7 hours on the evening of 23 October and 3.3 hours at 10:47 the next morning.
 
 | Measure | What the user sees |
 |---|---|
@@ -204,12 +205,12 @@ All are stored and catalogued in `blood_data/` (`README.md`), with validation re
 | Dataset | Size | Validation summary | Use |
 |---|---|---|---|
 | eRaktKosh donation camps | 80,757 camps, Oct 2025 to Nov 2026 | No duplicate ids; 78.9% linked to a bank. **No personal details:** organiser names and phone numbers were dropped before saving, and a scan of the file on 24 October found none. | Supply events for the stock-out forecast |
-| eRaktKosh auto-refresh list | 452 banks | Median stock age 0.3 h, against 9.7 h for the rest | Cleanest series to model first |
+| eRaktKosh auto-refresh list | 452 banks | Refreshed in batches at fixed times: median stock age 0.3 h against 9.7 h for the rest at 18:30, minutes after a batch, but 4.6 h against 3.2 h at 10:47 the next morning | Possibly the cleanest series to model first; the history will show |
 | data.gov.in blood bank directory | 2,823 banks | 33 duplicates, 372 at (0, 0), licence dates up to "2105" | Licences, service hours, placing banks |
 | Malaysia MoH daily donations | 20 years, national and 13 states | No missing days; groups add up on 96 to 100% of days | Testing forecast methods on a long series |
 | UCI blood transfusion | 748 donors | 29% exact duplicate rows | Donor-response model |
 | NCVBDC dengue cases | 36 states, 2021 to 2026 | State sums match the totals | Seasonal platelet demand |
-| geoBoundaries IND states (new) | 36 outlines | Every outline matched an eRaktKosh state by name | The wrong-state check above |
+| geoBoundaries IND states (new) | 36 outlines | Every outline matched an eRaktKosh state by name. Its metadata says "year represented 2011", yet the outlines include the post-2020 units (Telangana, Ladakh, the merged Dadra and Nagar Haveli and Daman and Diu) | The wrong-state check above |
 
 The monthly stock and issue reports that a demand model would need (`MonthlyCollection/*`) need a blood-bank login; access must be requested from NBTC or MoHFW.
 
@@ -225,9 +226,14 @@ The monthly stock and issue reports that a demand model would need (`MonthlyColl
 | 39 | Outage banner used the directory's age | Stock age = older of stock and directory | Reported apart; the banner wording matches |
 | 40 | Dormant banks chose the nearest-mode ring | A lone dormant bank could end the search at 5 km | Ring set by active banks only |
 | 41 | Rate limit dodged with a fake `X-Forwarded-For` | A new header per request, no limit | Header trusted only on Vercel or behind configured proxies; the 21st request in a minute is refused |
+| 44 | `misplacedBanks` read 0 during an outage | The saved directory dropped wrong-state banks before the route could count them | The saved directory keeps them, so the route counts them as it does for live data |
+| 56 | The weekly prune could never run | `prune_stock_store()` runs as `bloodlink_ingest`, which lacked SELECT on `upstream_calls.called_at`: every prune failed with 42501, so nothing was ever trimmed | One-column grant; the prune runs and logs `pruned: {"calls_deleted":0,"history_deleted":0}` |
+| 57 | Collector failures were invisible | Task Scheduler always showed success, and an error at the top of the collector skipped its log | Node's exit code is passed on, and a fatal error is logged |
 
-**How the fixes were checked.**
-- Each fix has unit tests: 24 new, 118 in all.
+Faults 36 to 41 were found and fixed on 24 October. 44, 56 and 57 were found in the reviews of 24 and 25 October (`review_and_next_moves.md` and the review that checked it) and fixed on 26 October, with the other review fixes listed in `CLAUDE.md`.
+
+**How the 24 October fixes were checked.**
+- Each fix has unit tests: 24 new, 118 in all (125 after 26 October).
 - Lint, the format check and the production build pass.
 - 18 live checks ran against production builds (normal, eRaktKosh down, Maharashtra blocked, no trusted proxy), plus the 27 earlier ones.
 - The new migration is applied to the live project, and the directory was re-flagged.
@@ -244,7 +250,7 @@ The monthly stock and issue reports that a demand model would need (`MonthlyColl
 | 206 wrong-state and 518 shared-point banks (#34) | Wrong-state banks are now hidden from location search; shared-point distances may be off by a few km | Re-place them the same way as #33, then clear the flag |
 | 6 likely duplicate code pairs (#34) | One bank could appear twice | Check by phone or licence number, then merge |
 | Collection depends on the laptop (#35) | History will have gaps | `supabase_scheduler.md`, when approved to start |
-| Weekly directory task not yet run on schedule | The new flags rely on it | Confirm Monday 26 October's run in `eraktkosh/collector.log` |
+| Weekly directory task not yet run on schedule | The new flags and the prune rely on it | Confirm Monday 26 October's run in `eraktkosh/collector.log`: the directory flags, a `pruned:` line, and a last result of 0 in Task Scheduler |
 
 ---
 
@@ -254,7 +260,7 @@ Run from `bloodlink/` unless noted.
 
 ```bash
 npm run lint && npm run format:check && npm test && npm run build
-node scripts/migrate.mjs --status                 # 4 migrations applied
+node scripts/migrate.mjs --status                 # 6 migrations applied
 # Directory flags (needs SUPABASE_DB_URL); the weekly task runs this:
 npm run snapshot -- --directory --prune
 # Production build for the live checks; TRUSTED_PROXY_HOPS=1 lets scripts simulate many users:
@@ -266,6 +272,7 @@ TRUSTED_PROXY_HOPS=1 ERAKTKOSH_SIMULATE_ALLOW_PRODUCTION=1 ERAKTKOSH_SIMULATE_ST
 Spot checks against those servers:
 - `GET /api/blood-search?lat=28.6139&lng=77.2090&componentId=12&bloodGroupId=15&units=4&urgency=critical` on 3126. Every result's address is in Delhi, and `misplacedBanks` is above 0.
 - `GET /api/blood-search?lat=26.9608&lng=78.9621&componentId=12&bloodGroupId=11&units=2&urgency=critical` on 3128. Bank 1702 (Saifai) is not listed.
+- The central Delhi search above, on 3128. `freshness.source` is `saved`, and `misplacedBanks` is still above 0 (#44).
 - On 3129: four Mumbai ranked searches, then `GET /api/search?stateCode=30`. `X-Data-Source` is `live`.
 - From the workspace root, re-run the data validators:
   - `python -I blood_data/scripts/validate_eraktkosh.py blood_data`

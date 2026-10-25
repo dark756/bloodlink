@@ -136,6 +136,26 @@ describe("profile validation and storage mapping", () => {
     );
     expect(sanitizeDetails("nonsense", NOW).errors.length).toBeGreaterThan(0);
   });
+  it("refuses dates that don't exist", () => {
+    for (const dob of ["2001-02-30", "2001-04-31", "2001-02-29"]) {
+      expect(sanitizeDetails({ ...validProfile, dob }, NOW).errors).toContain(
+        "Enter a valid date of birth.",
+      );
+    }
+    expect(sanitizeDetails({ ...validProfile, dob: "2000-02-29" }, NOW).errors).toEqual([]);
+  });
+  it("takes today from India's clock, not UTC's", () => {
+    // 01:30 on 24 October in India is still 23 October in UTC.
+    const afterMidnightInIndia = new Date("2026-10-23T20:00:00Z");
+    const withDonation = (lastDonationDate) => ({
+      ...validProfile,
+      donorDetails: { lastDonationDate },
+    });
+    expect(sanitizeDetails(withDonation("2026-10-24"), afterMidnightInIndia).errors).toEqual([]);
+    expect(sanitizeDetails(withDonation("2026-10-25"), afterMidnightInIndia).errors).toContain(
+      "Enter a valid last donation date.",
+    );
+  });
   it("maps details to table rows and back", () => {
     const { details } = sanitizeDetails(validProfile, NOW);
     const rows = detailsToRows(details);

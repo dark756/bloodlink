@@ -3,7 +3,9 @@
 // Thresholds follow India's NBTC (National Blood Transfusion Council) 2017
 // donor-selection guidelines as we understand them: age 18-65 and a minimum
 // gap of 90 days (men) or 120 days (women) between whole-blood donations.
-// Re-check them against the current guidelines before relying on them.
+// "other" gets the 120-day gap, the conservative choice; the guidelines name only
+// men and women. Re-check them against the official guidelines before relying on
+// them: reproductions of the 2017 text differ from the form on four points (#24).
 // This is informational only; blood banks do the real screening.
 
 export const ELIGIBILITY_RULES = {

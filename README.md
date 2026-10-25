@@ -52,6 +52,7 @@ npm run build
 | `supabase/migrations/` | Database schema |
 | `scripts/` | Migrations, the stock collector (`snapshot.mjs`) and measurement scripts |
 | `tests/` | Vitest unit tests |
+| `docs/` | Report 3, the data-integrity check, the feature list, the code reference, the plans and the reviews. `CLAUDE.md` is the project guide |
 
 ## Data sources
 

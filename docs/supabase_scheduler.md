@@ -3,6 +3,10 @@
 **Status: APPROVED, not started.**
 - All seven decisions were answered on 2026-10-23.
 - Nothing has been built or deployed. Work starts only when you ask for it, beginning with your `npx supabase login`.
+- **Do these first:**
+  - rotate the database password (#26), since the function connects with `SUPABASE_DB_URL`;
+  - decide the database region (#28), so the collector is built on the final project.
+- **Already done (26 October):** `bloodlink_ingest` can now read `upstream_calls.called_at`, which the prune needs (#56). Until then every prune failed with 42501. The cloud prune runs as the same role, and any new statement it runs needs SELECT on the columns its `WHERE` reads.
 
 Paths are relative to `bloodlink/` unless they start with `../`.
 
@@ -13,7 +17,7 @@ Paths are relative to `bloodlink/` unless they start with `../`.
   - Supabase Cron (`pg_cron`) fires on schedule;
   - `pg_net` calls an Edge Function;
   - the function does exactly what the laptop does today.
-- **No new account, no new machine, no git commit.** Edge Functions deploy from the CLI.
+- **No new account and no new machine.** Edge Functions deploy from the CLI. The function's code is committed with the rest of the repository.
 
 ## What stays the same
 
@@ -157,8 +161,9 @@ Measured on 2026-10-23 at 23:10 India time, on the live project, the local archi
 2. **Deploy a throwaway `collector-probe` function** that:
    - fetches Goa from eRaktKosh;
    - connects with `SUPABASE_DB_URL` and runs `set role bloodlink_ingest`;
-   - reports `SB_REGION`.
-3. **Call it twice:** with `x-region: ap-south-1`, and without the header. Record the region used, eRaktKosh's answer, the time and the database round trip.
+   - reports `SB_REGION`;
+   - also fetches Uttar Pradesh, the largest state (1.4 MB), and times the CPU spent parsing and validating it. Edge Functions allow 2 s of CPU per request, and the weekly directory's state-outline check took about 0.1 s in the fact check.
+3. **Call it twice:** with `x-region: ap-south-1`, and without the header. Record the region used, eRaktKosh's answer, the time, the CPU time and the database round trip.
 4. **Decide the region from the result.** If eRaktKosh refuses Supabase's addresses entirely, stop here and use the fallback below.
 5. **Delete the probe.**
 
@@ -222,9 +227,9 @@ Measured on 2026-10-23 at 23:10 India time, on the live project, the local archi
    - start it again, and confirm `sync.log` shows a run about 10 minutes after sign-in.
 8. **Update the docs:**
    - `CLAUDE.md`: the collector section, #35, the sync task, and the commands to re-create the laptop tasks;
-   - `../CODE_REFERENCE.md`;
+   - `docs/CODE_REFERENCE.md`;
    - `../blood_data/README.md`;
-   - `../report3.md`: point 3.1, "collection moved to Supabase".
+   - `docs/report3.md`: point 3.1, "collection moved to Supabase".
 
 ### Rollback (one minute)
 
@@ -292,7 +297,7 @@ After cutover, collection and storage happen entirely in the Supabase project. T
 - Both cloud copies sit in the same Supabase project, and the free plan backs up neither of them.
 - So if the project itself is lost, no second copy exists anywhere. That could happen if the project is:
   - deleted by mistake;
-  - paused for inactivity and not restored within 90 days;
+  - paused for inactivity and not restored within a year;
   - damaged by a bad migration, or by a bug that deletes rows or files.
 - A backup is simply a copy kept somewhere else, and the laptop is the cheapest "somewhere else".
 - `npm run archive:sync` downloads the archive into `../blood_data/`. That is the laptop's only role after cutover. Collection never depends on it.
@@ -359,7 +364,7 @@ Work starts when you ask for it, beginning with `npx supabase login`.
 - [Edge Function environment variables](https://supabase.com/docs/guides/functions/secrets): `SUPABASE_DB_URL` and `SUPABASE_SECRET_KEYS` are provided by default; `SUPABASE_SERVICE_ROLE_KEY` is listed as legacy.
 - [Migrating to publishable and secret API keys](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys): the legacy `service_role` key is being retired.
 - [Database backups](https://supabase.com/docs/guides/platform/backups): backups don't include Storage objects, and free projects aren't backed up automatically.
-- [Paused free projects are restorable for 90 days](https://supabase.com/changelog/27497-paused-free-plan-projects-are-restorable-for-90-days) (2024).
+- [Free project pausing](https://supabase.com/docs/guides/platform/free-project-pausing): a paused free project can be restored for up to a year (checked 24 October 2026, `verify_facts.md` F13). A [2024 changelog](https://supabase.com/changelog/27497-paused-free-plan-projects-are-restorable-for-90-days) said 90 days.
 - [Pricing](https://supabase.com/pricing): free plan 1 GB Storage, 5 GB egress a month.
 - [Task Scheduler task settings](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-r2-and-2008/cc722178(v=ws.11)): "Run task as soon as possible after a scheduled start is missed" starts a task missed because the computer was off, after a 10-minute wait.
 - [Regional invocations](https://supabase.com/docs/guides/functions/regional-invocation): the `x-region` header, and `x-sb-edge-region` in the response.

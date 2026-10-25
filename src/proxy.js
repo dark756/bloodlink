@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { safeNextPath } from "@/lib/auth";
 
 // Runs before every page request (see config.matcher):
 // 1. Refreshes the Supabase session and writes updated auth cookies.
-// 2. Sends signed-out users away from protected pages to /login.
+// 2. Sends signed-out users away from protected pages to /login, and signed-in
+//    users away from /login to the page its ?next= names.
 // 3. Sends users with an incomplete profile from /peer-to-peer to /set-details.
 // 4. Keeps non-admins out of /admin. Admin pages and admin database functions
 //    check the role again, so this is a convenience, not the only guard.
@@ -60,7 +62,7 @@ export async function proxy(request) {
   }
 
   if (pathname === "/login") {
-    return redirectTo("/");
+    return redirectTo(safeNextPath(request.nextUrl.searchParams.get("next"), "/"));
   }
 
   const needsProfile = isUnderPath(pathname, "/peer-to-peer") || isUnderPath(pathname, "/admin");

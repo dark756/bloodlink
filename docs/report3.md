@@ -3,9 +3,10 @@
 This report records every decision and step taken on 2026-10-23 to answer the reviewer's feedback in `documentation/suggested changes after sem 7 report 1.txt`. Each section has a plan, the decisions with their evidence, the steps taken, and how the result was checked.
 
 - **Code paths** are relative to `bloodlink/` unless they start with `../`.
-- **Nothing is committed.** All changes are local, on branch `supabase-migration`, on top of commit `798fe73`.
+- **Where the work is.** Branch `supabase-migration`, GitHub's default branch since 26 October. Report 3's work was committed on 24 October as `5af73b9`, on top of `798fe73`, and the review fixes on 26 October.
 - **Order of work.** The points are worked in the order they were asked, not by number: 2, 1, 3.1, 3.2, 4, 5.
-- **Follow-up on 2026-10-24.** `../data_integrity.md` re-checks point 3 independently and records six faults it found and fixed (#36 to #41). The counts and results here that it changed have been updated, and each point says where.
+- **Follow-up on 2026-10-24.** `docs/data_integrity.md` re-checks point 3 independently and records six faults it found and fixed (#36 to #41). The counts and results here that it changed have been updated, and each point says where.
+- **Reviews of 24 and 25 October.** `docs/review_and_next_moves.md` reviewed the code, docs and plans, and `docs/verify_facts.md` checked every number and outside fact. Thirteen of the faults they and a follow-up review found were fixed on 26 October; `CLAUDE.md` lists them and the ones still open. Where they corrected a figure or a source here, the text has been updated.
 
 **Contents**
 1. [Point 2: road routing (OSRM) and a time-aware ETA](#point-2-road-routing-osrm-and-a-time-aware-eta)
@@ -37,7 +38,7 @@ All of these were taken live on 2026-10-23.
 | Speed implied by OSRM's free-flow times on the same 94 trips | Median **65 km/h**. 56 km/h under 5 km, 76 km/h for 30 to 60 km. | OSRM's car profile assumes near-limit speeds, about twice what Mumbai traffic allows even with no congestion. OSRM time cannot be used raw. |
 | TomTom Traffic Index 2025, 10 Indian city pages | Measured free-flow speed (all roads, metro area) 28.8 to 39.7 km/h; Mumbai 33.7 km/h. Congestion level per weekday and hour (168 values per city), per month (12), morning and evening peaks. | Gives a real, cited speed and a rush-hour shape for each city. |
 | Mumbai example, TomTom | Average congestion 61.5%. Friday 6 pm 114.7%; Friday 3 am 1%. September 69.8% against May 52.5%. | Rush hour more than doubles travel time; the monsoon months are worse. |
-| eRaktKosh `nearest`, banks within 15 km of each of the 10 city centres | Ernakulam 14 to New Delhi 149. | Bank density tracks population: correlation of ln(banks) with ln(population) is 0.70. |
+| eRaktKosh `nearest`, banks within 15 km of each of the 10 city centres | Ernakulam 14 to New Delhi 149. | Bank density tracks population: correlation of ln(banks) with ln(population) is 0.70, using TomTom's metro populations, not Census figures. |
 | TomTom ranking, 381 cities outside North America | Congestion rises about **7.4 points per tenfold rise in population** (r = 0.43). | Used to scale the congestion level down for smaller towns. |
 | Open-Meteo current weather, no key | Works. Returns rain in the last 15 minutes. | Live rain can be included. |
 
@@ -85,7 +86,7 @@ All of these were taken live on 2026-10-23.
    - the free-flow floor;
    - the rain bands;
    - OSRM response parsing and fallback.
-9. **Docs:** `CLAUDE.md` (environment variable, scoring section, modules) and `../CODE_REFERENCE.md`.
+9. **Docs:** `CLAUDE.md` (environment variable, scoring section, modules) and `docs/CODE_REFERENCE.md`.
 
 ### Decisions
 
@@ -108,18 +109,20 @@ All of these were taken live on 2026-10-23.
 | Zone | Free-flow speed | Congestion level | Basis |
 |---|---|---|---|
 | metro | that city's measured speed | that city's measured profile | TomTom 2025, per city |
-| city | Indian average, all roads | Indian average profile (about 51%) | The 10 measured cities range from 40% to 62% at 14 to 149 banks, with no clear trend inside that range. |
-| town | Indian average, all roads | Indian average × 0.86 | One tenfold step down in population at 7.4 points per step (global TomTom fit). |
+| city | Indian average, all roads | Indian average × 0.89 | A city of about 2 million against the 9.7 million metro average, from TomTom's within-country fit. The first version used the Indian average unscaled; see "Change made while building". |
+| town | Halfway between city streets and open road (about 45 km/h) | Indian average × 0.73 | A town of about 300,000, from the same fit. The first version used 0.86 from a global fit and the city speed; see below. |
 | rural | Indian average on highways (about 58 km/h) | Indian average × 0.29 | Assumption: rural trips are mostly open road. Set to half the congestion measured on Indian metro highways (about 30%). Flagged for calibration. |
 
 **D2.4 · Population density is measured by blood-bank density.**
 - The app already counts banks within 15 km for the ring search.
-- That count correlates with city population (r = 0.70 over the 10 cities) and needs no extra data.
+- That count correlates with city population (r = 0.70 over the 10 cities, with TomTom's metro populations) and needs no extra data.
 - A census-density layer was considered and rejected for now. Census districts use different codes from eRaktKosh, and district-level density hides the difference between a city centre and its rural edge.
 
 **D2.5 · Season and rain are included; other factors are not.**
 - **Season:** the monthly factor carries the monsoon effect from measurement, for example Mumbai in September.
-- **Live rain:** moderate rain (2.5 to 7.6 mm/h) adds 15% and heavy rain (over 7.6 mm/h) adds 30%. These are at the low end of published Indian findings:
+- **Live rain:** moderate rain (2.5 to 7.6 mm/h) adds 15% and heavy rain (over 7.6 mm/h) adds 30%.
+  - The bands are the American Meteorological Society's hourly rain rates.
+  - The studies below classed rain by daily totals (India Meteorological Department categories), so the factors are set cautiously, at the low end of their findings:
   - 10% to 130% on two Mumbai roads (IIT Bombay, WCTR 2019);
   - +30% average in a rainy Bengaluru week (MoveInSync, 2022).
 - **Considered and left out:**
@@ -140,7 +143,7 @@ The first version scaled town congestion by 0.86 and kept the city free-flow spe
 - 50 minutes for a 15.6 km trip that locals would expect to take 30 to 35.
 
 Two fixes followed, both from data:
-- **Scale from comparisons inside each country.** Across 34 countries and 411 city pairs in the TomTom index, congestion relative to a country's largest city is 0.971 + 0.168 × log10(population ratio), with r = 0.40. Measured from the Indian metro average of 9.7 million people, a city of about 2 million comes out at 0.89 and a town of about 300,000 at 0.73. The scales became city 0.89 and town 0.73. The earlier cross-country fit had compared cities in different countries, which mixes national driving conditions in with city size.
+- **Scale from comparisons inside each country.** Across 34 countries and 411 city pairs in the TomTom index, congestion relative to a country's largest city is 0.971 + 0.168 × log10(population ratio), with r = 0.40. Measured from the Indian metro average of 9.7 million people (TomTom's metro populations), and divided by the fit's value at that average, a city of about 2 million comes out at about 0.88 and a town of about 300,000 at about 0.74. The scales became city 0.89 and town 0.73, under one point of congestion from those values; the exact inputs used weren't kept (`docs/verify_facts.md`, F5). The earlier cross-country fit had compared cities in different countries, which mixes national driving conditions in with city size.
 - **Town free-flow speed set halfway between city streets (33.1 km/h) and open road (57.8 km/h).** Town trips leave the built-up area quickly. This is an assumption and is listed for calibration in point 4.
 
 After the fix, the same Panaji trip is **34 minutes**.
@@ -151,7 +154,8 @@ After the fix, the same Panaji trip is **34 minutes**.
 2. **Wrote `scripts/build-traffic-profiles.mjs` and ran it.** It produced `assets/traffic_profiles.json`, 13.7 KB:
    - for each of the 10 cities: the 7 × 24 congestion grid, 12 seasonal factors, free-flow speeds and the metro bounding box;
    - an India average.
-   - The average is 51.5% congestion a year, 85.6% on a weekday at 6 pm and 60.3% on a Sunday at 6 pm.
+   - The average is 51.5% congestion a year: the mean of TomTom's ten traffic-weighted city figures. The hourly grid itself averages 39.7% over the week, because quiet hours count equally.
+   - At 6 pm it is 85.6% on a Monday, 89.5% on a Friday and 60.3% on a Sunday.
    - The seasonal factor is 1.09 to 1.11 in July to September and 0.89 in March.
 3. **Added `src/lib/traffic.js`** (pure, browser-safe), **`src/lib/routing.js`** and **`src/lib/weather.js`** (server only), as planned.
 4. **`src/lib/ranking.js`.**
@@ -193,7 +197,7 @@ After the fix, the same Panaji trip is **34 minutes**.
 - **"OSRM doesn't know traffic."** Correct, so OSRM supplies only the road network and distance. Speeds and the rush-hour shape come from TomTom's measured data.
   - OSRM alone would claim 65 km/h through Mumbai.
   - TomTom's figures are the published averages for the same cities, and the code shows which hour and month were used.
-- **"Population density?"** It is measured by bank density, which correlates 0.70 with city population over the measured cities. The scales come from a 411-city fit.
+- **"Population density?"** It is measured by bank density, which correlates 0.70 with city population (TomTom's metro populations) over the measured cities. The scales come from a 411-city fit.
 - **"Is the rural value made up?"** Partly. It is the one assumption with no direct measurement, and it is flagged in the code. Point 4 gives the calibration method: compare against timed sample trips.
 - **Public server limits are respected.** The app makes at most one OSRM request a second, sends an honest User-Agent, and credits OpenStreetMap. Production should self-host OSRM with Docker and the Geofabrik India extract. Three commands are needed (`osrm-extract`, `osrm-partition` and `osrm-customize`, then `osrm-routed --algorithm mld`), and the preprocessing needs about 8 to 12 GB of memory. Only `OSRM_URL` changes.
 - **Data licences.**
@@ -203,7 +207,7 @@ After the fix, the same Panaji trip is **34 minutes**.
 
 **Sources:**
 - [TomTom Traffic Index 2025](https://www.tomtom.com/traffic-index/ranking/), city pages, for example [Mumbai](https://www.tomtom.com/traffic-index/city/mumbai/).
-- [FOSSGIS routing usage policy](https://routing.openstreetmap.de/about.html): one request per second, a valid User-Agent, no heavy use.
+- [OSRM demo-server policy](https://github.com/Project-OSRM/osrm-backend/wiki/Demo-server): the rules for `router.project-osrm.org`, the server the app uses. At most one request a second, a valid User-Agent, no heavy use. FOSSGIS sponsors it; its [routing usage policy](https://routing.openstreetmap.de/about.html) covers a different server, `routing.openstreetmap.de`.
 - [IIT Bombay, WCTR 2019](https://www.wctrs-society.com/wp-content/uploads/abstracts/mumbai/WCTR2019_Mumbai_526.pdf): rain raised travel time 10% to 130% on two Mumbai roads.
 - [The News Minute, on MoveInSync](https://www.thenewsminute.com/article/bengaluru-rains-pushed-average-commute-time-62-august-167433): Bengaluru rain week, about +30% average travel time.
 - [Down To Earth, TomTom 2025](https://www.downtoearth.org.in/amp/story/urbanisation/bengaluru-kolkata-among-worlds-slowest-cities-as-india-ranks-high-on-congestion-index): Bengaluru centre 74.4%.
@@ -308,7 +312,7 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
    - freshness;
    - urgency trade-off;
    - plan coverage and shortfall.
-6. **Docs.** `CLAUDE.md` now covers the scoring, weights, travel model, environment variable, modules and verification steps. `../CODE_REFERENCE.md` has every new and changed name. Its cross-check script reports 0 missing either way.
+6. **Docs.** `CLAUDE.md` now covers the scoring, weights, travel model, environment variable, modules and verification steps. `docs/CODE_REFERENCE.md` has every new and changed name. Its cross-check script reports 0 missing either way.
 
 ### Results
 
@@ -350,12 +354,12 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
 | `offline` | "1" for 4,648 banks, "0" for 59. The "0" banks' median stock age is **104 h**, against 9.7 h. | It is not "entered by hand". It marks banks that rarely update, and the freshness score already penalises those, so it is not used separately. |
 | `moderateStock` | Always "0" or empty | Carries no information. Ignored. |
 | `stockSource` (directory) | 2 for 4,073 banks; 1, 3 and 0 for the rest. Banks with 0 have the oldest stock: 90th-percentile age 722 h. | Meaning unpublished. Kept in the directory for later analysis; not scored. |
-| Stock age over all 4,707 banks | Median **9.7 h**, 75th percentile 18.5 h, 90th percentile 222 h. 23.9% are older than 1 day, **6.3% older than 30 days**, 3.3% older than 90 days. The oldest is 236 days. | The dormant cut-off of 30 days is confirmed. It marks 297 banks. |
+| Stock age over all 4,707 banks, at 18:30 | Median **9.7 h** (most banks update between 07:00 and 12:00, so the median depends on the hour: 3.3 h at 10:47 the next morning), 75th percentile 18.5 h, 90th percentile 222 h. 23.9% are older than 1 day, **6.3% older than 30 days**, 3.3% older than 90 days. The oldest is 236 days. | The dormant cut-off of 30 days is confirmed. It marks 297 banks. |
 | Group labels | **1,694 entries do not match our names.** They use "O +ve", with a space and lower case. The 116 "Oh+VE" entries already match. | **A real bug.** The app compared names exactly, so all searches missed these entries in at least 10 states. Fixed by normalising labels (step 1 below). The validator's count on the same sweep agrees exactly: 1,694 renamed. |
 | Unit counts | 57,946 group entries. 99th percentile 290; **30 entries over 2,000**, the largest 15,280; none negative. | Values over 2,000 per group are implausible and dropped. |
 | Duplicates | No `hospitalCode` repeats, within a state or across states | The rule "keep the newer row" stays as a guard. |
 | Coordinates | 2 banks are placed outside India (longitude 64 and 66). 606 banks share 203 identical points. | Flagged in the directory as `location_quality`. |
-| Access from outside India | Not tested: that needs a GitHub Actions run, which needs a push, and nothing is to be committed. | Collection runs on this machine, in India, so the question doesn't affect this stage. |
+| Access from outside India | Tested on 24 October from a cloud container outside India: every call answered, though a full sweep took 182 s against 87 s from here (`docs/verify_facts.md`). | Collection runs on this machine, in India. The Supabase scheduler plan tests its own region first. |
 
 ### Plan
 
@@ -403,10 +407,10 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
    Writers and views:
    - All writes go through a new no-login role, `bloodlink_ingest`. The collector connects with the existing `SUPABASE_DB_URL` and immediately runs `set role bloodlink_ingest`, so for the rest of the session it can only touch the stock tables. No new password is created. Before deployment, the role gets a login and its own connection string.
    - An `upstream_stats` view is created with `security_invoker`.
-   - A `prune_stock_history(days)` function trims old history.
+   - A `prune_stock_store(p_history_days, p_call_days)` function trims history after 60 days and the call log after 90. It runs as `bloodlink_ingest`; the column grant it needs was added on 26 October (#56), and until then every prune failed.
 8. **`src/lib/stockStore.js`** (new, server only). Reads the saved copy with the publishable key:
    - for a state, in eRaktKosh's own row shape, so the existing parsing works unchanged;
-   - for the directory, `nearestFromDirectory` gives straight-line distances in memory when `nearest` is down.
+   - for the directory, `loadSavedNearest` gives straight-line distances in memory when `nearest` is down.
 9. **`scripts/snapshot.mjs`** (new):
    - `--directory` saves the nationwide `nearest` call;
    - `--states 30,99` or `--all` saves stock state by state, 1 second apart, validated with `stockQuality.js`;
@@ -424,7 +428,7 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
 
 **D3.1 · Collect hourly, from this machine, writing through a limited role.**
 - **Hourly.** A full sweep takes about 3.5 minutes and downloads 9.5 MB. Hourly is the most often the request allows.
-- **Why not more often?** The median bank updates about every 10 hours (median stock age 9.7 h), so polling more often would mostly re-read unchanged data.
+- **Why not more often?** A bank updates its stock about once a day (a median gap of 24.2 h in the first repeat updates collected), so polling more often would mostly re-read unchanged data.
 - **Why not less often?** A stock-out forecast needs to see the drop before it happens. Daily samples would miss same-day drops.
 - **Why this machine?** It is in India, so the "blocked abroad" question doesn't arise, and a scheduler is free.
 - **Why a role and not a new password?** `set role bloodlink_ingest` limits the session without creating a new secret.
@@ -458,7 +462,7 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
 - Saving after live searches with Next's `after()`.
 - A login for the ingest role, with an `INGEST_DB_URL`.
 - Logging the app's own eRaktKosh calls.
-- A server-side scheduler. The approved plan is `../supabase_scheduler.md`: Supabase `pg_cron` plus an Edge Function, every 4.5 hours. It isn't started yet.
+- A server-side scheduler. The approved plan is `docs/supabase_scheduler.md`: Supabase `pg_cron` plus an Edge Function, every 4.5 hours. It isn't started yet.
 
   The request asked for collection only, not a deployment-ready system.
 
@@ -511,7 +515,7 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
       - Each state is saved in its own transaction.
       - History is event-based, so a missed hour loses a bank's update only if that bank updated twice within the gap; banks update about once a day.
       - The next sweep picks up every change.
-13. **Tests:** `tests/eraktkosh-client.test.js` (14 tests) and `tests/stock-quality.test.js` (10 tests), plus a dormant scenario in `tests/ranking.test.js`. That made 94 tests. The fixes on 24 October added 24 more, for **118** (`../data_integrity.md`).
+13. **Tests:** `tests/eraktkosh-client.test.js` (14 tests) and `tests/stock-quality.test.js` (10 tests), plus a dormant scenario in `tests/ranking.test.js`. That made 94 tests. The fixes on 24 October added 24 more, for 118 (`docs/data_integrity.md`), and the review fixes on 26 October 7 more, for **125**.
 
 ### Results
 
@@ -541,7 +545,7 @@ No request failed, out of 560 (55 sequential and 505 concurrent).
 | **flaky** (half of calls fail) | 0.3 to 1.7 s, live: the retry hid every failure. Uttar Pradesh 8.0 s, saved. | Cache or live | No banner, except for the saved Uttar Pradesh copy |
 | **Maharashtra blocked** (`ERAKTKOSH_SIMULATE_STATES=27`) | Goa live 0.29 s. Mumbai 1.2 s and 0.3 s, Maharashtra from the saved copy. | Same | Yellow banner for the saved copy. With no saved copy, the state is named: "Couldn't check Maharashtra" (unit test). |
 
-**Re-run on 24 October** (`../data_integrity.md`, API failures). This drill missed two faults, both since fixed:
+**Re-run on 24 October** (`docs/data_integrity.md`, API failures). This drill missed two faults, both since fixed:
 - **#37:** with eRaktKosh down, the saved copy could count the wrong component. A plasma-only bank ranked first for red cells.
 - **#38:** the Maharashtra row passed only because each Mumbai search also fetched Tamil Nadu. That success reset a circuit shared by every state. Each state now has its own circuit.
 
@@ -555,7 +559,7 @@ After the fixes, every mode answered again, and with Maharashtra blocked, Goa, T
 
 ### Data quality write-up (reviewer point 3)
 
-`../data_integrity.md` checks each item below again, with the 24 October counts.
+`docs/data_integrity.md` checks each item below again, with the 24 October counts.
 
 - **Standardised.**
   - Group labels go to 10 canonical names: 1,694 entries renamed.
@@ -645,7 +649,7 @@ The login-only monthly endpoints hold exactly what a demand model needs: units i
 - Precision is preferred over recall: a wrong match would put a bank in the wrong place on the map.
 
 **D3.2.3 · Refresh the app's district lookup.**
-- `bloodlink/assets/district_data.json` was byte-identical to the April download. Since then eRaktKosh added 3 districts, removed 1 and renamed 2.
+- `bloodlink/assets/district_data.json` was byte-identical to the April download. Since then eRaktKosh added 3 districts, dropped a duplicate Majuli entry (code 746; Majuli is still listed as 713) and renamed 2.
 - The re-fetched `master/all` is the same source, so it replaced the app's copy, and all 94 tests still pass.
 - Without it, a search in Polavaram or Markapuram would have been rejected as an unknown district.
 
@@ -672,8 +676,8 @@ The login-only monthly endpoints hold exactly what a demand model needs: units i
 
 | Dataset | Size | Validation summary | Use for the forecast |
 |---|---|---|---|
-| **eRaktKosh stock, our hourly collection** | 4,707 banks, growing hourly | No duplicates. 1,694 labels normalised, 30 implausible counts dropped. Median age 9.7 h; 6.3% dormant | The target: units per bank, component and group over time |
-| **eRaktKosh auto-refresh banks** | 452 codes, 412 with stock | **Median stock age 0.3 h, against 9.7 h for the rest** | The best near-real-time series to start modelling on |
+| **eRaktKosh stock, our hourly collection** | 4,707 banks, growing hourly | No duplicates. 1,694 labels normalised, 30 implausible counts dropped. Median age 9.7 h at 18:30 (it depends on the hour); 6.3% dormant | The target: units per bank, component and group over time |
+| **eRaktKosh auto-refresh banks** | 452 codes, 412 with stock | **Median stock age 0.3 h, against 9.7 h for the rest**, at 18:30 on 23 October, minutes after a refresh batch. At 10:47 the next morning it was 4.6 h against 3.2 h: they refresh in batches at fixed times | Regularly refreshed series. Check against the history whether they are the best ones to model first |
 | **eRaktKosh camps** | 80,757, Oct 2025 to Nov 2026 | No duplicate ids. 78.9% linked to a bank. Peaks in September (12,192) and June; low in February; Sunday 24% | Supply events per bank; seasonality |
 | eRaktKosh directory | 4,328 banks | 2 outside India, 606 on shared points, 6 possible duplicate code pairs, 679 stocked banks without coordinates | Location, and the benchmark dataset (reviewer point 2) |
 | data.gov.in directory | 2,823 banks | 33 duplicates, 372 at (0, 0), 14 outside India, licence dates up to "2105". 34.5% match eRaktKosh | Licence and service-hour attributes; placed 15 coordinate-less banks |
@@ -737,13 +741,13 @@ A fixed threshold would flag almost every negative-group stock all the time. The
 
 | Level | What it proves | Tool | Status today | How to run | What to add |
 |---|---|---|---|---|---|
-| **Unit** | Each pure module gives the right answer, including edge cases | Vitest | **118 tests, all passing.** By file: ranking 20, eRaktKosh client 19, traffic 16, stock and profile 15, compatibility 13, stock quality 10, routing 8, state bounds 7, rings 6, rate limit 4 | `npm test` | Keep one test per bug fixed |
+| **Unit** | Each pure module gives the right answer, including edge cases | Vitest | **125 tests, all passing.** By file: ranking 20, eRaktKosh client 19, stock and profile 17, traffic 16, compatibility 13, stock quality 10, routing 8, state bounds 7, rings 6, auth 5, rate limit 4 | `npm test` | Keep one test per bug fixed |
 | **Integration (API routes)** | A route turns a request into the right response, status code and headers | Vitest, calling the route's `GET(new Request(url))` with `vi.mock("@/lib/eraktkosh")` returning fixed rows | Not yet. The client is injectable (`createEraktkoshClient`), so it is ready to mock | `npm test` | `/api/blood-search` in nearest, ranked and saved-copy modes; 400s for bad input; 429 after 20 requests; the `freshness` block |
 | **End-to-end** | Real user journeys in a browser | Playwright against `next start`, with a **local** Supabase (`supabase start`, then `npm run db:migrate` on it) and seeded users | A one-off script ran 47 checks on 2026-10-23 but isn't kept, because it wrote to the live project (#20) | `npx playwright test` | Search by region, location and ranked; sign-up and sign-in; the profile form; apply as an organisation; admin approval |
 | **Security** | Row-level security and grants refuse what they should | `curl` or supabase-js with the publishable key, and with a signed-in non-admin | Checked by hand for every table, with results in 3.1 and the earlier 47 checks | `CLAUDE.md` › Verifying changes | Make it a suite against local Supabase, run in CI |
 | **Performance** | Response time, load and the scalability of spatial search | `npm run measure`, `scripts/benchmark-geo.mjs`, `scripts/ranking-sensitivity.mjs` | **Measured**; results below | Below. Start the server with `TRUSTED_PROXY_HOPS=1`, so each simulated user gets its own rate limit | A nightly smoke run that warns if the 95th percentile rises by 50% |
 | **Failure** | Each eRaktKosh failure still gives a usable answer | `ERAKTKOSH_SIMULATE`, `ERAKTKOSH_SIMULATE_STATES` | **Drilled in all four modes**; see 3.1. Re-run on 24 October after fixes #37 and #38 | 3.1 › Failure drill | Run it before every demo |
-| **Data quality** | Incoming data still fits the rules | `blood_data/scripts/validate_*.py`; the `quality` counts in `upstream_calls` | Run on 2026-10-23 and re-checked on 24 October; see 3.2 and `../data_integrity.md` | `python -I blood_data/scripts/validate_history.py blood_data` | A weekly run that warns on new label spellings or below 95% success |
+| **Data quality** | Incoming data still fits the rules | `blood_data/scripts/validate_*.py`; the `quality` counts in `upstream_calls` | Run on 2026-10-23 and re-checked on 24 October; see 3.2 and `docs/data_integrity.md` | `python -I blood_data/scripts/validate_history.py blood_data` | A weekly run that warns on new label spellings or below 95% success |
 | **CI** | Nothing merges broken | GitHub Actions | Not yet (#20) | — | Lint, format check, test and build on every push |
 
 ### Results
@@ -823,11 +827,11 @@ A fixed threshold would flag almost every negative-group stock all the time. The
 | Failure handling | Make the provider return 500s or time out | Retried with back-off, never sent twice, failures logged |
 | Correctness | Unit tests for who is told, using the compatibility and eligibility modules: only eligible donors, nobody already asked within the cooldown, opt-outs respected | 100% of the rules covered |
 
-**ETA accuracy**, the calibration flagged in point 2:
-- **Collect:** at least 20 routes in each zone (metro, city, town, rural), each timed at 3 times of day (night, midday, evening peak), by timed drives or Google Maps' typical times recorded by hand.
-- **Measure:** mean absolute error, mean percentage error and bias, by zone and hour.
-- **Adjust:** `ZONE_SCALE` and the town and rural free-flow speeds until the percentage error is under 25% everywhere.
-- **Save:** the trips go in `blood_data/eta_calibration/` as a regression test.
+**ETA accuracy**, the calibration flagged in point 2. `docs/plan_eta_comparison.md` now plans it in full: a rubric fixed before any results, timed trips as the truth, and Google's traffic-aware predictions as a reference for the week's pattern. In short:
+- **Collect:** timed trips by car or taxi in each zone (metro, city, town, rural) at night, midday and the evening peak, plus Google's predictions for the same weekday and time through its Routes API.
+- **Measure:** mean absolute error, mean percentage error and bias, by zone and hour, and whether each method picks the same first bank as the true times.
+- **Adjust:** `ZONE_SCALE` and the town and rural free-flow speeds from the timed trips only, until the percentage error is under 25% everywhere. Google's numbers are used to score, never to tune (the plan's decision E10).
+- **Save:** the trips go in `../blood_data/eta_calibration/` as a regression test.
 
 **Forecast quality** is defined in point 5.
 
@@ -854,7 +858,7 @@ This also answers the reviewer's point 5: where AI/ML fits in BloodLink, what de
 
 | Need | Source (point 3) | Ready? |
 |---|---|---|
-| Stock over time, per bank, component and group | `stock_history`, plus `blood_data/eraktkosh/history/`, hourly since 2026-10-23 | **Growing.** Weekly patterns need about 8 weeks, and festivals need a year. The 412 auto-refresh banks (median age 0.3 h) give the cleanest series. |
+| Stock over time, per bank, component and group | `stock_history`, plus `blood_data/eraktkosh/history/`, hourly since 2026-10-23 | **Growing.** Weekly patterns need about 8 weeks, and festivals need a year. The 412 auto-refresh banks are refreshed in batches at fixed times, which may make them the cleanest series; the history will show. |
 | Supply events | 80,757 camps, 78.9% linked to a bank | Yes: a year of history, with September and June peaks |
 | Calendar effects | Malaysia's 20-year series as a proxy: weekday explains 65% of daily variation; the Hari Raya week drops to 36–55% | Method yes. India's own effects (Diwali, Holi, Eid, exams, summer) need an Indian holiday calendar, easy to add |
 | Demand drivers | NCVBDC dengue by state and year; monsoon season (rain and seasonal factors already exist in point 2's model) | Yearly only; monthly would need IDSP weekly reports |
@@ -949,8 +953,8 @@ Each suggestion in `documentation/suggested changes after sem 7 report 1.txt`, w
 |---|---|---|---|---|
 | 1 | A defined, validated ranking algorithm: compatibility, distance, ETA, reliability; scoring and weights explained with examples or test scenarios | Four scores (ETA, coverage, surplus, freshness) with urgency weights; exact blood group only; spare stock rewarded most when critical; ETA from road routes and traffic | Point 1 (D1.1 to D1.5, worked example 59.8 against 56.9); point 4 sensitivity (first choice unchanged in 92–98% of ±20% weight changes, τ ≈ 0.98); 20 unit tests | **Completed** |
 | 2 | Benchmark Haversine, the expanding rings and spatial indexing at different dataset sizes: time, candidates evaluated, scalability | Linear, rings, grid, k-d tree, R-tree and PostGIS GiST, from 4,328 to 500,000 points | Point 4 tables. Linear is about 0.1 ms today; indexes are 75 to 300× faster at 100,000+ points. PostGIS column and index added | **Completed.** Using the index for donor search is **Planned** |
-| 3 | Data standardisation, validation, de-duplication and refresh for the ~4,487 records; stale data and API failures demonstrated; other datasets | Validator (labels, ranges, dates, duplicates), hourly collection, saved fallback, two ages per bank, dormant banks, failure drill; cross-source matching; 6 other datasets found and validated, plus state outlines to check coordinates | Point 3.1 (Phase 0 survey, drill table), point 3.2 (`blood_data/`, quality reports, crosswalk), `../data_integrity.md` (independent re-check; coordinates checked against state outlines; six faults fixed) | **Completed.** Placing the 679 unlocated banks (#33) and re-placing the 206 in the wrong state (#34) are **In progress** |
-| 4 | Measurable results: functional tests, response time, load, notification performance, failure scenarios | Test-level plan with numbers: 118 unit tests; response times; 20 concurrent users; failure drill; benchmark | Point 4 and point 3.1 tables; `blood_data/measurements/` | **Completed** for everything built. Integration and end-to-end suites and CI (#20) are **Planned**; notification tests are **Planned** with the feature |
+| 3 | Data standardisation, validation, de-duplication and refresh for the ~4,487 records; stale data and API failures demonstrated; other datasets | Validator (labels, ranges, dates, duplicates), hourly collection, saved fallback, two ages per bank, dormant banks, failure drill; cross-source matching; 6 other datasets found and validated, plus state outlines to check coordinates | Point 3.1 (Phase 0 survey, drill table), point 3.2 (`blood_data/`, quality reports, crosswalk), `docs/data_integrity.md` (independent re-check; coordinates checked against state outlines; six faults fixed) | **Completed.** Placing the 679 unlocated banks (#33) and re-placing the 206 in the wrong state (#34) are **In progress** |
+| 4 | Measurable results: functional tests, response time, load, notification performance, failure scenarios | Test-level plan with numbers: 125 unit tests; response times; 20 concurrent users; failure drill; benchmark | Point 4 and point 3.1 tables; `blood_data/measurements/` | **Completed** for everything built. Integration and end-to-end suites and CI (#20) are **Planned**; notification tests are **Planned** with the feature |
 | 5 | Where AI/ML fits, what it improves, inputs, outputs, and how the engine uses it | Stock-out risk per bank × component × group, feeding donor alerts and ranking; B, A and C compared by walk-forward backtest | Point 5 | **Planned.** Data collection is **In progress** (hourly since 2026-10-23), with a backtest due in late December 2026 |
 | 6 | Clearly separate completed, in-progress and planned work | This table, plus the issue list in `CLAUDE.md` | — | **Completed** |
 
@@ -958,7 +962,7 @@ Each suggestion in `documentation/suggested changes after sem 7 report 1.txt`, w
 
 | Status | Items |
 |---|---|
-| **Completed** | Region, location and ranked search. Exact-group ranking with the surplus score. OSRM routes with time-of-day, density, seasonal and rain-aware ETA. Response plan. eRaktKosh validation, circuit, retry, give-up and saved-copy fallback. Stock store, with hourly collection and history. Dormant banks. Freshness banners and two ages. Supabase Auth, profiles and donor eligibility. Organisation verification and admin tools. Collection-health card. PostGIS locations. State-boundary check on bank coordinates. 118 unit tests, measurements, failure drill, benchmark and sensitivity analysis. |
+| **Completed** | Region, location and ranked search. Exact-group ranking with the surplus score. OSRM routes with time-of-day, density, seasonal and rain-aware ETA. Response plan. eRaktKosh validation, circuit, retry, give-up and saved-copy fallback. Stock store, with hourly collection and history. Dormant banks. Freshness banners and two ages. Supabase Auth, profiles and donor eligibility. Organisation verification and admin tools. Collection-health card. PostGIS locations. State-boundary check on bank coordinates. 125 unit tests, measurements, failure drill, benchmark and sensitivity analysis. |
 | **In progress** | Stock history accumulating, hourly. Locating the 679 banks without coordinates (#33). Re-placing the 206 banks in the wrong state and reviewing duplicate codes (#34). |
 | **Planned** | Stock-out forecasting (point 5). Donor network: locations, requests, notifications. Hospital and blood-bank dashboards. Self-hosted OSRM, and ETA calibration from timed trips. Integration and end-to-end tests with CI (#20). Deployment: server-side collector, ingest login, `after()` saves, consent and account deletion (#18). |
 

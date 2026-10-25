@@ -236,7 +236,7 @@ Each criterion is scored 0 to 4 against the anchors below, multiplied by its wei
 | C1 | **Absolute accuracy:** MAPE on test trips, in every zone and in the evening peak band | 25 | ≤ 15% in every zone and in the peak band, and \|bias\| ≤ 5% | ≤ 25% in every zone and in the peak band (report 3's target) | ≤ 25% overall, with one zone or the peak band above | 25% to 40% overall | > 40% |
 | C2 | **Ranking fidelity:** first choice matches the ranking under true times | 20 | ≥ 95% | ≥ 90% | ≥ 80% | ≥ 70% | < 70% |
 | C3 | **Trend capture:** mean trend R² against Google over the pairs with a clear pattern ([the trend test](#trend-metrics)) | 10 | ≥ 0.8, and ≥ 0.6 in every zone | ≥ 0.6 | ≥ 0.4 | ≥ 0.2 | < 0.2, including every time-blind method |
-| C4 | **Latency:** 95th-percentile time for one search's table (up to 38 banks) | 10 | ≤ 300 ms | ≤ 1 s | ≤ 3 s (`MAX_QUEUE_WAIT_MS`) | ≤ 6 s (`TIMEOUT_MS`) | > 6 s |
+| C4 | **Latency:** 95th-percentile time for one search's table. `/api/blood-search` routes every candidate bank in the widest ring, not only the ring it shows: 137 in central Delhi, and more in rural 150 km rings, in calls of up to 250 | 10 | ≤ 300 ms | ≤ 1 s | ≤ 3 s (`MAX_QUEUE_WAIT_MS`) | ≤ 6 s (`TIMEOUT_MS`) | > 6 s |
 | C5 | **Reliability:** share of calls that succeed over a 200-call run | 10 | ≥ 99.5% | ≥ 99% | ≥ 97% | ≥ 90% | < 90% |
 | C6 | **Running cost** at 10,000 searches a month | 10 | ₹0, no card | ₹0 within a free tier, card needed | < ₹1,000 | < ₹5,000 | more |
 | C7 | **Explainability:** can the app say why the ETA is what it is? | 5 | Every factor shown and cited | Most factors shown | Engine output plus one adjustment | Opaque but stable | Opaque and changes without notice |
@@ -459,9 +459,9 @@ If time is short, phases 0, 1, 2 and 5 already answer "which method follows the 
 
 ## Sources
 
-- `md files/report3.md`, point 2 (the model and its measurements: 1.34 detour, 65 km/h OSRM, 33.7 km/h TomTom Mumbai, zone scales) and point 4 (the ETA calibration test it planned).
+- `docs/report3.md`, point 2 (the model and its measurements: 1.34 detour, 65 km/h OSRM, 33.7 km/h TomTom Mumbai, zone scales) and point 4 (the ETA calibration test it planned).
 - [TomTom Traffic Index](https://www.tomtom.com/traffic-index/ranking/): the profiles in `assets/traffic_profiles.json`.
-- [FOSSGIS routing usage policy](https://routing.openstreetmap.de/about.html): the public OSRM server's limits.
+- [OSRM demo-server policy](https://github.com/Project-OSRM/osrm-backend/wiki/Demo-server): the limits of `router.project-osrm.org`, the server `routing.js` uses. FOSSGIS's [routing usage policy](https://routing.openstreetmap.de/about.html) covers its own server, `routing.openstreetmap.de`.
 - [Google Maps Platform service specific terms](https://cloud.google.com/maps-platform/terms/maps-service-terms/index-20240522): an example of caching limits to check under gate G1.
 - [Routes API: traffic models](https://developers.google.com/maps/documentation/routes/traffic-model): `BEST_GUESS`, `PESSIMISTIC` and `OPTIMISTIC`; they need `TRAFFIC_AWARE_OPTIMAL`; both Compute Routes and Compute Route Matrix support them.
 - [Routes API: Compute Route Matrix](https://developers.google.com/maps/documentation/routes/compute_route_matrix): at most 100 elements per request with `TRAFFIC_AWARE_OPTIMAL`, 625 otherwise.

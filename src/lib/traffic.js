@@ -24,9 +24,14 @@ export const ZONE_MIN_BANKS = { city: 11, town: 3 };
 // Share of the Indian average congestion level. Inside each of 34 countries in
 // the TomTom index, congestion relative to the largest city falls by 0.168 per
 // tenfold drop in population (411 cities). From the Indian metro average (9.7 M
-// people) that gives 0.89 for a city of about 2 M and 0.73 for a town of about
-// 300 k. rural is an assumption: half the congestion on Indian metro highways.
+// people, TomTom's metro populations) the fit gives about 0.88 for a city of about
+// 2 M and 0.74 for a town of about 300 k, once divided by its value at the metro
+// average. 0.89 and 0.73 are used, under one point of congestion away.
+// rural is an assumption: half the congestion on Indian metro highways.
 export const ZONE_SCALE = { metro: 1, city: 0.89, town: 0.73, rural: 0.29 };
+// The 2.5 and 7.6 mm/h bands are the American Meteorological Society's moderate and
+// heavy rain rates. The factors sit at the low end of studies that classed rain by
+// daily totals (India Meteorological Department categories), so they are cautious.
 export const RAIN = {
   moderateMmPerHour: 2.5,
   heavyMmPerHour: 7.6,
