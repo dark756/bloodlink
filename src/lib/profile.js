@@ -7,6 +7,13 @@ import { BLOOD_GROUPS, findState } from "./constants";
 export const PHONE_PATTERN = /^\+?[\d -]{7,20}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const GENDERS = ["male", "female", "other"];
+const IST_OFFSET_MS = 5.5 * 3_600_000;
+
+// Today in India as "YYYY-MM-DD". People type local dates, and between midnight
+// and 05:30 India's date is a day ahead of UTC's.
+function indiaToday(now) {
+  return new Date(now.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
 
 // A trimmed string cut to maxLength; anything that isn't a string becomes "".
 export function trimText(value, maxLength) {
@@ -17,13 +24,15 @@ export function trimText(value, maxLength) {
 function parsePastDate(value, today) {
   if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string" || !DATE_PATTERN.test(value)) return false;
-  if (Number.isNaN(new Date(value).getTime())) return false;
+  // A real calendar date: JavaScript would roll "2026-02-30" over to 2 March.
+  const date = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) return false;
   return value <= today ? value : false;
 }
 
 export function sanitizeDetails(input, now = new Date()) {
   const fields = input && typeof input === "object" ? input : {};
-  const today = now.toISOString().slice(0, 10);
+  const today = indiaToday(now);
   const errors = [];
 
   const fullName = trimText(fields.fullName, 100);

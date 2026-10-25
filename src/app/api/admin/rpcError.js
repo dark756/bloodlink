@@ -10,6 +10,13 @@ export function rpcErrorResponse(error) {
       return jsonError(error.message, 400);
     case "P0002":
       return jsonError(error.message, 404);
+    // The one-open-application index: approving an old application while the
+    // same person has another pending or approved one.
+    case "23505":
+      return jsonError(
+        "This person already has a pending or approved application. Reject or suspend it first.",
+        409,
+      );
     default:
       console.error("admin rpc failed:", error.code, error.message);
       return jsonError("The action failed. Please try again.", 500);

@@ -61,6 +61,9 @@ export async function loadSavedAvailability({ stateCode, districtId, componentId
 const directoryCache = globalThis._bloodlinkDirectory ?? { banks: null, loadedAt: 0 };
 globalThis._bloodlinkDirectory = directoryCache;
 
+// Banks flagged wrong_state or outside_india are kept, as eRaktKosh's own answer
+// keeps them: /api/blood-search leaves them out and counts them as misplaced, so
+// the count stays right while the saved copy is in use.
 async function loadDirectory(supabase) {
   if (directoryCache.banks && Date.now() - directoryCache.loadedAt < DIRECTORY_TTL_MS) {
     return directoryCache.banks;
@@ -71,7 +74,6 @@ async function loadDirectory(supabase) {
       .select(
         "hospital_code, name, address, phone, state_code, district_id, latitude, longitude, bank_type, hospital_type, stock_source, last_seen_at",
       )
-      .not("location_quality", "in", "(outside_india,wrong_state)")
       .not("latitude", "is", null)
       .order("hospital_code"),
   );

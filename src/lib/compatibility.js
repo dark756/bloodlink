@@ -1,7 +1,12 @@
 import { BLOOD_GROUPS, getComponentName } from "./constants";
 
-// Blood compatibility by component, for ranking sources.
+// Blood compatibility by component. Search doesn't use it: since report 3 it counts
+// the patient's exact group only. It is kept for donor matching, where a clinician
+// confirms any substitute.
 // INFORMATIONAL ONLY: real transfusions always need cross-matching by a blood bank.
+// The rules are conservative. In an emergency, transfusion services may give
+// out-of-group platelets or cryoprecipitate, or RhD-positive red cells to an
+// RhD-negative patient; these rules never do.
 //
 // Rules (recipient -> acceptable donor groups):
 // - Red cells (PRBC, SAGM, irradiated, leukoreduced): donor red cells must not carry

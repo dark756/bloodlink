@@ -5,10 +5,11 @@ import axios from "axios";
 import { BLOOD_GROUPS, STATES, districtsFor } from "@/lib/constants";
 import { evaluateEligibility } from "@/lib/eligibility";
 
+// No gender is preselected: it sets the donation gap (90 days for men, 120 otherwise).
 const EMPTY_FORM = {
   fullName: "",
   dob: "",
-  gender: "male",
+  gender: "",
   phone: "",
   stateCode: "",
   districtCode: "",
@@ -38,7 +39,7 @@ function formFromDetails(details) {
     ...EMPTY_FORM,
     fullName: details.fullName ?? "",
     dob: details.dob ?? "",
-    gender: details.gender ?? "male",
+    gender: details.gender ?? "",
     phone: details.phone ?? "",
     stateCode: details.stateCode ? String(details.stateCode) : "",
     districtCode: details.districtCode ? String(details.districtCode) : "",
@@ -200,7 +201,7 @@ export default function SetDetailsPage() {
 
   function handlePersonalStepSubmit(event) {
     event.preventDefault();
-    if (!form.fullName || !form.dob || !form.phone || !form.stateCode) {
+    if (!form.fullName || !form.dob || !form.gender || !form.phone || !form.stateCode) {
       setError("Please fill in all required fields.");
       return;
     }
@@ -272,7 +273,9 @@ export default function SetDetailsPage() {
                     className="select"
                     value={form.gender}
                     onChange={handleFieldChange("gender")}
+                    required
                   >
+                    <option value="">Select</option>
                     <option value="male">Male</option>
                     <option value="female">Female</option>
                     <option value="other">Other</option>
