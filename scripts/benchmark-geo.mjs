@@ -11,7 +11,7 @@
 //   kdtree  a k-d tree on 3-D unit vectors (exact for great-circle radii)
 //   rtree   a packed (STR) R-tree on longitude and latitude boxes
 // and, with --postgis, PostGIS ST_DWithin on a GiST index in Supabase, timed
-// with EXPLAIN ANALYZE so the network round trip to Tokyo is left out.
+// with EXPLAIN ANALYZE so the network round trip to the database is left out.
 // Datasets: the real directory, then copies of it with ~5 km of random jitter,
 // which keeps the real clustering of banks. Every method must return exactly the
 // banks the linear scan returns; the script stops if one doesn't.
