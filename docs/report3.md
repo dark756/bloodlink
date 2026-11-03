@@ -3,10 +3,12 @@
 This report records every decision and step taken on 2026-10-23 to answer the reviewer's feedback in `documentation/suggested changes after sem 7 report 1.txt`. Each section has a plan, the decisions with their evidence, the steps taken, and how the result was checked.
 
 - **Code paths** are relative to `bloodlink/` unless they start with `../`.
-- **Where the work is.** Branch `supabase-migration`, GitHub's default branch since 26 October. Report 3's work was committed on 24 October as `5af73b9`, on top of `798fe73`, and the review fixes on 26 October.
+- **Where the work is.** Branch `supabase-migration`, GitHub's default branch since 26 October. Report 3's work was committed on 24 October as `5af73b9`, on top of `798fe73`, and the review fixes on 26 October. The later fixes of 26 October and the work of 3 November were committed on 3 November, on the branch `mumbai-and-cloud-collector`.
 - **Order of work.** The points are worked in the order they were asked, not by number: 2, 1, 3.1, 3.2, 4, 5.
 - **Follow-up on 2026-10-24.** `docs/data_integrity.md` re-checks point 3 independently and records six faults it found and fixed (#36 to #41). The counts and results here that it changed have been updated, and each point says where.
-- **Reviews of 24 and 25 October.** `docs/review_and_next_moves.md` reviewed the code, docs and plans, and `docs/verify_facts.md` checked every number and outside fact. Thirteen of the faults they and a follow-up review found were fixed on 26 October; `CLAUDE.md` lists them and the ones still open. Where they corrected a figure or a source here, the text has been updated.
+- **Reviews of 24 and 25 October.** A review of the code, docs and plans, whose next moves are now in `docs/plans.md`, and `docs/verify_facts.md`, which checked every number and outside fact. Thirteen of the faults they and a follow-up review found were fixed on 26 October; `CLAUDE.md` lists them and the ones still open. Where they corrected a figure or a source here, the text has been updated.
+- **Point 5 on 2026-10-26.** The shortlist of seven models, two low-fidelity checks and the subplan were added. The check scripts are in `../rough_work/ML/`, outside git.
+- **3 November.** The database moved to Mumbai (#28), collection moved to Supabase ([point 3.1](#collection-moved-to-supabase-3-november)), and point 5 gained an [early walk-forward dry run](#an-early-walk-forward-dry-run-3-november).
 
 **Contents**
 1. [Point 2: road routing (OSRM) and a time-aware ETA](#point-2-road-routing-osrm-and-a-time-aware-eta)
@@ -359,7 +361,7 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
 | Unit counts | 57,946 group entries. 99th percentile 290; **30 entries over 2,000**, the largest 15,280; none negative. | Values over 2,000 per group are implausible and dropped. |
 | Duplicates | No `hospitalCode` repeats, within a state or across states | The rule "keep the newer row" stays as a guard. |
 | Coordinates | 2 banks are placed outside India (longitude 64 and 66). 606 banks share 203 identical points. | Flagged in the directory as `location_quality`. |
-| Access from outside India | Tested on 24 October from a cloud container outside India: every call answered, though a full sweep took 182 s against 87 s from here (`docs/verify_facts.md`). | Collection runs on this machine, in India. The Supabase scheduler plan tests its own region first. |
+| Access from outside India | Tested on 24 October from a cloud container outside India: every call answered, though a full sweep took 182 s against 87 s from here (`docs/verify_facts.md`). | Collection ran on this machine, in India. The cloud collector, since 3 November, runs in Mumbai and was tested there first ([below](#collection-moved-to-supabase-3-november)). |
 
 ### Plan
 
@@ -432,11 +434,12 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
 - **Why not less often?** A stock-out forecast needs to see the drop before it happens. Daily samples would miss same-day drops.
 - **Why this machine?** It is in India, so the "blocked abroad" question doesn't arise, and a scheduler is free.
 - **Why a role and not a new password?** `set role bloodlink_ingest` limits the session without creating a new secret.
+- **Since 3 November** collection runs in Supabase every 4.5 hours, through the same role: see [Collection moved to Supabase](#collection-moved-to-supabase-3-november).
 
 **D3.2 · History is written only when a bank's update time changes.**
 - Between updates, a bank's stock is constant by definition, so repeating it adds nothing.
 - The cost was measured: about 420 bytes a row in Postgres. A typical day of changes is roughly 6,000 rows, about 2.5 MB, so 60 days is about 150 MB. That is why history is pruned at 60 days in the database.
-- The local archive in `../blood_data/eraktkosh/` keeps everything for point 5.
+- The archive keeps everything for point 5: the Storage bucket `stock-archive` since 3 November, with a weekly copy in `../blood_data/eraktkosh/`, where the laptop wrote it before.
 
 **D3.3 · Only changed rows are uploaded.**
 - The first version re-uploaded every bank every hour, about 9.5 MB to Tokyo.
@@ -462,7 +465,7 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
 - Saving after live searches with Next's `after()`.
 - A login for the ingest role, with an `INGEST_DB_URL`.
 - Logging the app's own eRaktKosh calls.
-- A server-side scheduler. The approved plan is `docs/supabase_scheduler.md`: Supabase `pg_cron` plus an Edge Function, every 4.5 hours. It isn't started yet.
+- A server-side scheduler. Done on 3 November: Supabase `pg_cron` plus an Edge Function, every 4.5 hours ([below](#collection-moved-to-supabase-3-november)).
 
   The request asked for collection only, not a deployment-ready system.
 
@@ -499,7 +502,7 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
     - `\bloodLink\Stock snapshot (hourly)`, every hour from 20:05;
     - `\bloodLink\Directory snapshot and prune (weekly)`, Mondays at 03:35.
 
-    Both log to `../blood_data/eraktkosh/collector.log`. To remove them: `Unregister-ScheduledTask -TaskPath '\bloodLink\' -TaskName * -Confirm:$false`.
+    Both logged to `../blood_data/eraktkosh/collector.log`. They were disabled on 3 November, when collection moved to Supabase ([below](#collection-moved-to-supabase-3-november)).
 
     **The first scheduled runs.**
     - **20:05 and 22:05:** each saved Andaman and Nicobar, then stopped with exit code 0xC000013A, a console Ctrl+C or close signal. No sleep, shutdown or error was logged near either time.
@@ -575,7 +578,7 @@ After the fixes, every mode answered again, and with Maharashtra blocked, Goa, T
   - Within a response, the newer row wins: no duplicates found in 4,707.
   - Across sweeps, history is unique on (bank, update time).
   - Matching against other datasets is point 3.2.
-- **Refreshed.** Hourly for stock and weekly for the directory. History is kept 60 days in the database and indefinitely in the local archive.
+- **Refreshed.** Stock every 4.5 hours in Supabase since 3 November, hourly from the laptop before, and the directory weekly. History is kept 60 days in the database and for good in the Storage archive, with a weekly copy on the laptop.
 - **Stale data, two ages.**
   - Every bank shows when the bank updated its stock and when bloodLink checked it.
   - 6.3% of banks, those not updated for 30 days, are dormant: listed with a red badge, kept out of the ring growth and the plan, and scored 0 for freshness.
@@ -585,7 +588,183 @@ After the fixes, every mode answered again, and with Maharashtra blocked, Goa, T
 
 - **#33: 679 stocked banks (14%) have no coordinates in eRaktKosh's `nearest`.** Location search can't see them. Point 3.2 looks for their locations in other datasets.
 - **#34: eRaktKosh coordinates are unreliable for 726 banks** (counted on 24 October). 206 sit outside their own state, 2 outside India, and 518 share points with other banks. Location search leaves out the first two kinds, and distances to the third may be off by a few km.
-- **#35: collection runs only while this machine is on and logged in.** The history will have gaps. Moving the scheduler to a server is deployment work.
+- **#35: collection runs only while this machine is on and logged in.** The history will have gaps. Moving the scheduler to a server is deployment work. **Done on 3 November** (below).
+
+### Collection moved to Supabase (3 November)
+
+On 3 November collection moved off the laptop into the Supabase project, which closes #35. This records the plan that was carried out, `docs/PLANS/supabase_scheduler.md`. It was approved on 23 October, with all seven decisions answered that day, and was folded in here once done; the migration's header still names it. How to run, change and roll back the collector is in `CLAUDE.md`, and every function is in `docs/CODE_REFERENCE.md`.
+
+#### Why
+
+- **The laptop was the weak point.** The hourly task ran only while the laptop was on and signed in, about 6 hours in 10, and two of its first four runs died after one state. Every hour it was off left a gap in the history the forecast learns from.
+- **Supabase runs it in the project the data already lives in:** `pg_cron` fires on schedule, `pg_net` calls an Edge Function, and the function does what the laptop did. No new account or machine is needed, and the code is in the repository.
+- **What stayed the same:** the app and its search code; the stock tables, the `bloodlink_ingest` role and the validation in `src/lib/stockQuality.js`; the directory's state-outline check (#36); and one call per state, one second apart.
+
+#### How it works
+
+```
+pg_cron, every 30 min                          Edge Function collect-stock, pinned to ap-south-1
+collector_tick(n) asks "is batch n due?"
++0 min batch 1 ─┐ (a sweep is due 4.5 h after the last one began)
++2 min batch 2 ─┤ net.http_post ──► /functions/v1/collect-stock { batch: n, sweep }
++4 min batch 3 ─┤   + x-region, x-collector-secret     │
++6 min batch 4 ─┘                                       ├─► eRaktKosh, 9 states, 1 s apart
+Mon 03:20 directory + prune ──► { directory: true,      ├─► Postgres as bloodlink_ingest (the same tables as before)
+                                    prune: true }        ├─► Storage: changed rows → stock-archive/history/YYYY-MM-DD/HHMM-bN.ndjson.gz
+                                                         │            batch summary → stock-archive/sweeps/YYYY-MM-DD/HHMM-bN.json
+                                                         └─► collector_runs: one row per job
+```
+
+**Four batches, because a free-plan Edge Function may run for at most 150 s.** A full sweep is about 90 s of eRaktKosh time plus gaps and writes; the laptop's 23:05 sweep on 23 October took 150 s in all. The states are split by their measured time (call + 1 s gap + about 0.6 s of writes), which leaves about four times the headroom:
+
+| Batch | Starts | Estimated time | States |
+|---|---|---|---|
+| 1 | sweep start | 37 s | Uttar Pradesh, Kerala, Madhya Pradesh, Delhi, Uttarakhand, Puducherry, Nagaland, Goa, Lakshadweep |
+| 2 | +2 min | 36 s | Andhra Pradesh, Telangana, Haryana, West Bengal, Jharkhand, Arunachal Pradesh, Meghalaya, Mizoram, Ladakh |
+| 3 | +4 min | 36 s | Maharashtra, Rajasthan, Gujarat, Bihar, Assam, Himachal Pradesh, Andaman and Nicobar, Manipur, Dadra and Nagar Haveli and Daman and Diu |
+| 4 | +6 min | 35 s | Karnataka, Tamil Nadu, Punjab, Chhattisgarh, Odisha, Jammu and Kashmir, Tripura, Sikkim, Chandigarh |
+
+- **A time budget** keeps each batch inside 150 s: no state starts after 110 s, and no eRaktKosh call waits past 135 s. States it can't start are logged as skipped and fetched next sweep.
+- **One collector, two runners.** `src/lib/collector.js` holds the logic: fetch a state, validate, compare update times, upsert changed rows, refresh fetch times, add history, log the call. The function and `scripts/snapshot.mjs` both call it with their own database, fetch and archive adapters, and both connect with `npm:pg`. The CLI's API deploy (`--use-api`) bundles `src/lib/` and both asset files from outside `supabase/`.
+- **Least privilege, with one exception.** The function connects with the built-in `SUPABASE_DB_URL` and runs `set role bloodlink_ingest` first, as the laptop did, so no new password exists. The exception is the archive: Storage is written only through its API, so the function uses the built-in secret key (`SUPABASE_SECRET_KEYS`) for the `stock-archive` client and nothing else.
+- **Nobody else can trigger it.** The function is deployed without JWT checks (`--no-verify-jwt`), as Supabase advises for calls from `pg_cron`, and requires an `x-collector-secret` header that matches its secret, compared in constant time. The cron jobs read the URL and the secret from Vault, so neither is in a migration or in git.
+- **Never more often than hourly.** The function refuses (409) a job of the same kind and batch that started in the last 50 minutes, whichever runner ran it, so a wrong schedule or a leaked secret can't add sweeps.
+- **The schedule.** Cron repeats at fixed clock times, so it can't say "every 4.5 hours" directly:
+  - four jobs, one per batch, run a small SQL check every 30 minutes, at :05, :07, :09 and :11 and again at :35 to :41 India time (the same minutes in UTC). Nothing is sent unless a sweep is due.
+  - `collector_due` decides and records the sweep, and `collector_post` sends it through `pg_net`, waiting up to 150 s (`pg_net`'s default is 5 s). Keeping them apart lets the check be tested without sending anything.
+  - Batch 1 starts a sweep once the last one began 4 h 25 min ago or more; the 5 minutes absorb cron jitter. Batches 2 to 4 post only within 10 minutes of their own sweep's start, and once each.
+  - A missed sweep (a paused project, say) starts at the next tick, and the rhythm continues from there.
+  - `collector_weekly`, Monday 03:20 India time, between batch slots, saves the directory, runs the prune, and deletes `pg_cron`'s own run log older than 7 days (the ticks add about 190 rows a day).
+  - `schedule_stock_collector(interval)` changes the interval with one SQL call and no redeploy, and refuses anything under 1 hour.
+- **Monitoring.** `collector_runs` holds one row per job: a batch, the directory, the prune, or an upload of laptop history, with the runner (`edge` or `laptop`), times, states saved, failed and skipped, rows changed, and the archive file with its UTC day and line count. The admin overview shows the last sweep, in red once none has finished within the interval plus 2 hours.
+- **The archive.** Each batch writes its changed rows, gzipped, to the private bucket `stock-archive` (no file when nothing changed), and a summary of about 2 KB either way; the weekly run writes the directory (about 0.4 MB). The laptop's history up to the cutover went up once as `history/YYYY-MM-DD.ndjson.gz` and `sweeps.ndjson.gz`, so the archive is complete from 23 October. Gzip shrinks history 6 to 8.6 times, so it grows about 5 MB a month and the free 1 GB lasts over 15 years.
+- **The prune waits for the archive.** It deletes a day of `stock_history` only when the archived lines recorded for that UTC day cover every row the database holds for it; any other day is kept and listed in `history_days_kept`. No batch crosses UTC midnight, since the ticks fall at 5 to 11 and 35 to 41 minutes past the hour. Laptop runs don't count until `npm run archive:upload` puts their days in the bucket.
+- **The laptop's copy.** `npm run archive:sync` downloads only the files the laptop lacks, in its own layout: a batch's file becomes `history/YYYY-MM-DD_HHMM-bN.ndjson`, and a sweep's four summaries become one line of `sweeps.ndjson`, so the history readers need no change. A weekly task runs it and catches up after the laptop was off.
+
+#### How often: every 4.5 hours (decision 6)
+
+Measured on 23 October unless marked:
+- **Storage hardly depends on the interval.** History gains a row only when a bank's own update time changes (about 430 bytes with indexes, about 4,000 rows a day). Only `upstream_calls` grows with every sweep, 18 KB each. With the 60-day history and 90-day call-log prunes, the database levels off at 135 to 170 MB whatever the interval, of the free 500 MB.
+- **Banks update in the morning.** 73% of the 4,184 banks that updated that week made their latest update between 07:00 and 11:59 India time, and under 8% between 19:00 and 05:59.
+- **What a longer interval loses.** eRaktKosh gives each bank's exact update time, so a later sweep still records the right time. Lost are an update the bank overwrites before a sweep sees it, and the saved copy's freshness, at worst one interval old.
+
+| Option | India times | Sweeps a day | Updates missed | Saved copy at worst | Database growth a day | Database size with pruning | Function calls a month |
+|---|---|---|---|---|---|---|---|
+| Hourly | :05 every hour | 24 | none (the baseline) | 1 h | 2.15 MB | 172 MB | 2,880 |
+| Every 2 hours | 00:05, 02:05 … 22:05 | 12 | 2.5% | 2 h | 1.9 MB | 152 MB | 1,440 |
+| Every 3 hours | 00:05, 03:05 … 21:05 | 8 | 3.7% | 3 h | 1.8 MB | 144 MB | 960 |
+| **Every 4.5 hours (chosen)** | shifts by 4.5 h each sweep, repeating every 3 days | 5.3 | **4.9%** | 4.5 h | 1.75 MB | 138 MB | 640 |
+| Morning-weighted | 06:05, 08:05, 10:05, 12:05, 15:05, 19:05, 23:05 | 7 | about 2% (modelled) | 2 h in the morning, 7 h overnight | 1.8 MB | 142 MB | 840 |
+| Every 6 hours | 05:05, 11:05, 17:05, 23:05 | 4 | 5.7% | 6 h | 1.7 MB | 134 MB | 480 |
+| Daily | 13:05 | 1 | about 25% (modelled) | 24 h | 1.3 MB | 109 MB | 120 |
+
+- **"Updates missed"** is the share of the updates hourly sweeps saw that the schedule wouldn't, because the bank updated again first. It was measured on 3 November with `../blood_data/scripts/measure_schedule.py` (`../blood_data/measurements/schedule_miss_rate_2026-11-03.json`):
+  - 148 hourly sweeps from 23 October to 3 November, in 45 runs of back-to-back sweeps; only 5 runs reached 8 sweeps or more.
+  - Each schedule keeps every fourth and fifth sweep of a run, alternately for 4.5 hours, and is scored on the same 6,379 updates: those entered while a run was going and seen at least 6 sweeps before it ended. Updates first seen at a run's first sweep are left out, since some were made while the laptop was off.
+  - Scored on its own wider sample, 4.5 hours misses 5.2%. Of its misses, 58% are values the bank replaced within 10 minutes (most likely corrections), 12% within an hour, 14% within 2 hours and 16% later.
+  - The runs fall in the hours the laptop was on, mostly the day, when banks update most, so the figures lean high.
+- **Why 4.5 hours.** It costs a fifth of the hourly calls, and its sweep times shift by 4.5 hours each sweep and repeat every 3 days, so over a cycle sweeps fall every 1.5 hours around the clock and no hour of the day goes unsampled. The forecast's dynamics are daily (24 to 72 h horizons, point 5), so it doesn't need stock within the hour. 4.9% sits at the 5% threshold set for the check, so it was reported before cutover, and the interval stayed at 4.5 hours. Every 3 hours was the runner-up; every 6 hours the longest interval worth defending.
+
+#### Decisions (23 October)
+
+| # | Decision | Answer |
+|---|---|---|
+| 1 | Change the live project: `pg_cron` and `pg_net`, one migration, one Edge Function, one Storage bucket and five cron jobs | Yes |
+| 2 | Region | Mumbai (`ap-south-1`) if Phase 0 showed it worked, so eRaktKosh sees an Indian address. It did |
+| 3 | Archive | Gzipped files in a Storage bucket, accepting the secret key the upload needs. Drawbacks below |
+| 4 | The laptop's tasks | Disabled at cutover, deleted after a 24-hour watch, everything collected kept. `snapshot.mjs` and `run_collector.ps1` stay for runs by hand |
+| 5 | CLI login | You run `npx supabase login` before anything starts |
+| 6 | Interval | Every 4.5 hours |
+| 7 | Local copy | A weekly Task Scheduler task runs `npm run archive:sync`, catching up after the laptop was off |
+
+**Where the data lives.** Collection and storage happen entirely in the Supabase project; the laptop can stay off.
+
+| Place | What it holds | Kept for |
+|---|---|---|
+| Supabase database | The latest stock per bank, which the app falls back to; the directory; `stock_history` | History 60 days, the call log 90 |
+| Storage bucket `stock-archive` | Every change since 23 October, gzipped, the laptop's included; batch summaries; weekly directories | For good |
+| Laptop, `../blood_data/eraktkosh/` | Everything up to the cutover, plus what the weekly sync downloads | Until deleted |
+
+The free plan backs up neither cloud copy, and both sit in one project. If the project were deleted, paused and not restored within a year, or damaged by a bad migration, no other copy would exist except the laptop's. That is the laptop's only role now; collection never depends on it.
+
+**The drawbacks of the Storage archive (decision 3).** Keeping all history in the database would be simpler, but it fills the free 500 MB in 7 to 9 months. The archive costs:
+1. **A key with wide rights.** The upload uses the built-in secret key, which reaches every table and bucket, so a bug in the upload code could too. Database writes still go through `bloodlink_ingest`, and the key comes from the function's environment, never a file.
+2. **No backup by Supabase,** hence the weekly sync.
+3. **History in two places and two formats.** The last 60 days are in SQL; everything is in gzipped NDJSON, which pandas reads and SQL can't.
+4. **The prune depends on the archive.** A failed upload keeps that day in the database until `npm run archive:upload -- --from-db <day>` archives it from the rows still there.
+5. **Old files must stay readable.** Each archived line carries `"v": 1`; the laptop's older files count as version 1.
+
+**Cost on the free plan: ₹0.**
+
+| Item | Use per month | Free allowance |
+|---|---|---|
+| Edge Function calls | about 640 | 500,000 |
+| `pg_cron` ticks | about 5,800 small SQL checks; the run log is trimmed weekly | included |
+| Function time per call | about 35 s of 150 s | — |
+| Database size | levels off at about 138 MB | 500 MB |
+| Storage archive | about 5 MB a month | 1 GB |
+
+**Risks that remain.**
+
+| Risk | What happens | Mitigation |
+|---|---|---|
+| eRaktKosh blocks Supabase's addresses | No data from the cloud | Unlikely: it answered the function in Mumbai in Phase 0. Fallback: the same `collector.js` on a free always-on VM in Mumbai, or the laptop tasks again |
+| A batch exceeds 150 s | That batch's remaining states are skipped | The time budget; they are fetched next sweep |
+| The free project is paused for inactivity | Everything stops, the app too | Scheduled writes are reported to count as activity (a community answer, not official). The admin overview warns when a sweep is overdue |
+| A `pg_net` call fails; it doesn't retry | One batch missed | `collector_runs` shows the gap, and history is event-based, so the next sweep catches up |
+| The secret leaks | Extra eRaktKosh calls, still at most one per job in 50 minutes | It lives only in Vault and the function's secrets; re-running the setup rotates it |
+| A database password change | Batches might fail | `SUPABASE_DB_URL` is a built-in secret and should follow it; check `collector_runs` after a change |
+
+#### Steps taken
+
+1. **Phase 1, the code, written on 3 November:** `src/lib/collector.js`, which `scripts/snapshot.mjs` now wraps (the laptop's 13:05 sweep that day ran on it, 36 of 36 states); the `collect-stock` and `collector-probe` functions, which pass `deno check`; the migration `20261103000100_cloud_collector.sql`; the setup, check, probe, upload and sync scripts; the admin overview's "last sweep" line; and 15 unit tests, for 150 in all. `scripts/check-cloud-collector.mjs` ran its 27 SQL checks on the Tokyo project inside a rolled-back transaction, and again on Mumbai once the migration was applied there.
+2. **The move to Mumbai (#28) came first,** the same day, so the collector was built on the final project.
+3. **Phase 0, before anything was scheduled** (`node scripts/probe-cloud-collector.mjs`, `../blood_data/measurements/collector_probe_2026-11-03.json`). A throwaway function, deleted afterwards, showed:
+   - eRaktKosh answered it: Goa's 5 banks in 0.3 s, and Uttar Pradesh's 684 banks (1.4 MB) in 12 to 13 s, as from the laptop;
+   - with `x-region: ap-south-1` it ran in Mumbai (`x-sb-edge-region`), and unpinned calls from the laptop landed there too;
+   - parsing and validating Uttar Pradesh took 13 to 41 ms of the 2,000 ms of CPU allowed;
+   - `npm:pg` connected with `SUPABASE_DB_URL` as given in 27 to 44 ms, with round trips of 0 to 2 ms, and `set role bloodlink_ingest` worked;
+   - the deploy bundled `src/lib/` and both asset files: 4 batches, 36 states and 36 outlines.
+4. **The setup** (`node scripts/setup-cloud-collector.mjs`): the secret in the function's secrets and in Vault with the URL, and `collect-stock` deployed. A smoke test without eRaktKosh calls:
+   - called directly, the function refused a missing or wrong secret (401), a GET (405), and a batch of 9, an empty body or a batch with a prune (400);
+   - a prune posted through Vault and `pg_net` ran in Mumbai, and was recorded as an `edge` run; a second one at once was refused (409).
+5. **The interval was measured** on the laptop's hourly sweeps (above): 4.9% missed at 4.5 hours.
+6. **The cutover, on 3 November:**
+   - the laptop's 15:05 sweep, its last, saved 36 of 36 states. Both laptop tasks were then disabled, and their definitions saved in `../blood_data/scripts/tasks/`;
+   - `npm run archive:upload` put all 12 laptop days, `sweeps.ndjson` and the 3 directory files into the bucket, and `--check` showed every day matching the database: 48,553 rows;
+   - the weekly sync task, `\bloodLink\Archive sync (weekly)`, was registered with `../blood_data/scripts/register_sync_task.ps1` and run once through Task Scheduler, with result 0. Its launcher retries a failed sync twice, 15 minutes apart, since Task Scheduler's restart setting isn't documented to fire when a program merely exits with an error; the task's time limit is 2 hours to fit;
+   - `schedule_stock_collector()` ran at 15:36, after the 15:35 tick, so the first cloud sweep began at 16:05, an hour after the laptop's last.
+7. **Left:** the 24-hour watch (5 or 6 sweeps, each with four `collector_runs` rows of 9 states), then deleting the two laptop tasks; testing the sync's catch-up across a shutdown once; and checking the first weekly directory and prune, on Monday 9 November.
+
+#### Results
+
+**The first cloud sweep, 3 November at 16:05 India time** (sweep 4), checked end to end at 16:13:
+
+| Batch | Ran (UTC) | States saved | Rows changed, all archived |
+|---|---|---|---|
+| 1 | 10:35:01 to 10:35:43 | 9 of 9 | 7 |
+| 2 | 10:37:00 to 10:37:39 | 9 of 9 | 20 |
+| 3 | 10:39:01 to 10:39:37 | 9 of 9 | 14 |
+| 4 | 10:41:00 to 10:41:39 | 9 of 9 | 22 |
+
+- The five cron jobs ran at their planned minutes, and the four batches were posted 2.0 minutes apart.
+- Every `pg_net` call was answered with 200 from `ap-south-1`.
+- eRaktKosh got 36 calls, one per state, all successful. The saved copy was refreshed for all 35 states that list banks; Lakshadweep lists none.
+- Each batch took 36 to 42 s of the 150 s allowed, close to the 35 to 37 s estimated.
+- Storage held the four history files and the four batch summaries.
+- `npm run archive:sync` then brought the four files and one merged 36-state sweep line to the laptop. `validate_history.py` counted 48,616 history events, the 48,553 uploaded plus these 63, with no duplicates.
+
+#### Sources
+
+- [Edge Functions limits](https://supabase.com/docs/guides/functions/limits): free plan 150 s wall clock, 256 MB, 2 s CPU per request.
+- [Scheduling Edge Functions](https://supabase.com/docs/guides/functions/schedule-functions), and [pg_cron in Supabase](https://supabase.com/docs/guides/database/extensions/pgcron): `pg_cron` with `pg_net`, secrets in Vault.
+- [Edge Function secrets](https://supabase.com/docs/guides/functions/secrets): `SUPABASE_DB_URL` and `SUPABASE_SECRET_KEYS` are provided; `SUPABASE_SERVICE_ROLE_KEY` is legacy, and [the legacy keys are being retired](https://supabase.com/docs/guides/getting-started/migrating-to-new-api-keys).
+- [Regional invocations](https://supabase.com/docs/guides/functions/regional-invocation): `x-region`, and `x-sb-edge-region` in the answer.
+- [Deploying without Docker, importing files outside `supabase/`](https://supabase.com/changelog/33613-deploy-edge-functions-from-cli-without-needing-docker-import-files-outside-of-supabase-directory).
+- [Database backups](https://supabase.com/docs/guides/platform/backups): Storage objects aren't included, and free projects aren't backed up.
+- [Free project pausing](https://supabase.com/docs/guides/platform/free-project-pausing): restorable for up to a year (`docs/verify_facts.md`, F13); a [community note](https://github.com/orgs/supabase/discussions/13121) that `pg_cron` activity counts.
+- [Pricing](https://supabase.com/pricing): free plan 1 GB Storage, 5 GB egress a month.
+- [Task Scheduler settings](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-r2-and-2008/cc722178(v=ws.11)): "Run task as soon as possible after a scheduled start is missed" runs a task missed while the computer was off, after a 10-minute wait.
 
 ---
 
@@ -827,7 +1006,7 @@ A fixed threshold would flag almost every negative-group stock all the time. The
 | Failure handling | Make the provider return 500s or time out | Retried with back-off, never sent twice, failures logged |
 | Correctness | Unit tests for who is told, using the compatibility and eligibility modules: only eligible donors, nobody already asked within the cooldown, opt-outs respected | 100% of the rules covered |
 
-**ETA accuracy**, the calibration flagged in point 2. `docs/plan_eta_comparison.md` now plans it in full: a rubric fixed before any results, timed trips as the truth, and Google's traffic-aware predictions as a reference for the week's pattern. In short:
+**ETA accuracy**, the calibration flagged in point 2. `docs/PLANS/plan_eta_comparison.md` now plans it in full: a rubric fixed before any results, timed trips as the truth, and Google's traffic-aware predictions as a reference for the week's pattern. In short:
 - **Collect:** timed trips by car or taxi in each zone (metro, city, town, rural) at night, midday and the evening peak, plus Google's predictions for the same weekday and time through its Routes API.
 - **Measure:** mean absolute error, mean percentage error and bias, by zone and hour, and whether each method picks the same first bank as the true times.
 - **Adjust:** `ZONE_SCALE` and the town and rural free-flow speeds from the timed trips only, until the percentage error is under 25% everywhere. Google's numbers are used to score, never to tune (the plan's decision E10).
@@ -843,11 +1022,16 @@ A fixed threshold would flag almost every negative-group stock all the time. The
 
 This also answers the reviewer's point 5: where AI/ML fits in BloodLink, what decision it improves, what goes in, what comes out, and how the matching and response engine uses it.
 
+The shortlist, two low-fidelity checks and the subplan were added on 2026-10-26, and an early walk-forward dry run on 2026-11-03. The scripts are in `../rough_work/ML/`, outside git, with a README and a summary, `SUMMARY.md`.
+
 ### The problem, stated precisely
 
-- **The decision it improves:** *whom to ask to donate, where, and when.* Today bloodLink reacts after stock has run out. The forecast lets it ask donors of the right group to give at a particular bank before that bank runs short.
+Report 2 set the use case: *"ML stock-out forecasting: periodic stock snapshots per bank, component and blood group, giving the probability of a stock-out in the next 24–72 hours, used to lower that bank's score."*
+
+- **The decision it improves:** *whom to ask to donate, where, and when.* Today bloodLink reacts after stock has run out. The forecast lets it ask donors of the right group to give at a particular bank before that bank runs short, and lets ranked search prefer banks that are not about to run out.
 - **Unit of prediction:** one bank × one component × one blood group, for example "KEM Hospital, packed red cells, O-".
-- **Output 1, for the alert:** the probability that this stock falls below its threshold within the next H hours, with H = 24, 48 and 72.
+- **Output 1, report 2's:** the probability that this stock runs out (reaches zero) within the next H hours, with H = 24, 48 and 72.
+- **Output 1b, an earlier warning, later:** the same probability for falling below its threshold (defined below). It needs each bank's typical daily use, which only the history can give.
 - **Output 2, for planning:** the expected units at t + 24 h and t + 48 h, with a range (10th and 90th percentiles).
 - **What "below threshold" means.** The first snapshot shows a fixed level can't work: 86.6% of banks holding red cells are at or below 5 units of O-, against 19.5% for O+. The threshold therefore has to be relative:
   - **Days of supply** (units ÷ typical daily use) below 2. This mirrors the NHS Blood and Transplant amber alert at under 2 days and Canadian guidance of 4 to 6 days for red cells.
@@ -875,73 +1059,218 @@ This also answers the reviewer's point 5: where AI/ML fits in BloodLink, what de
 5. **Data comes in events, not on a clock.** A bank's stock changes only when the bank updates it. Hourly sweeps give the observation times; between updates the value carries forward. Features must say how stale the value is (the existing freshness score), or the model will trust old numbers.
 6. **Supply shocks are known in advance.** Camps are registered close to their date, about 1 to 2 weeks ahead, so they help short horizons.
 
-### Candidate approaches
+### Choosing the models
 
-Three model families, plus baselines, are worth comparing. They differ in data needs, explainability and effort.
+**Criteria.** A model makes the shortlist if it:
+1. answers report 2's question, a stock-out probability for 24 to 72 hours, either directly or from a forecast with a range;
+2. learns from weeks of history, not years, across about 30,000 short red-cell series (about 3,700 banks × 8 groups), and more once other components are added;
+3. copes with zero-heavy rare groups (finding 3);
+4. can use the calendar, camps and freshness (findings 1, 2, 5 and 6);
+5. can be explained to the panel and run after every sweep on a laptop or a free cloud tier;
+6. covers what the slides promised, ARIMA and LSTM, or the report says why not.
 
-| # | Approach | Predicts | Why it might win | Why it might not | Effort | Usable from |
-|---|---|---|---|---|---|---|
-| **B** | **Baselines:** last value carried forward; same hour last week; days of supply from a 14-day average decline | Units, and below-threshold via a rule | Simple, explainable, often hard to beat at 24 h | No calendar or camps; blind to change | Hours | Week 1 |
-| **A** | **Statistical, per series:** ETS / Holt-Winters with weekly seasonality, seasonal ARIMA (the slides' ARIMA), and **Croston/TSB** for intermittent groups | Units, with intervals | Well understood, needs little data per series, gives intervals; Croston/TSB handle zero-heavy series | One model per series (thousands); weak at using camps and holidays; poor on very short series | Days | ~8 weeks of history |
-| **C** | **Global gradient-boosted trees** (LightGBM or scikit-learn `HistGradientBoosting`): one model across all banks | (a) P(below threshold within 24/48/72 h); (b) quantiles of units at t + 24/48 h | Uses everything at once: lags, rolling statistics, weekday, holidays, camps (last 7 days, next 7 days), dengue season, rain, bank type, auto-refresh, freshness. Handles cold start by learning from similar banks. Fast, and explainable with SHAP | Needs careful time-ordered validation to avoid leakage; probabilities need calibrating | Days to a week | ~6–8 weeks |
-| **D** | **Survival / hazard model:** discrete-time hazard on the same features (logistic regression on bank-hours, or GBM) | Time until it runs short | Answers "how long until it drops?" directly, and handles censoring (banks that never ran short) | Less familiar; needs enough events | Days | ~8 weeks |
-| **E** | **Deep global models:** LSTM (from the slides), DeepAR or Temporal Fusion Transformer | Probabilistic units | Learns shared patterns; TFT gives attention-based explanations | Needs much more history and tuning; risky for a final-year timeline | Weeks | 6–12 months |
-| **R** | **Donor response:** logistic regression, then GBM, on recency, frequency, time since first donation, distance, past responses (UCI-style; the duplicates and the redundant "Monetary" column dropped first) | P(this donor responds) | Decides whom to notify first and how many to ask | Real response data only appears once notifications exist | Days | When notifications launch |
+**Three ways to get the probability.** The shortlist covers all three, so the backtest also shows which way suits the data.
+- **Direct:** a classifier learns "did it run out within H hours?" from past cases.
+- **Time to event:** a hazard model learns the chance of running out in each 6-hour step. The 24, 48 and 72 h answers come from one model, so they can't contradict each other, and cases that never ran out count correctly (censoring).
+- **Forecast, then threshold:** forecast the units with a range, and read off the chance that they reach zero.
 
-**Recommendation: compare B, A and C first, and add D if time allows.**
-- **C is the expected winner,** from finding 4 and the M5 evidence.
-- **A is the classical benchmark** a reviewer will expect, and it covers ARIMA as promised in the slides.
-- **B keeps everyone honest:** a model that can't beat "same as last week" isn't worth deploying.
-- **E (LSTM or TFT) waits** until 6–12 months of history exist. Until then it can be rehearsed on Malaysia's 20-year series, so the method is ready when the data is.
-- **R is built alongside the notification feature.**
+**The shortlist: seven models.**
+
+| # | Model | Route | Fitted | Gives | Why it is on the list |
+|---|---|---|---|---|---|
+| 1 | **Gradient-boosted trees, classifier** (LightGBM, or scikit-learn's `HistGradientBoosting`) | Direct | One model for all series | P(stock-out) at 24, 48 and 72 h | The expected winner (finding 4, M5). Uses every feature at once, learns new banks from similar ones, and SHAP explains each prediction |
+| 2 | **Logistic regression** | Direct | One model | The same | The transparent benchmark: readable coefficients and usually well-calibrated probabilities. If it ties with model 1, the simplicity rule picks it |
+| 3 | **Discrete-time hazard model:** logistic regression on 6-hour steps, trees later | Time to event | One model | P(stock-out) by 24, 48 and 72 h, and the expected hours until it runs out | One consistent answer for all three horizons; handles censoring; gives alerts their "may run out within about N hours" |
+| 4 | **Gradient-boosted trees, quantile regression** | Forecast, then threshold | One model | Units at t + 24, 48 and 72 h with the 10th to 90th percentiles; P(stock-out) from the lowest level in the window | The only global model that also gives output 2, and the units that ranking needs later |
+| 5 | **ETS (Holt-Winters) with a weekly season** | Forecast, then threshold | One per series | Daily units, with simulated paths | The classical benchmark a reviewer expects, with the weekly cycle (finding 1) |
+| 6 | **Seasonal ARIMA (1,0,1)(0,1,1,7)** | Forecast, then threshold | One per series | Daily units, with intervals | The slides' ARIMA, with the weekly seasonal term finding 1 calls for |
+| 7 | **TSB (Teunter–Syntetos–Babai)** | Forecast, then threshold | One per series | Daily use for zero-heavy series | Made for intermittent series such as the rare groups (finding 3). Unlike Croston's method, it lowers its estimate when a series goes quiet |
+
+- **Models 5 to 7 work on daily series:** the stock at 12:00 India time each day, after most banks' morning updates. TSB models daily use (unit decreases), which is zero on most days for a rare group. P(stock-out) is the share of simulated paths that reach zero.
+- **Baselines, not counted, which every model must beat:** the last value carried forward; the same time last week; the weekday average; days of supply under 2, from the 14-day average decrease; and the stock-out rate of banks holding that many units of that group.
+
+**Considered and not shortlisted.**
+
+| Candidate | Verdict | Why |
+|---|---|---|
+| Croston's method, SBA | Covered by model 7 | They never lower their estimate while a series has no use, so they overstate use at banks that go quiet |
+| Cox proportional hazards | Covered by model 3 | Stock is seen only at sweeps, so time is already discrete, with many ties |
+| Random forest | Covered by model 1 | The same inputs; usually less accurate than boosting on tables like these, and its probabilities need the same calibration |
+| Poisson or negative-binomial regression on daily use | Later | The demand half of forecast-then-threshold, once each bank's daily use can be estimated |
+| Prophet | Dropped | One model per series, built for long business series with yearly cycles; weak on short, zero-heavy ones |
+| LSTM (in the slides) | Deferred | Needs months of history and tuning. Rehearsed on Malaysia below |
+| DeepAR, Temporal Fusion Transformer, N-BEATS | Deferred | Need 6 to 12 months of history and much tuning: risky on a final-year timeline |
+| Pretrained forecasting models, such as Chronos or TimesFM | Deferred | Need no training, but are heavy to run on 30,000 series after every sweep, and hard to explain. Worth one zero-shot check once the backtest harness exists |
+| **Donor-response model R:** logistic regression, then trees, on recency, frequency, time since first donation, distance and past responses (UCI-style, with that dataset's duplicates and its redundant "Monetary" column dropped) | Separate use case | It decides whom to ask, not where stock runs out. Built with notifications, once real responses exist |
+
+### Early results, at low fidelity
+
+Two quick checks, run on 26 October in `../rough_work/ML/`, test the pipelines and give a first, rough ranking. **Neither decides anything:** the walk-forward backtest on bloodLink's own history does, in late December.
+
+**Check 1: a rehearsal on Malaysia's donations.**
+- **Why Malaysia:** bloodLink's history is days old, while Malaysia's Ministry of Health publishes 20 years of daily donations by state and blood group. They are donations (supply), not stock, so the check ranks methods on a long, real series. It says nothing about accuracy in India.
+- **Task:** the closest supply-side version of report 2's question. At each forecast date, will the next 3 days bring at most half the donations usual for those weekdays? "Usual" is the mean of the last 8 same weekdays, known on the day. Every model except the classifiers also forecasts the 3-day total.
+- **Data:** 52 series (13 states × 4 groups) at 52 fortnightly forecast dates, October 2024 to October 2026: 2,704 cases with 192 events (7.1%). Per-series models were refitted at every date on the last 3 years, with 1,000 seeded simulated paths each. Global models were retrained every 12 weeks (the LSTM every 24) on the last 6 years, using only what was known by then.
+- **Models:** six of the seven (the hazard model needs stock that runs down), two baselines and a small LSTM (one layer of 32 units over a 56-day window).
+
+| Model | PR-AUC (90% interval) | GBM classifier beats it | Recall at precision 0.5 | Brier | MASE, 3-day total |
+|---|---|---|---|---|---|
+| 1 · GBM classifier | **0.247** (0.185–0.321) | — | **0.115** | 0.0611 | — |
+| 5 · ETS | 0.234 (0.175–0.312) | 70% | 0.109 | 0.0653 | 0.642 |
+| 6 · SARIMA | 0.234 (0.181–0.302) | 72% | 0.016 | 0.0647 | **0.629** |
+| 2 · Logistic regression | 0.228 (0.170–0.309) | 78% | 0.057 | 0.0625 | — |
+| 4 · GBM quantiles | 0.228 (0.171–0.306) | 89% | 0.083 | **0.0610** | 0.638 |
+| LSTM, deferred | 0.210 (0.167–0.272) | 88% | 0.016 | 0.0680 | 0.662 |
+| 7 · TSB | 0.193 (0.147–0.251) | 99% | 0.021 | 0.0644 | 0.834 |
+| Baseline: weekday average | 0.185 (0.147–0.230) | 96% | 0 | 0.0621 | 0.700 |
+| Baseline: same days last week | 0.090 (0.071–0.112) | 100% | 0 | 0.1254 | 0.893 |
+
+The intervals and the "beats it" shares come from 1,000 resamples of whole forecast dates, since the 52 series move together on a date. A constant forecast at the base rate scores Brier 0.0660.
+
+- **The GBM classifier leads,** as expected, on PR-AUC and recall at precision 0.5, and the two tree models share the best Brier score. But it beats ETS, SARIMA and logistic regression on PR-AUC in only 70% to 78% of resamples. Recall at precision 0.5 is noisier still: the classifier's own interval runs from 0.016 to 0.243, and it beats ETS and logistic regression in only 51% and 56% of resamples. 192 events are too few to separate the top five.
+- **The decision rule, dry-run on these results, picks logistic regression.** The trees lead on recall, but not reliably: the GBM classifier beats logistic regression in 56% of resamples, under the 80% the rule asks for. So the simplest model that clears the baseline margin wins, and logistic regression's PR-AUC is 23% above the weekday average's. That is the rule doing its job on a small sample. bloodLink's backtest will have about 4,000 events a week (check 2), not 192 in all.
+- **The weekday average is a strong baseline for the 3-day total.** Only SARIMA beats its MASE by the 10% margin, and only just (0.629 against 0.700). ETS (0.642) and GBM quantiles (0.638) fall short.
+- **Per-series probabilities need calibrating.** ETS and SARIMA rank cases about as well as the trees, but their Brier scores (0.065) barely beat a constant forecast's 0.066, while the trees reach 0.061.
+- **Simulated probabilities need a fixed seed.** With 300 unseeded paths, two runs gave ETS a PR-AUC of 0.237 and 0.212. The rehearsal now uses 1,000 seeded paths.
+- **TSB is cheap but weak here,** even on the 505 intermittent cases (PR-AUC 0.262, against the GBM classifier's 0.331). Malaysia's state totals are far less sparse than one bank's rare group, so the backtest decides.
+- **The LSTM trails the trees overall** (PR-AUC 0.210, MASE 0.662), and its Brier score (0.068) is worse than a constant forecast's. Deferring it holds.
+- **Cost.** On one core, fitting one 8-week daily series and simulating 300 paths took about 0.16 s for ETS and 0.32 s for SARIMA, so refitting all 30,000 red-cell series takes about 1.3 and 2.6 hours of CPU. One global model with 300 trees scored 30,000 rows in 0.55 s.
+
+**Check 2: the pipeline on bloodLink's own history.**
+- **Data:** red-cell stock from 13:26 UTC on 23 October to 02:37 UTC on 26 October. 25 full sweeps have a full 24 hours after them, giving 542,593 cases of a bank, group and time with stock above zero, at 3,742 banks.
+- **Event:** a stock-out within 24 h, in 15,556 cases (2.9%).
+- **Method:** five models, cross-validated in 5 folds grouped by bank, so no bank is on both sides. The folds share the same hours, so this shows whether the state at one time separates the banks that run out from the rest. It is not a forecast test. The per-series models need weeks of history, so they aren't in it.
+
+| | O+ | B+ | A+ | AB+ | B- | O- | A- | AB- |
+|---|---|---|---|---|---|---|---|---|
+| Stock-out within 24 h | 1.2% | 1.3% | 2.1% | 2.7% | 4.6% | 4.2% | 4.3% | 6.2% |
+| Median units held | 23 | 21 | 13 | 6 | 3 | 2 | 2 | 1 |
+
+| Model | PR-AUC | Brier |
+|---|---|---|
+| Baseline: the overall rate | 0.028 | 0.0278 |
+| Baseline: the rate at banks holding that many units | 0.082 | 0.0267 |
+| 2 · Logistic regression | 0.114 | 0.0265 |
+| 3 · Hazard model, four 6-hour steps | 0.114 | 0.0265 |
+| 1 · GBM classifier | 0.117 | 0.0269 |
+
+- **The pipeline works end to end:** snapshots rebuilt from change events, labels, features, a split by bank, and models 1 to 3 fitted, the hazard model included.
+- **Rare groups run out three to five times as often as O+ and B+,** because banks hold so few units of them. The backtest reports every group separately.
+- **The state at one time tells part of the story.** The units held lift PR-AUC from 0.028 to 0.082, and the bank's activity, group, state and freshness lift it to about 0.115, four times the base rate. The three models are within 0.003 of each other, which a test this short can't separate. The trees' Brier score is a little worse than logistic regression's: their probabilities need calibrating too.
+- **No model reaches precision 0.5.** A single snapshot can't say which banks will run out. What it lacks is each bank's rate of use, which only weeks of history show. Hence the fallback in the decision rule.
+- **Labels need rules.** Of the 1,502 drops to zero seen so far, 11.4% came with the bank's whole red-cell stock at zero, and 5.4% with no stock of anything. In 24 of the 44 updates that cleared every red-cell group, the bank had held 10 or more units just before: more like a cleared page than real use. And 13.7% of the drops were back above zero within 24 h. The label rules in the subplan handle both.
+- **The backtest will have far more events:** about 600 drops to zero a day, so about 4,000 in each test week.
+
+### An early walk-forward dry run (3 November)
+
+A first run of the walk-forward test on bloodLink's own history, held early as a phase 5.2 dry run. **It decides nothing:** the backtest at about 8 weeks, in late December, does, with the decision rule applied once as written. The full tables are in `../rough_work/ML/SUMMARY.md` and `results/walk_forward_summary.md`; the script is `walk_forward_check.py`.
+
+**The test.**
+- **Data:** 10.8 days of the laptop's hourly collection, 23 October 13:26 to 3 November 07:37 UTC, fixed with `--until` so a rerun gives the same tables. 879,673 rows of a bank, group and forecast time with red cells in stock, at 3,638 banks, at 43 forecast times on the 6-hourly India-time grid of phase 5.1.
+- **Gaps:** each bank's stock is rebuilt at the bank's own update times, not when the collector saw them, so a night the laptop was off loses only an update a later one in the same gap replaced. Of 8,161 drops to zero, 1.2% were refilled within 6 h, the kind a gap could hide.
+- **Labels:** the rules under "The subplan" below, in full.
+- **Split:** walk forward one India day at a time, with a purge. Models train on every forecast time whose outcome was known before the test day began; at 48 h that is 4 test days, 304,124 cases and 17,520 stock-outs (5.8%) at 3,561 banks. The hazard model trains on the latest days too, with open cases censored at the day's start.
+- **Uncertainty:** 90% intervals from 1,000 resamples of whole banks, the same draws for every model. With too few test days to resample days, as the plan intends, the per-day spread is the larger uncertainty.
+- **Five of the seven models ran.** ETS and SARIMA need two full weeks of daily values per series, about mid-November.
+
+**At 48 h, the decision horizon:**
+
+| Model | PR-AUC (90% interval) | Recall at precision 0.5 | False alerts per bank per week* | Brier |
+|---|---|---|---|---|
+| 1 · GBM classifier | **0.262** (0.246–0.278) | **0.047** | 2.44 | **0.0477** |
+| 3 · Hazard model | 0.256 (0.241–0.272) | 0.029 | 2.31 | 0.0484 |
+| 2 · Logistic regression | 0.254 (0.239–0.270) | 0.032 | 2.31 | 0.0485 |
+| 4 · GBM quantiles | 0.236 (0.224–0.250) | 0.005 | 2.30 | 0.0488 |
+| 7 · TSB | 0.120 (0.113–0.128) | 0 | 2.76 | 0.0664 |
+| Baseline: rate at that many units | 0.183 (0.176–0.193) | 0 | 2.51 | 0.0496 |
+| Baseline: days of supply | 0.121 (0.113–0.130) | 0 | 2.62 | — |
+| Baseline: overall rate | 0.057 | 0 | — | 0.0543 |
+
+\* At a cut-off that sends as many alerts as there are stock-outs. Counted at most once per bank, group and day.
+
+- **The three simplest global models are close,** within 0.008, and about 40% above the best baseline. The GBM classifier leads on three of the four days; on 1 November logistic regression and the hazard model scored higher. The day-to-day spread, about 0.04, is wider than the gaps between them.
+- **No model reaches precision 0.5 with useful recall,** as this section foresaw, so the decision rule falls back to PR-AUC.
+- **Dry run of the rule: logistic regression.** The GBM classifier leads by 0.8 points, inside the 2-point margin, so the simpler model wins; it is 39% above the best baseline, past the 10% required. The Malaysia rehearsal's dry run picked the same model.
+- **False alerts are the open problem:** about 2.3 per bank per week, against the limit of 1 set under "How the prediction feeds the engine".
+- **24 h and 72 h.** At 24 h the GBM classifier is ahead on all 6 days and in every resample, by 1.5 points (0.183 against 0.168), still inside the margin. At 72 h, on 2 test days, the three are tied (0.312 to 0.316).
+- **By group and bank type.** Rh− groups run out 3 to 5 times as often and are harder to predict: about 7 times their base rate for Rh+ groups and under 3 times for Rh−. Auto-refresh banks are much more predictable (0.40 against 0.23).
+- **Units at t + 24 h and t + 48 h (output 2).** GBM quantiles beat "no change" on MASE by only 1 to 2%, short of the 10% margin, but cut pinball loss by 11 to 12%: the range is where the model adds something. TSB, which forecasts use but no refills, is worse than no change.
+- **Cost:** 9 to 12 minutes for the whole test on the laptop, well under phase 5.2's hour.
+- **Against the two checks of 26 October,** the pattern holds: the GBM classifier leads narrowly, logistic regression is close, and the rule picks the simpler one. The 24 h scores rose from about 0.11 to 0.17–0.18, since a week of history now shows each bank's recent use.
+
+**What it can't say yet.** Two to six test days, with one more day enough to reorder the top three; no weekly or festival cycle (Diwali, on 8 November, will be the first); cut-offs chosen on test labels, as the metric is defined, where the app must set them in advance; and median warning times of 39 to 44 h for every model, so the lead-time bar of 24 h doesn't separate them.
+
+**What follows from it.**
+- **Kept as planned:** the backtest in late December, once; phase 5.1 built the way this script works (stock rebuilt at the banks' own update times, the cleared-page rule, the 6-hourly grid), so the laptop's gaps and the cloud's 4.5-hour sweeps give the same rows; ETS and SARIMA added from about mid-November and refitted weekly; TSB kept, as it costs nothing.
+- **Suggested, waiting for approval** (listed in `docs/plans.md`):
+  1. add recall at 1 false alert per bank per week to the decision rule, next to recall at precision 0.5. It has to be agreed before the December test weeks are collected, so the rule stays fixed in advance;
+  2. refresh the camps download (180 eRaktKosh calls, one second apart), so that camps in the last and next 7 days can be inputs;
+  3. report each group's PR-AUC with its lift over that group's base rate.
 
 ### How to compare them
 
-1. **Rehearse on Malaysia now.** Run B, A, C and E on the national and state donation series (2006–2026): forecast daily donations 7 days ahead in a walk-forward backtest. That tests the pipeline and the calendar features on a long series before India's history is ready. It ranks methods, not Indian accuracy.
+1. **Rehearse on Malaysia.** Done on 26 October, at low fidelity (above). The rehearsal asks about a 3-day shortfall instead of forecasting 7 days of donations, as first planned, so that it tests a 24–72 h probability, as report 2 asks.
 2. **Backtest on bloodLink's own history once about 8 weeks exist**, around late December 2026:
    - **Split:** walk forward. Train on weeks 1 to k, test week k + 1, repeat. Never shuffle randomly, because that would leak the future.
-   - **Classification metrics** (will it run short?):
+   - **Classification metrics** (will it run out?), at 24, 48 and 72 h:
      - PR-AUC, which suits rare events better than ROC-AUC;
      - recall at precision 0.5 (at most one false alarm per true one);
      - Brier score and a calibration plot;
      - **lead time:** hours of warning before the actual drop;
      - **false alerts per bank per week,** which drives donor fatigue.
-   - **Forecast metrics:** MASE (scale-free, and handles near-zero series), pinball loss at the 10th, 50th and 90th percentiles, WAPE.
+   - **Forecast metrics,** for models 4 to 7 and the baselines: MASE (scale-free, and handles near-zero series), pinball loss at the 10th, 50th and 90th percentiles, WAPE.
+   - **Uncertainty:** a 90% interval for every metric, from resampling whole days, since banks move together on a day. The rehearsal shows why: with 192 events, most models' intervals overlap. bloodLink's history will hold far more events (check 2).
+   - **Calibration:** every model's probabilities are calibrated on the last held-out week before scoring, since the rehearsal's per-series models ranked well but were poorly calibrated.
+   - **Reproducible:** every simulation and model uses a fixed seed, so a rerun gives the same table.
    - **Breakdowns:** by blood group (rare against common), by bank type, by auto-refresh, and by state.
-3. **Decision rule, agreed before looking at results:**
+3. **Decision rule, agreed before looking at results.** The horizon, the fallback and the resampling test were added on 26 October, after the low-fidelity checks and before any backtest.
+   - Judge on report 2's event, a stock-out, at 48 h: the donor-alert horizon.
    - Pick the model with the best recall at precision 0.5 and at least 24 h of median lead time.
-   - Prefer the simpler model when the difference is within 2 percentage points.
-   - Any model must beat baseline B by at least 10% on MASE and PR-AUC.
+   - If no model reaches precision 0.5 with a recall of at least 10%, pick by PR-AUC instead. The early checks suggest this may happen.
+   - Prefer the simpler model when the difference is within 2 percentage points, or when the leader beats it on that metric in fewer than 80% of the resamples. From simplest: logistic regression, the hazard model, TSB, ETS, SARIMA, the GBM classifier, GBM quantiles.
+   - Any model must beat the best baseline by at least 10% on PR-AUC, and models 4 to 7 also on MASE.
 4. **Present to the panel:** one table per metric, and a few example banks with forecast against actual, before building the winning model into the app.
 
 ### How the prediction feeds the engine
 
+- **Ranking (point 1): report 2's "used to lower that bank's score".**
+  - **First version:** multiply the bank's coverage and surplus scores by (1 − P), where P is its probability of running out of the group asked for within 24 h. A planned request, such as surgery the next day, uses P at 48 or 72 h.
+  - Mark a bank "may run out soon" when P passes the alert cut-off.
+  - **Later,** with a units forecast (models 4 to 7): score coverage and surplus on the units predicted for the time you would arrive, not on stock as last posted.
+  - The new factor goes through point 4's sensitivity check before it ships.
 - **Donor alerts (the main use).**
-  - **Trigger:** P(below threshold within 48 h) passes a cut-off, set from the backtest to keep false alerts under 1 per bank per week.
+  - **Trigger:** P(stock-out within 48 h) passes a cut-off, set from the backtest to keep false alerts under 1 per bank per week. Output 1b moves alerts earlier once it exists.
   - **Who:** eligible donors of that group near the bank, chosen with the existing eligibility module, the exact group (point 1) and the road ETA (point 2), and ranked by the response model R.
   - **How many:** enough to cover the expected shortfall at the expected response rate.
-- **Ranking (point 1).** Score a bank on predicted stock at the time you would arrive, not on stock as last posted:
-  - feed predicted units at the ETA into coverage and surplus;
-  - mark a bank "may run out before you arrive" when the risk is high.
 - **Public "donate here" list:** banks and groups with high risk in the next 72 h, shown on the donor page.
 - **Camp planning for blood-bank accounts:** which weeks and groups the bank usually runs short on, using its own history and the camp effect.
 
 ### Risks and limits, stated up front
 
 - **Self-reported stock.** eRaktKosh stock is what banks type in; 6.3% haven't updated in 30 days. Dormant banks are excluded from training, and freshness is a feature.
+- **Zeros that aren't stock-outs.** A bank that clears its page reads as running out of every group at once. The label rules (phase 5.1) leave these out, and the backtest reports the result both ways.
 - **No true demand yet.** Unit decreases mix issues with corrections and expiry. The monthly issue reports would fix that (access request).
-- **Gaps in collection** while the laptop is off (#35). Missing hours are marked, never filled in silently.
+- **Gaps in collection.** Until 3 November the laptop collected only while it was on (#35); since then the cloud sweeps every 4.5 hours, around the clock. Stock is rebuilt at the banks' own update times, so a gap loses only an update that a later one replaced, and missing hours are never filled in silently.
 - **Donor fatigue and fairness.** False alarms cost donor goodwill, which is why the false-alert rate is a selection metric, not an afterthought.
 - **Medical safety.** The forecast decides whom to ask to donate, never what a patient receives. Blood banks still do all screening and cross-matching.
 
-### Timeline
+### The subplan, with dates
 
-| When | Step |
-|---|---|
-| Now to December 2026 | Hourly collection runs. Add the Indian holiday calendar and Open-Meteo history as features. Rehearse B, A, C and E on Malaysia. |
-| Late December 2026 (about 8 weeks of history) | First walk-forward backtest of B, A and C on bloodLink data. Present the findings. |
-| January 2027 | Build the winner into an hourly scoring job, then donor alerts in shadow mode: logged, not sent, for 2 weeks to measure false alerts. |
-| Later | D and E once longer history exists. R once notifications collect responses. |
+| Phase | When | Work | Done when |
+|---|---|---|---|
+| **5.0 · Choose and rehearse** | 26 October 2026: **done** | The criteria, the longlist and the seven models; the Malaysia rehearsal and the plumbing test, in `../rough_work/ML/` | This section |
+| **5.1 · Labels and features** | November 2026 | Build the dataset from `stock_history`, or the local archive: every bank × component × group at 00:00, 06:00, 12:00 and 18:00 India time, carrying the last value forward. This grid gives the same rows from the laptop's hourly sweeps and the cloud's 4.5-hourly ones. Write down the label rules below. Add the features: stock now and its recent decreases, days of supply, the bank's update rhythm and freshness, weekday and hour, the Indian holiday calendar, camps in the last and next 7 days, Open-Meteo rain, bank type, auto-refresh and state | One script rebuilds the same dataset from the raw history, identically each time, and unit tests pin the label rules |
+| **5.2 · Dry runs of the harness** | Every 2 weeks from mid-November; a first one on 3 November ([above](#an-early-walk-forward-dry-run-3-november)) | Run the baselines and all seven models through the walk-forward harness on the history so far. Check only that it runs and the numbers are sane, not which model leads | The harness runs end to end in under an hour on the laptop |
+| **5.3 · The backtest** | Late December 2026, at about 8 weeks | Run it once and apply the decision rule as written | A table per metric with intervals, the chosen model and example banks, presented to the panel |
+| **5.4 · Scoring and shadow mode** | January 2027 | The chosen model scores every series after each sweep, and the probabilities are stored with the model's version. Ranked search reads them behind a flag. Donor alerts are logged, not sent, for 2 weeks | Calibration and false alerts per bank per week measured on live data |
+| **5.5 · Later** | 2027 | Retrain monthly and watch for calibration drift. Output 1b once daily use is reliable. The LSTM, TFT and a pretrained model once 6 to 12 months exist. Model R once notifications collect responses | — |
+
+**Label rules (phase 5.1), fixed before the backtest:**
+- **Stock-out:** the units of that component and group reach zero within (t, t + H], given more than zero at t. Cases already at zero at t aren't scored.
+- **A whole component cleared at once:** when every group of a component falls from 10 or more units in total to zero in one update, the bank is treated as not reporting, and the case is left out. Using that much of every group between two updates is far less likely than a cleared page. A small bank using its last few units still counts as a stock-out.
+- **Quick refills still count.** A zero refilled within hours was real for anyone who arrived then. Their share is reported.
+- **Dormant banks,** with no update in 30 days (point 3.1), are left out.
+- **Censoring:** a case whose window runs past the end of the data, or into a collection gap (#35), is dropped for that horizon. The hazard model keeps it up to the gap.
 
 ---
 
@@ -953,17 +1282,21 @@ Each suggestion in `documentation/suggested changes after sem 7 report 1.txt`, w
 |---|---|---|---|---|
 | 1 | A defined, validated ranking algorithm: compatibility, distance, ETA, reliability; scoring and weights explained with examples or test scenarios | Four scores (ETA, coverage, surplus, freshness) with urgency weights; exact blood group only; spare stock rewarded most when critical; ETA from road routes and traffic | Point 1 (D1.1 to D1.5, worked example 59.8 against 56.9); point 4 sensitivity (first choice unchanged in 92–98% of ±20% weight changes, τ ≈ 0.98); 20 unit tests | **Completed** |
 | 2 | Benchmark Haversine, the expanding rings and spatial indexing at different dataset sizes: time, candidates evaluated, scalability | Linear, rings, grid, k-d tree, R-tree and PostGIS GiST, from 4,328 to 500,000 points | Point 4 tables. Linear is about 0.1 ms today; indexes are 75 to 300× faster at 100,000+ points. PostGIS column and index added | **Completed.** Using the index for donor search is **Planned** |
-| 3 | Data standardisation, validation, de-duplication and refresh for the ~4,487 records; stale data and API failures demonstrated; other datasets | Validator (labels, ranges, dates, duplicates), hourly collection, saved fallback, two ages per bank, dormant banks, failure drill; cross-source matching; 6 other datasets found and validated, plus state outlines to check coordinates | Point 3.1 (Phase 0 survey, drill table), point 3.2 (`blood_data/`, quality reports, crosswalk), `docs/data_integrity.md` (independent re-check; coordinates checked against state outlines; six faults fixed) | **Completed.** Placing the 679 unlocated banks (#33) and re-placing the 206 in the wrong state (#34) are **In progress** |
+| 3 | Data standardisation, validation, de-duplication and refresh for the ~4,487 records; stale data and API failures demonstrated; other datasets | Validator (labels, ranges, dates, duplicates), collection (hourly, then every 4.5 hours in Supabase), saved fallback, two ages per bank, dormant banks, failure drill; cross-source matching; 6 other datasets found and validated, plus state outlines to check coordinates | Point 3.1 (Phase 0 survey, drill table), point 3.2 (`blood_data/`, quality reports, crosswalk), `docs/data_integrity.md` (independent re-check; coordinates checked against state outlines; six faults fixed) | **Completed.** Placing the 679 unlocated banks (#33) and re-placing the 206 in the wrong state (#34) are **In progress** |
 | 4 | Measurable results: functional tests, response time, load, notification performance, failure scenarios | Test-level plan with numbers: 125 unit tests; response times; 20 concurrent users; failure drill; benchmark | Point 4 and point 3.1 tables; `blood_data/measurements/` | **Completed** for everything built. Integration and end-to-end suites and CI (#20) are **Planned**; notification tests are **Planned** with the feature |
-| 5 | Where AI/ML fits, what it improves, inputs, outputs, and how the engine uses it | Stock-out risk per bank × component × group, feeding donor alerts and ranking; B, A and C compared by walk-forward backtest | Point 5 | **Planned.** Data collection is **In progress** (hourly since 2026-10-23), with a backtest due in late December 2026 |
+| 5 | Where AI/ML fits, what it improves, inputs, outputs, and how the engine uses it | The probability of a stock-out within 24–72 h per bank × component × group, lowering the bank's ranking score and starting donor alerts. Seven models shortlisted against five baselines, for a walk-forward backtest with a decision rule fixed in advance | Point 5: criteria, longlist, shortlist and subplan; a rehearsal on Malaysia, a plumbing test and an early walk-forward dry run on bloodLink's history (`../rough_work/ML/`) | **In progress.** Models chosen and rehearsed at low fidelity; the dry run of 3 November picks logistic regression, deciding nothing. Collected since 2026-10-23, every 4.5 hours in Supabase since 3 November, with the backtest due in late December 2026 |
 | 6 | Clearly separate completed, in-progress and planned work | This table, plus the issue list in `CLAUDE.md` | — | **Completed** |
 
 ### Completed, in progress, planned: the whole system
 
 | Status | Items |
 |---|---|
-| **Completed** | Region, location and ranked search. Exact-group ranking with the surplus score. OSRM routes with time-of-day, density, seasonal and rain-aware ETA. Response plan. eRaktKosh validation, circuit, retry, give-up and saved-copy fallback. Stock store, with hourly collection and history. Dormant banks. Freshness banners and two ages. Supabase Auth, profiles and donor eligibility. Organisation verification and admin tools. Collection-health card. PostGIS locations. State-boundary check on bank coordinates. 125 unit tests, measurements, failure drill, benchmark and sensitivity analysis. |
-| **In progress** | Stock history accumulating, hourly. Locating the 679 banks without coordinates (#33). Re-placing the 206 banks in the wrong state and reviewing duplicate codes (#34). |
-| **Planned** | Stock-out forecasting (point 5). Donor network: locations, requests, notifications. Hospital and blood-bank dashboards. Self-hosted OSRM, and ETA calibration from timed trips. Integration and end-to-end tests with CI (#20). Deployment: server-side collector, ingest login, `after()` saves, consent and account deletion (#18). |
+| **Completed** | Region, location and ranked search. Exact-group ranking with the surplus score. OSRM routes with time-of-day, density, seasonal and rain-aware ETA. Response plan. eRaktKosh validation, circuit, retry, give-up and saved-copy fallback. Stock store, with collection every 4.5 hours in Supabase and history archived in Storage. Dormant banks. Freshness banners and two ages. Supabase Auth, profiles and donor eligibility. Organisation verification and admin tools. Collection-health card. PostGIS locations. State-boundary check on bank coordinates. 125 unit tests, measurements, failure drill, benchmark and sensitivity analysis. |
+| **In progress** | Stock history accumulating, every 4.5 hours. The stock-out forecast: seven models shortlisted and rehearsed, an early walk-forward dry run done, and the backtest waiting for 8 weeks of history (point 5). Locating the 679 banks without coordinates (#33). Re-placing the 206 banks in the wrong state and reviewing duplicate codes (#34). |
+| **Planned** | Stock-out forecasting in the app (point 5). Donor network: locations, requests, notifications. Hospital and blood-bank dashboards. Self-hosted OSRM, and ETA calibration from timed trips. Integration and end-to-end tests with CI (#20). Deployment: ingest login, `after()` saves. |
+
+> **Status update, 26 October 2026 (later).** Consent, a privacy note and account deletion (#18) are now done, with security headers (#51) and a search pin rounded to about 110 m before it reaches any outside service (#52). Donor eligibility now follows NBTC's 2017 guidelines, checked against the official text (#24), and pages no longer wait on a profile query (#49). The database is moving from Tokyo to Mumbai (#28). There are 135 unit tests.
+
+> **Status update, 3 November 2026.** The database moved from Tokyo to Mumbai (#28), and collection moved off the laptop to Supabase (#35, [point 3.1](#collection-moved-to-supabase-3-november)): `pg_cron` and an Edge Function sweep all 36 states every 4.5 hours, around the clock, through the same `bloodlink_ingest` role. Measured on the laptop's hourly sweeps, 4.5 hours misses 4.9% of the updates hourly sweeps see, most of them values replaced within 10 minutes. Every change is archived, gzipped, in Supabase Storage, including all the laptop collected since 23 October, and a weekly task keeps a copy on the laptop. An [early walk-forward dry run](#an-early-walk-forward-dry-run-3-november) of the forecast picks logistic regression, deciding nothing. There are 150 unit tests.
 
 > The spatial-indexing ambiguity the reviewer pointed out is now resolved. Search uses eRaktKosh's own `nearest` call, or a linear scan over the saved directory when that is down. The benchmark shows that is right at 4,328 banks. A PostGIS GiST index exists on `blood_banks.location`, but search doesn't use it yet. It is planned for the donor network, where the benchmark shows it is needed.

@@ -47,7 +47,7 @@ Why it matters:
 Three facts about the current code shape the whole plan:
 
 1. **Location search never reads `blood_banks` while eRaktKosh is up.** `src/app/api/blood-search/route.js` takes positions from the live `nearest` answer. It reads the saved directory (`loadSavedNearest` in `src/lib/stockStore.js`) only when eRaktKosh is down. So writing corrected coordinates into `blood_banks` would change nothing for a normal search.
-2. **The weekly directory run would overwrite any correction.** `snapshotDirectory()` in `scripts/snapshot.mjs` upserts with `on conflict do update set latitude = excluded.latitude, longitude = …, location_quality = …`. Every Monday, eRaktKosh's wrong point would come back.
+2. **The weekly directory run would overwrite any correction.** `collectDirectory()` in `src/lib/collector.js`, which the cloud collector runs, upserts with `on conflict (hospital_code) do update set … latitude = excluded.latitude, longitude = …, location_quality = …`. Every Monday, eRaktKosh's wrong point would come back.
 3. **The 679 have no directory row to correct.** They exist only in `bank_stock_latest`, with a name and address inside the `row` jsonb but no position and usually no district.
 
 So the work has three parts: **find** positions (Part A), **store** them where the collector can't overwrite them (Part B), and **merge** them into every location search (Part C). Part D measures the effect.
@@ -231,7 +231,7 @@ Access, in the style of the existing migrations:
 - A **human-confirmed** fix (`manual` or `bank_confirmed`) always wins, even over a later eRaktKosh point.
 - A **machine** fix applies only while eRaktKosh's own point is unusable (`missing`, `wrong_state` or `outside_india`).
 - The weekly directory run adds one step: if eRaktKosh now gives a usable point for a machine-fixed bank, mark the fix `superseded`. If the new point is more than 2 km from the fix, log it for review instead of deciding.
-  - If `supabase_scheduler.md` has been carried out by then, this step goes in the shared `src/lib/collector.js`, not in `scripts/snapshot.mjs`, so the cloud and laptop runs both do it.
+  - This step goes in the shared `src/lib/collector.js`, so the cloud and laptop runs both do it. The cloud runs the deployed copy, so redeploy after the change: `node scripts/setup-cloud-collector.mjs --deploy-only`.
 
 ### The review page
 
@@ -356,7 +356,7 @@ Plus the accuracy table from the control: step, banks placed, median error, 90th
 | 3 | `scripts/place-banks.mjs`: the ladder, checks and cache. Dry run by default; `--apply` writes as `bloodlink_ingest`, like `snapshot.mjs`. Then the control run. | 1 day | Read the control results and agree the thresholds |
 | 4 | Target run, unattended | About 30 min | Leave the laptop on |
 | 5 | `/admin/locations` review page; review the queue | 1 day to build, 2 to 4 h to review | Review with a teammate |
-| 6 | `applyLocationFixes`, the loader, route and page changes, the switch, the supersede step in `snapshot.mjs`, tests | 1 day | Nothing |
+| 6 | `applyLocationFixes`, the loader, route and page changes, the switch, the supersede step in `collector.js` (then redeploy it), tests | 1 day | Nothing |
 | 7 | After measurement, both offline and live; update the documents | Half a day | Nothing |
 
 Lint, the format check, the tests and the build must pass after phases 2, 5 and 6.

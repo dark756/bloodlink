@@ -1,6 +1,6 @@
 # bloodLink
 
-bloodLink is a final-year B.Tech project. It is a Next.js web app on Supabase that searches live blood stock at Indian blood banks through the government eRaktKosh API, ranks nearby sources for an emergency request, and is growing into a donor network. Hospitals and blood banks register and are verified by admins. The reports and slides in `../documentation/` define the promised scope, but they disagree with the code and with each other (issue #32).
+bloodLink is a final-year B.Tech project. It is a Next.js web app on Supabase that searches live blood stock at Indian blood banks through the government eRaktKosh API, ranks nearby sources for an emergency request, and is growing into a donor network. Hospitals and blood banks register and are verified by admins. The reports and slides in `../documentation/` define the promised scope, but they disagree with the code and with each other.
 
 **Path convention.** The app lives in `bloodlink/`. Every path in this file is relative to `bloodlink/` unless it starts with `../`. Run all npm commands from `bloodlink/`.
 
@@ -11,15 +11,15 @@ bloodLink is a final-year B.Tech project. It is a Next.js web app on Supabase th
   - `docs/data_integrity.md` checks reviewer point 3 (data quality, freshness and failures) and records the faults found and fixed.
   - `docs/features.md` describes the features, including the ranking formulas and the reasons for their weights.
   - `docs/CODE_REFERENCE.md` describes every function and variable, file by file. Update it when you add, rename or remove one.
-  - **Plans, none started.** Begin one only when asked.
-    - `docs/supabase_scheduler.md`, approved: move the collector to Supabase (#35).
-    - `docs/plan_bank_locations.md`: place the banks location search can't see (#33, #34).
-    - `docs/plan_eta_comparison.md`: a rubric and test bench for comparing ETA methods.
-    - `docs/plan_panels.md`: the admin, blood-bank, hospital and donor panels.
-    - `docs/plan_donor_network.md`: the peer-to-peer donor network.
-  - **Dated reviews:** `docs/review_and_next_moves.md` (code, docs and plans) and `docs/verify_facts.md` (every number and outside fact), both from 24 October, with status notes from 26 October.
+  - **`docs/plans.md` lists all planned work in order of priority:** each item's details, status, size and next step, and its plan file in `docs/PLANS/` where one exists. Begin a plan only when asked.
+    - `docs/PLANS/plan_bank_locations.md`: place the banks location search can't see (#33, #34).
+    - `docs/PLANS/plan_eta_comparison.md`: a rubric and test bench for comparing ETA methods.
+    - `docs/PLANS/plan_panels.md`: the admin, blood-bank, hospital and donor panels.
+    - `docs/PLANS/plan_donor_network.md`: the peer-to-peer donor network.
+    - A finished plan's file is deleted, and its record moves to `docs/report3.md` or `docs/features.md`. The cloud collector's (#35) is in `docs/report3.md`, point 3.1.
+  - **Dated review:** `docs/verify_facts.md` checks every number and outside fact, as of 24 October, with status notes since.
 - Paths that start with `../` are outside the repository, on the project laptop only. Cloud sessions don't have them.
-- The known-issues list uses stable IDs, so a prompt can say "fix #26". When an issue is fixed, delete its entry and do not renumber the rest or reuse its ID. Add new findings with the next free ID, a severity and a tier.
+- The known-issues list uses stable IDs, so a prompt can say "fix #20". When an issue is fixed, delete its entry and do not renumber the rest or reuse its ID. Add new findings with the next free ID, a severity and a tier.
 - Facts marked *verified* were checked against the live eRaktKosh API or the live Supabase project on 2026-10-23, or on the date given.
 
 ## Workspace map
@@ -28,23 +28,24 @@ Edit only `bloodlink/`. Older copies of the app exist elsewhere in the workspace
 
 | Folder | What it is |
 |---|---|
-| `bloodlink/` | **The active app.** Git repo, remote `github.com/dark756/bloodlink`. The default branch, `supabase-migration`, holds the Supabase app. `master` holds the last MongoDB version, which tag `mongodb-final` also marks (the tag is still only on the laptop, #54). |
+| `bloodlink/` | **The active app.** Git repo, remote `github.com/dark756/bloodlink`. The default branch, `supabase-migration`, holds the Supabase app. `master` holds the last MongoDB version, which tag `mongodb-final` also marks. |
 | `supabase/migrations/` | Database schema, applied with `npm run db:migrate`. The only place schema changes go. |
-| `scripts/` | `migrate.mjs`, `make-admin.mjs` and `snapshot.mjs` run with Node against `SUPABASE_DB_URL`. `measure-search.mjs` times a running server. `benchmark-geo.mjs` compares spatial search methods, and `ranking-sensitivity.mjs` tests the weights. `build-traffic-profiles.mjs` and `build-state-boundaries.mjs` rebuild the traffic and state-outline assets. |
+| `supabase/functions/` | Edge Functions: `collect-stock`, the cloud collector, and `collector-probe`, Phase 0's throwaway probe (#35). Both import `src/lib/` and `assets/` directly. |
+| `scripts/` | `migrate.mjs`, `make-admin.mjs` and `snapshot.mjs` run with Node against `SUPABASE_DB_URL`. `copy-project.mjs` copies every table into the new Mumbai project (#28). The cloud collector's scripts (#35): `probe-cloud-collector.mjs` (Phase 0), `check-cloud-collector.mjs` (its SQL, rolled back), `setup-cloud-collector.mjs` (secret, Vault, deploy, schedule), `upload-archive.mjs` and `sync-archive.mjs` (the archive bucket). `measure-search.mjs` times a running server. `benchmark-geo.mjs` compares spatial search methods, and `ranking-sensitivity.mjs` tests the weights. `build-traffic-profiles.mjs` and `build-state-boundaries.mjs` rebuild the traffic and state-outline assets. |
 | `tests/` | Vitest unit tests for the pure modules in `src/lib/` and the eRaktKosh client. |
 | `archive/` | The old search page iterations, kept for reference. Not routable and not linted. |
 | `../redundant_bloodlink/bloodlink/` | April 2026 prototype: Next + TypeScript, Supabase, Expo, FastAPI. Abandoned. |
 | `../redundant_bloodlink/bloodlink-borade/` | A teammate's Sept 2026 Supabase fork with dashboard scaffolds, request flows and notification adapters. Reference only; much of it falls back to mock data. |
 | `../redundant_bloodlink/` top-level files | data.gov.in download scripts and dumps. `all_gov_data.json` holds about 2,800 blood banks. |
-| `../blood_data/` | Collected data, outside the repo. `eraktkosh/` holds the collector's archive: changed stock per day (`history/*.ndjson`), weekly directory copies, `sweeps.ndjson` and `collector.log`. Point 3.2 adds other datasets. |
-| `../rough_work/` | eRaktKosh endpoint notes and the density-aware ring-search spec at the bottom of `blood links.txt`. |
+| `../blood_data/` | Collected data, outside the repo. `eraktkosh/` holds the laptop's copy of the collector's archive: changed stock (`history/*.ndjson`), weekly directory copies, `sweeps.ndjson`, `collector.log` (the laptop collector) and `sync.log` (the weekly sync). `scripts/` holds the Python checks, the Task Scheduler wrappers and the saved task definitions; `measurements/` the measured results. Point 3.2 adds other datasets. |
+| `../rough_work/` | eRaktKosh endpoint notes and the density-aware ring-search spec at the bottom of `blood links.txt`. `ML/` holds the forecasting checks, with a `README.md` and the latest results in `SUMMARY.md`. |
 | `../documentation/` | Sem 6 ESE report and slides, Sem 7 progress report 1 and slides, and the reviewer's feedback file `suggested changes after sem 7 report 1.txt`. |
 | `../Research Papers/` | Literature-survey PDFs. |
 
 ## Stack and commands
 
 - **Framework:** Next.js 16.2.4 with the App Router, plain JavaScript, React 19.2, Tailwind CSS 4. Read `node_modules/next/dist/docs/` before using Next APIs; start with `01-app/02-guides/upgrading/version-16.md`.
-- **Backend:** Supabase project `lhosczocktoklmqqudgm`, region ap-northeast-1 (Tokyo), Postgres 17. Supabase Auth handles Google and email/password sign-in. The app uses `@supabase/ssr` and `@supabase/supabase-js` with the publishable key only.
+- **Backend:** Supabase project `zbjhdbleraucksutjdfs`, region ap-south-1 (Mumbai), Postgres 17. It replaced the Tokyo project `lhosczocktoklmqqudgm` on 2026-11-03 (#28). Supabase Auth handles Google and email/password sign-in. The app uses `@supabase/ssr` and `@supabase/supabase-js` with the publishable key only.
 - **Maps and data:** Leaflet 1.9 with react-leaflet 5, axios, eRaktKosh as the live stock source, OSRM for road routes, TomTom Traffic Index profiles for time-of-day congestion, Open-Meteo for current rain.
 
 ```bash
@@ -54,12 +55,17 @@ npm start                            # serve the build
 npm run lint                         # ESLint 9; passes with zero errors and warnings
 npm run format                       # Prettier 3: rewrite files in the house style
 npm run format:check                 # Prettier: list files that need formatting
-npm test                             # Vitest; 125 tests in tests/
+npm test                             # Vitest; 150 tests in tests/
 npm run db:migrate                   # apply pending supabase/migrations/*.sql
 node scripts/migrate.mjs --status    # list applied and pending migrations
 npm run db:make-admin -- a@b.com     # make an existing account the first admin
-npm run snapshot -- --all --archive ../blood_data/eraktkosh   # save every state's stock (hourly job)
-npm run snapshot -- --directory --prune                       # save the directory, trim history (weekly job)
+npm run snapshot -- --all --archive ../blood_data/eraktkosh   # a sweep from the laptop, by hand only: the cloud collects
+npm run snapshot -- --directory --prune                       # the directory and the prune, from the laptop
+node scripts/check-cloud-collector.mjs   # check the cloud collector's SQL in a rolled-back transaction
+node scripts/probe-cloud-collector.mjs   # Phase 0: deploy, call and delete a probe function (needs npx supabase login)
+node scripts/setup-cloud-collector.mjs [--deploy-only | --schedule | --unschedule]   # cloud collector setup
+npm run archive:upload [-- --check | --from-db YYYY-MM-DD]   # laptop archive into the bucket; compare per day
+npm run archive:sync                 # download the cloud archive into ../blood_data/eraktkosh/
 npm run measure -- --base http://localhost:3000 --runs 10     # search response times; add --concurrency 20. Start the server with TRUSTED_PROXY_HOPS=1
 node scripts/benchmark-geo.mjs ../blood_data/eraktkosh/directory/<nearest json> [--postgis]   # spatial search benchmark
 node scripts/ranking-sensitivity.mjs ../blood_data/measurements/ranking_sensitivity          # weights ±20%
@@ -69,25 +75,27 @@ node scripts/build-state-boundaries.mjs  # rebuild assets/state_boundaries.json 
 
 ## Environment
 
-Variables live in `.env.local`, kept out of git by the `.env*` rule.
+Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.example`, which is committed, lists them all with placeholders.
 
 | Variable | Used by | Notes |
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | all Supabase clients | Public. |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | all Supabase clients | Public by design; row-level security protects the data. |
 | `SUPABASE_DB_URL` | `scripts/` only | Session-pooler connection string with the database password. Never use it in app code. |
+| `SUPABASE_SECRET_KEY` | `scripts/upload-archive.mjs`, `scripts/sync-archive.mjs` | A secret key (Dashboard > Project Settings > API Keys), used only for the private `stock-archive` bucket. It bypasses row-level security, so never use it in app code. |
 | `NEXT_PUBLIC_API_URL` | `src/lib/eraktkosh.js` | Optional eRaktKosh base override ending in `/`. Inlined at build time. |
 | `NEXT_PUBLIC_CARTO_API_KEY` | `src/app/components/BloodMap.js` | Map tiles. Public by design. |
+| `NEXT_PUBLIC_CONTACT_EMAIL` | `src/lib/privacy.js` | The address `/privacy` gives for privacy questions and requests. Unset, the page points to the GitHub repository instead. Inlined at build time. |
 | `ERAKTKOSH_SIMULATE`, `ERAKTKOSH_SIMULATE_STATES` | `src/lib/eraktkosh.js` | Failure drill: `down`, `slow` or `flaky`, and state codes that always fail. Only outside production, or with `ERAKTKOSH_SIMULATE_ALLOW_PRODUCTION=1` on a local build. Never set on a deployed server. |
 | `OSRM_URL` | `src/lib/routing.js` | Optional OSRM server ending in `/`. Defaults to the public demo server (one request a second, no heavy use). Server-only, read at runtime. |
 | `TRUSTED_PROXY_HOPS` | `src/lib/rateLimit.js` | How many trusted proxies in front of the app add to `X-Forwarded-For`; the client's IP is that many entries from the right. Defaults to 1 on Vercel (`VERCEL` is set) and 0 elsewhere. At 0 the header is ignored and all callers share one rate limit, because on a bare `next start` the client writes it. Set it to 1 for `npm run measure` and the sensitivity capture, which simulate many users. |
 
-`MONGO_URI`, `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are still in the file but no longer read by the app. The Google pair is what goes into the Supabase dashboard.
+`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are kept in the file for reference; the app doesn't read them. They are what goes into the Supabase dashboard.
 
 ### One-time Supabase dashboard setup
 
 1. **Authentication > Providers > Google:** enable it and paste the Google client ID and secret.
-2. **Google Cloud console, OAuth client:** add `https://lhosczocktoklmqqudgm.supabase.co/auth/v1/callback` as an authorized redirect URI.
+2. **Google Cloud console, OAuth client:** add `https://zbjhdbleraucksutjdfs.supabase.co/auth/v1/callback` as an authorized redirect URI.
 3. **Authentication > URL Configuration:** set Site URL to the app's URL, and add `http://localhost:3000/auth/callback` plus the production `/auth/callback` URL to the redirect allow list.
 4. After you first sign in, run `npm run db:make-admin -- <your email>`.
 
@@ -101,13 +109,17 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule.
 | `/search` | `src/app/search/page.js` | anyone | Region search, location search, and ranked search with a response plan. |
 | `/login` | `src/app/login/page.js`, `LoginForm.js` | signed out | Google or email/password sign-in and sign-up. |
 | `/auth/callback` | `src/app/auth/callback/route.js` | anyone | Completes Google sign-in and email confirmation links. |
-| `/set-details` | `src/app/set-details/page.js` | signed in | Profile form: personal and blood details, plus donor screening for donors. Prefills when editing. |
+| `/set-details` | `src/app/set-details/page.js` | signed in | Profile form: personal and blood details, plus donor screening for donors. Prefills when editing. Saving needs agreement to the current privacy note. |
 | `/peer-to-peer` | `src/app/peer-to-peer/page.js` | complete profile | Profile, role badge and live donor eligibility. |
 | `/organization` | `src/app/organization/page.js` | signed in | Apply to register a hospital or blood bank; see review status and notes. |
+| `/account` | `src/app/account/page.js`, `DeleteAccountCard.js` | signed in | Whether you agreed to the current privacy note, and deleting your account. Reached from your name in the header. |
+| `/privacy` | `src/app/privacy/page.js` | anyone | The privacy note: what is stored and why, which outside services receive what, how long, and your rights. Linked from the footer. |
 | `/admin`, `/admin/organizations`, `/admin/users`, `/admin/audit` | `src/app/admin/` | admin | Overview and review queue, all applications, user roles, audit log. |
 | `GET /api/search` | `src/app/api/search/route.js` | anyone | Region search. Validated, cached eRaktKosh proxy. `X-Data-Source`, `X-Data-Fetched-At` and `X-Data-Upstream` headers say how fresh it is. |
 | `GET /api/blood-search` | `src/app/api/blood-search/route.js` | anyone | Location search: nearest mode or ranked mode. |
 | `GET /api/nearest` | `src/app/api/nearest/route.js` | anyone | Validated eRaktKosh `nearest` proxy. Unused by pages. |
+| `GET /api/reverse-geocode` | `src/app/api/reverse-geocode/route.js` | anyone | The place name under the map pin, from Nominatim through the server. 30 a minute per IP. |
+| `DELETE /api/account` | `src/app/api/account/route.js` | signed in | Delete your own account with `delete_my_account()`, then clear the session cookies. |
 | `GET`/`POST /api/details` | `src/app/api/details/route.js` | signed in | Read and save your own profile. |
 | `GET`/`POST /api/organization` | `src/app/api/organization/route.js` | signed in | Your applications; submit a new one. |
 | `POST /api/admin/organizations/review` | `src/app/api/admin/organizations/review/route.js` | admin | Approve, reject or suspend. |
@@ -123,10 +135,13 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule.
 | `auth.js` | `getCurrentUser` (verified claims), `getCurrentProfile`, `requireUser`, `requireAdmin`, `safeNextPath` (same-site paths only; refuses `//`, backslashes and control characters). |
 | `constants.js` | States, districts, blood groups and components from `assets/district_data.json`. Codes are strings. |
 | `eraktkosh.js` | Server-only eRaktKosh client built by `createEraktkoshClient`: parameter whitelist and aliases, validation, 5 min cache, per-state and service-wide circuits, retry, 8 s give-up, saved-copy fallback, failure simulator, `summarizeFreshness`. |
-| `stock.js` | Parses `available_WithQty` with canonical group names, units per component (matched by name only), `exactGroupUnits`, `keepOnlyComponent`, `isDormant` (30 days), phone extraction, "updated N ago", `cleanText`. No imports, so scripts can use it. |
-| `stockQuality.js` | Pure validator for eRaktKosh rows: unit range, group names, future dates, duplicates. Returns `{ rows, report }`. Used by the app and `scripts/snapshot.mjs`. |
-| `stockStore.js` | Server-only reads of the saved copy (`bank_stock_latest`, `blood_banks`) with the publishable key, in eRaktKosh's own shapes. With a `componentId`, saved rows are cut to that component, as a live filtered answer is. The saved directory keeps misplaced banks, as eRaktKosh's answer does, so the route counts them in both cases. |
-| `geo.js` | `haversineMeters` and `isInIndia`. |
+| `stock.js` | Parses `available_WithQty` with canonical group names, units per component (matched by name only), `exactGroupUnits`, `keepOnlyComponent`, `isDormant` (30 days), phone extraction, "updated N ago", `cleanText`, and `districtFromAddress` (the district an eRaktKosh address ends with). No imports, so scripts can use it. |
+| `stockQuality.js` | Pure validator for eRaktKosh rows: unit range, group names, future dates, duplicates. Returns `{ rows, report }`. Used by the app and the collector. |
+| `collector.js` | The eRaktKosh collector, shared by `scripts/snapshot.mjs` and the `collect-stock` Edge Function: fetch a state, validate, upload changed rows, refresh fetch times, add history, log the call, and record the run in `collector_runs`. The caller passes in the database session, `fetch` and the archive. Also the four cloud batches, the function's secret and request checks, and the admin overview's overdue rule. |
+| `stockStore.js` | Server-only reads of the saved copy (`bank_stock_latest`, `blood_banks`) with the publishable key, in eRaktKosh's own shapes. Each state's rows are downloaded once per 10 minutes and cut to the district and component in memory, as a live filtered answer is. A bank without a directory row gets its district from its address. The saved directory keeps misplaced banks, as eRaktKosh's answer does, so the route counts them in both cases. |
+| `geo.js` | `haversineMeters`, `isInIndia`, and `roundPinCoordinate`, which rounds a user's pin to 3 decimals (about 110 m). |
+| `geocoding.js` | Server-only Nominatim client: the place name for a rounded pin, one request a second, cached for a week. |
+| `privacy.js` | `PRIVACY_VERSION`, the privacy note's date that people agree to; `CONTACT_EMAIL`; `hasAgreedToPrivacy`. |
 | `stateBounds.js` | `createStateChecker(boundaries)`: whether a bank's point lies in its own state (5 km margin), from `assets/state_boundaries.json`. `locationProblem` returns `missing`, `outside_india`, `wrong_state` or `null`. Pure; the caller passes the JSON in, so scripts can use it. |
 | `rings.js` | Which search ring results come from: `nearestModeRing` and `rankedModeRing`. Dormant banks never decide the ring. |
 | `compatibility.js` | Donor groups a recipient can receive, per component category. Not used by search since report 3 (exact group only); kept for donor matching. |
@@ -134,7 +149,7 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule.
 | `traffic.js` | Pure travel-time model: traffic zone, congestion by India-time weekday, hour and month, rain factor, ETA. Reads `assets/traffic_profiles.json`. |
 | `routing.js` | Server-only OSRM table client: road distance and free-flow time per bank, 24 h cache, one request a second on the public server. |
 | `weather.js` | Server-only Open-Meteo client: current rain in mm/h, 15 min cache. |
-| `eligibility.js` | Donor eligibility computed on every read. |
+| `eligibility.js` | Donor eligibility computed on every read, following NBTC's 2017 donor-selection guidelines: clauses 2 to 4 (age, with 60 the limit for a first donation; weight; gap), 15 to 17 (birth, abortion, breastfeeding) and 47 (tattoos and the like). |
 | `profile.js`, `organization.js` | Whitelist validators for the profile and organization forms. Dates must be real calendar dates, and "today" is India's date. `trimText` and `PHONE_PATTERN` are shared from `profile.js`. |
 | `format.js` | Display helpers: `formatDate`, `formatDateTime`, `hoursSince`, `formatTimeAgo`, `capitalize`, `getInitials`. |
 | `profileStore.js` | Maps the page's `details` object to and from the `profiles` and `donor_screening` rows. |
@@ -142,7 +157,7 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule.
 
 ### Location search and ranking
 
-`GET /api/blood-search` takes `lat`, `lng`, optional `componentId` and `bloodGroupId`, and in ranked mode `units` (1 to 50) and `urgency` (`critical`, `urgent` or `routine`). The old `compatible` parameter is ignored.
+`GET /api/blood-search` takes `lat` and `lng`, rounded to 3 decimals by the page and again by `parseCoordinates`, optional `componentId` and `bloodGroupId`, and in ranked mode `units` (1 to 50) and `urgency` (`critical`, `urgent` or `routine`). The old `compatible` parameter is ignored.
 1. One eRaktKosh `nearest` call with a 150 km radius returns the nearby banks. At the same time, Open-Meteo is asked for rain at the pin.
    - Banks whose point lies outside their own state (or India) are left out, because their distance is meaningless (`stateBounds.js`). The response's `misplacedBanks` says how many within the widest ring, from live or saved data alike, and the page says so. Region search still lists them.
 2. More than 10 banks within 15 km means an urban area, with rings of 5, 10, 15 and 25 km. Otherwise the area is rural, with rings of 20, 50, 100 and 150 km.
@@ -201,6 +216,8 @@ Each eRaktKosh lookup takes the first step that has data:
    - If a backup exists, the client gives up after 8 s and serves it, while the call finishes in the background. When `nearest` was already slow, it gives up after 3 s instead.
 4. The older memory copy. Source `memory`.
 5. The copy saved in Supabase. Source `saved`. With a `componentId`, it is cut to that component, as a live filtered answer would be. An empty list is a real answer.
+   - Each state's rows are downloaded once per 10 minutes per server, and every component, group and district lookup is cut from them in memory.
+   - Banks with no directory row get their district from the end of their address, which names it the way `district_data.json` does. On 2026-10-26 this matched the known district for all 4,048 banks that have one.
 6. A clear error, with a Retry button on the page.
 
 What the user sees:
@@ -213,41 +230,46 @@ What the user sees:
 - The page shows a yellow banner when the oldest saved stock is under 24 h old and a red one when it is older. Each bank shows two ages, "Bank updated 3 h ago · checked 12 min ago".
 - Dormant banks (stock not updated for 30 days) are listed with a red badge but never decide the ring and are left out of the plan.
 
-How the saved copy is collected:
-- `scripts/snapshot.mjs` writes it, validated with `stockQuality.js`, as the `bloodlink_ingest` role.
-- Full rows are uploaded only for banks whose update time changed; the others get a new `fetched_at`.
-- Windows Task Scheduler on the project laptop runs it:
-  - `\bloodLink\Stock snapshot (hourly)`: all states;
-  - `\bloodLink\Directory snapshot and prune (weekly)`: Mondays.
-- Both run `../blood_data/scripts/run_collector.ps1` through a hidden PowerShell.
-  - It starts Node in its own hidden console, with `--log ../blood_data/eraktkosh/collector.log`. Two early runs were killed by a console signal after the first state; the cause is unknown.
-  - The collector logs any such signal with the time and carries on after Ctrl+C.
-  - A run that fails logs `fatal: …`, and the wrapper passes Node's exit code on, so Task Scheduler's last result shows it (#57). A state whose save fails is logged and skipped, and the sweep goes on (#60).
-  - Running outside the user's session (S4U) would need administrator rights.
-- To remove both: `Unregister-ScheduledTask -TaskPath '\bloodLink\' -TaskName * -Confirm:$false`.
+How the saved copy is collected, in Supabase since 2026-11-03 (#35; the design, measurements and decisions are in `docs/report3.md`, point 3.1):
+- **Every 4.5 hours.** Four `pg_cron` jobs, `collector-batch-1` to `-4`, tick every 30 minutes (5, 7, 9 and 11 minutes past the hour and the half hour). `collector_tick` starts a sweep once 4.5 hours have passed and posts each batch of 9 states, 2 minutes apart, to the `collect-stock` Edge Function through `pg_net`, pinned to `ap-south-1`.
+- The function runs `src/lib/collector.js` as `bloodlink_ingest`, validated with `stockQuality.js`, one state a second. Full rows are uploaded only for banks whose update time changed; the others get a new `fetched_at`. It refuses a job that started in the last 50 minutes, whichever runner ran it.
+- `collector-weekly`, Monday 03:20 India time, saves the directory, runs the prune and trims `pg_cron`'s run log.
+- **The archive.** Every change goes, gzipped, to the private Storage bucket `stock-archive`, with each batch's summary and the weekly directory. The laptop's history up to the cutover is there too: every day matched the database (`npm run archive:upload -- --check`). The prune deletes a day of `stock_history` only once the archive holds all of it.
+- **Monitoring.** Each job is a row in `collector_runs`. The admin overview shows the last sweep and turns red after the interval plus 2 hours.
+- **Commands** (`node scripts/setup-cloud-collector.mjs …`): `--unschedule` stops it, `--schedule ['6 hours']` starts it or changes the interval, `--deploy-only` redeploys after a change to `collector.js` or the function, and no flag rotates the secret.
+- **The laptop's copy.** `\bloodLink\Archive sync (weekly)`, Sundays at 21:00, runs `../blood_data/scripts/run_sync.ps1` (`npm run archive:sync`). It catches up about 10 minutes after the laptop is next on, never calls eRaktKosh, and logs to `../blood_data/eraktkosh/sync.log`. `../blood_data/scripts/register_sync_task.ps1` re-creates it. Run the sync by hand before training or testing a model.
+- **The old laptop collector** is disabled: `\bloodLink\Stock snapshot (hourly)` and `\bloodLink\Directory snapshot and prune (weekly)`, which ran `scripts/snapshot.mjs` through `../blood_data/scripts/run_collector.ps1` in a hidden console.
+  - `scripts/snapshot.mjs` still works by hand and records its runs as `laptop`. Never run a sweep on top of the cloud's: collection stays at hourly or less.
+  - Their definitions are saved in `../blood_data/scripts/tasks/`. To roll back: `--unschedule`, then `Enable-ScheduledTask -TaskPath '\bloodLink\' -TaskName 'Stock snapshot (hourly)','Directory snapshot and prune (weekly)'`. Once deleted, each comes back with `Register-ScheduledTask -TaskPath '\bloodLink\' -TaskName '<name>' -Xml (Get-Content -Raw ../blood_data/scripts/tasks/<file>.xml)`.
 
 ### Sign-in, profile and verification
 
 1. Sign-in uses Supabase Auth: Google OAuth or email/password, with PKCE through `/auth/callback`.
+   - The header learns who is signed in in the browser (`onAuthStateChange`), and reads the name and role from `profiles` on each page change. The root layout reads no cookies, so pages that don't read the session on the server are prerendered.
 2. A trigger on `auth.users` creates a `profiles` row with the name from the sign-in metadata.
 3. `/set-details` posts to `/api/details`. The route validates with `sanitizeDetails`, then updates `profiles` and upserts `donor_screening`, as the user, through row-level security. If the person isn't a donor, their screening row is deleted.
+   - A save needs agreement to the current privacy note. The form shows a tick box until `profiles.privacy_version` equals `PRIVACY_VERSION`, and the route refuses a save without it.
+   - The route stores the version; a trigger stamps `privacy_accepted_at` from the database clock, so no client can set the time.
 4. A trigger keeps `is_profile_complete` in sync, so the proxy reads completeness straight from the database.
 5. A user applies on `/organization`, which inserts a `pending` row in `organizations`. An admin approves it with `review_organization()`, which links the applicant to the organization, sets their role to `hospital` or `blood_bank`, and writes `audit_log`. Rejecting or suspending removes both. An applicant who is an admin keeps the admin role, but is still linked, so `set_user_role()` can give them the organization's role if the admin role is removed.
 6. Admin roles change only through `set_user_role()`, which refuses to remove the last admin. The first admin comes from `npm run db:make-admin`.
+7. Anyone signed in can delete their account on `/account`. `delete_my_account()` deletes the auth user, which cascades to the profile, the screening answers and the person's organization applications. Audit entries stay, with no actor. The last admin is refused.
 
 ### Data model and security
 
-Schema is in six migrations in `supabase/migrations/`:
+Schema is in eight migrations in `supabase/migrations/`, all applied to the live project:
 - `20261023000100_init.sql`: people and organizations;
 - `20261023000200_stock_store.sql`: saved eRaktKosh data;
 - `20261023000300_blood_bank_locations.sql`: PostGIS;
 - `20261024000100_wrong_state_locations.sql`: the `wrong_state` flag;
 - `20261026000100_ingest_prune_grant.sql`: lets the collector's prune read `upstream_calls.called_at` (#56);
-- `20261026000200_review_and_india_dates.sql`: India's date in the "no future dates" triggers (#46), and the admin case in `review_organization()` (#42).
+- `20261026000200_review_and_india_dates.sql`: India's date in the "no future dates" triggers (#46), and the admin case in `review_organization()` (#42);
+- `20261026000300_privacy_consent_and_account_deletion.sql`: agreement to the privacy note on `profiles`, and `delete_my_account()` (#18);
+- `20261103000100_cloud_collector.sql`: `pg_cron` and `pg_net`, `collector_sweeps` and `collector_runs`, the private `stock-archive` bucket, the tick and scheduling functions, and a prune that deletes a day of history only once the archive holds it (#35). It schedules nothing.
 
 | Table | Contents | Who can read | Who can write |
 |---|---|---|---|
-| `profiles` | Personal details, `blood_group_code` (eRaktKosh code), `is_donor`, `role`, `organization_id` | Owner; admins | Owner, but only the personal columns. Role and completeness are never client-writable. |
+| `profiles` | Personal details, `blood_group_code` (eRaktKosh code), `is_donor`, `role`, `organization_id`, `privacy_version` and `privacy_accepted_at` | Owner; admins | Owner, but only the personal columns and `privacy_version`. Role, completeness and `privacy_accepted_at` are never client-writable. |
 | `donor_screening` | Last donation date and health answers | Owner only, not admins | Owner |
 | `organizations` | Hospital and blood-bank applications with `status` | Applicant; admins | Applicant inserts as `pending` and may edit while pending; status changes only through `review_organization()` |
 | `audit_log` | Admin actions | Admins | Database functions only |
@@ -255,11 +277,14 @@ Schema is in six migrations in `supabase/migrations/`:
 | `bank_stock_latest` | One validated eRaktKosh row per bank (`row` jsonb, same shape as live), `entry_at`, `fetched_at` | Anyone | `bloodlink_ingest` only |
 | `stock_history` | Compact stock whenever a bank's update time changes; unique on bank and `entry_at`; pruned at 60 days | Anyone | `bloodlink_ingest` only |
 | `upstream_calls` | One row per collector call: endpoint, state, ok, status, time, bytes, rows, failure kind, validation counts | Admins (`is_admin()`), plus the `upstream_stats` view | `bloodlink_ingest` only |
+| `collector_sweeps` | One row per cloud sweep: start time, interval, batches sent | Admins | The tick functions only |
+| `collector_runs` | One row per collector job (cloud or laptop): batch, times, states saved, failed and skipped, rows changed, and the archive file with its UTC day and line count | Admins | `bloodlink_ingest` only |
 
 - **Row-level security** is on for every table. Grants are explicit and column-level, so the dashboard's "expose new tables" setting doesn't matter.
 - **Constraints:** CHECK constraints and triggers enforce the same value rules as `src/lib/profile.js` and `src/lib/organization.js`, plus "no future dates", judged by India's date.
 - **Admin functions:** `is_admin()`, `review_organization()` and `set_user_role()` are `security definer` with an empty `search_path`. They raise SQLSTATE 42501, 22023 or P0002, which `src/app/api/admin/rpcError.js` maps to HTTP status codes.
-- **No service-role key** exists in the app. Everything runs as the signed-in user, or with the publishable key for the public stock tables.
+- **Account deletion:** `delete_my_account()` is `security definer` too, and deletes only the caller's own auth user. Every foreign key to `profiles` must cascade or set null, so a deletion is never blocked.
+- **No service-role or secret key** exists in the app. Everything runs as the signed-in user, or with the publishable key for the public stock tables. A secret key is used only for the private `stock-archive` bucket: by the `collect-stock` Edge Function, from the environment Supabase gives it, and by the two archive scripts.
 - **`bloodlink_ingest`** is a no-login role. The collector connects with `SUPABASE_DB_URL` and runs `set role bloodlink_ingest`, so its session can touch only the stock tables. `prune_stock_store()` is executable only by it, and runs with its rights.
   - On `upstream_calls` it may insert and delete, and read only `called_at`, which the prune's `DELETE … WHERE` needs.
   - Postgres requires SELECT on every column an `UPDATE` or `DELETE` reads in its `WHERE`, so a new job role needs those grants too.
@@ -320,8 +345,11 @@ Blood-group codes: A+ 11, A- 12, B+ 13, B- 14, O+ 15, O- 16, AB+ 17, AB- 18, Bom
   - `is`/`has`/`can` for booleans, `handleX` for event handlers, `onX` for callback props.
   - `snake_case` appears only in database columns and raw eRaktKosh fields. Normalized objects use camelCase, so `row.entrydate` becomes `entryDate`.
 - **Styling.** Use the classes in `src/app/globals.css`: `page-wrap`, `card`, `btn btn-primary`, `badge badge-green`, `notice notice-warn` and the rest, plus Tailwind. The theme is light-only, with brand red `#d32f2f`.
-- **Medical copy.** Label eligibility, compatibility and ranking output as informational. Blood banks do the real screening and cross-matching (issue #24).
+- **Medical copy.** Label eligibility, compatibility and ranking output as informational. Blood banks do the real screening and cross-matching; their medical officer makes the final call. Screening questions and thresholds follow NBTC's 2017 guidelines, cited by clause in `src/lib/eligibility.js`.
+- **Static pages.** Keep the root layout free of cookies and other per-request reads; the header reads the session in the browser. `npm run build` must list `/`, `/privacy`, `/search`, `/peer-to-peer`, `/set-details` and `/organization` as static (○).
 - **Credits.** The search page must keep the OSRM / OpenStreetMap, TomTom, Open-Meteo and DataMeet / geoBoundaries credit line. The public OSRM and Open-Meteo services and the CC BY 2.5 IN state outlines require it.
+- **Privacy.** A user's pin leaves the browser only through `roundPinCoordinate`, and outside services are called by the server; the browser talks only to the app, Supabase and CARTO. A new outside service or a new kind of personal data goes on `/privacy`, and a changed note gets a new `PRIVACY_VERSION`.
+- **Security headers.** `next.config.mjs` sends them on every response. The full Content-Security-Policy is report-only, so violations show in the browser console; add any new browser-side origin to it.
 
 ## Verifying changes
 
@@ -330,17 +358,23 @@ Blood-group codes: A+ 11, A- 12, B+ 13, B- 14, O+ 15, O- 16, AB+ 17, AB- 18, Bom
 - **Location search:** Mumbai (19.0760, 72.8777) comes back `urban` with a 5 km ring and `travel.zone` `metro`. A ranked search there for O- red cells, `componentId=12&bloodGroupId=16&units=3&urgency=critical`, returns a plan, and every result's stock is O-Ve only. Starting the server with `OSRM_URL=http://127.0.0.1:9/` must still answer, with every bank's `etaSource` set to `estimate`.
 - **Misplaced banks:** a ranked search in central Delhi (28.6139, 77.2090) lists only banks whose address is in Delhi, with `misplacedBanks` above 0.
 - **Rate limit:** on a server without `TRUSTED_PROXY_HOPS`, 21 location searches in a minute, each with a new `X-Forwarded-For`, must end in a 429.
-- **Security:** with a signed-in non-admin, the Data API must refuse `profiles.update({ role })` with 42501, and `/api/admin/*` must return 403. With the publishable key, the stock tables are readable, while `upstream_calls`, every insert or update, and `rpc/prune_stock_store` are refused with 42501.
+- **Security:** with a signed-in non-admin, the Data API must refuse `profiles.update({ role })` and `profiles.update({ privacy_accepted_at })` with 42501, and `/api/admin/*` must return 403. With the publishable key, the stock tables are readable, while `upstream_calls`, every insert or update, and `rpc/prune_stock_store` are refused with 42501.
+  - Every response carries the headers from `next.config.mjs`.
+  - Signed out, `/account` redirects to `/login`, and `DELETE /api/account` returns 401.
+- **Place names:** `/api/reverse-geocode?lat=15.4909&lng=73.8278` answers `Panaji`, and asking again for the same rounded point is served from the cache.
 - **Failure drill:** build, then start `next start` with `ERAKTKOSH_SIMULATE_ALLOW_PRODUCTION=1` and `ERAKTKOSH_SIMULATE=down`.
   - Every search must still answer, from `source: "saved"`.
   - A ranked search near Saifai (26.9608, 78.9621) for A+ red cells must not list bank 1702, which holds only plasma.
   - A ranked search in central Delhi must still report `misplacedBanks` above 0.
+  - A region search for Rohtak, Haryana (`stateCode=96&districtId=82`) must list bank 96121, which has no directory row.
   - `slow` must serve the saved copy after 8 s.
   - `ERAKTKOSH_SIMULATE_STATES=27` must keep other states live, even after several Maharashtra failures in a minute.
   - Add `TRUSTED_PROXY_HOPS=1` when a script sends many searches.
   - `docs/report3.md` and `docs/data_integrity.md` have the reference results.
-- **Collector:** `npm run snapshot -- --prune --log ../blood_data/eraktkosh/collector.log` must log a `pruned:` line. It makes no eRaktKosh calls.
+- **Collector:** `npm run snapshot -- --prune --log ../blood_data/eraktkosh/collector.log` must log a `pruned:` line, and `npm run snapshot -- --states 999` must stop with "Unknown state code" before any call. Neither calls eRaktKosh. The cloud runs the deployed copy of `collector.js`: after changing it or the function, run `node scripts/setup-cloud-collector.mjs --deploy-only`, then check the next sweep's four `collector_runs` rows. A laptop prune counts toward the repeat guard, so don't run one in the 50 minutes before the Monday 03:20 job.
+- **Cloud collector:** `node scripts/check-cloud-collector.mjs` must pass all its checks (it rolls everything back), and `npx deno@2.5.6 check --no-lock --node-modules-dir=none supabase/functions/collect-stock/index.ts supabase/functions/collector-probe/index.ts` must report no errors.
 - **Performance:** `npm run measure` against a fresh server started with `TRUSTED_PROXY_HOPS=1`; compare with the table in `docs/report3.md`.
+- **Schema changes:** run a new migration and its checks inside one transaction that is rolled back before applying it. On 2026-10-26, `delete_my_account()` and the consent trigger were checked that way with a throwaway user.
 - **End to end:** on 2026-10-23, a throwaway script ran 47 checks against the live project. It seeded users directly into `auth.users`, signed them in, and exercised every flow and refusal, then deleted them. It is not in the repo because it writes to the auth schema of the live project; see issue #20.
 
 ## Known issues, prioritized
@@ -349,57 +383,46 @@ Each issue has an urgency tier and a severity tag. The list is sorted by tier, t
 - **Tiers:** P0 = fix now. P1 = the next few prompts. P2 = before big new features. P3 = later.
 - **Severity:** Critical = data exposure or corruption. High = the core feature gives wrong answers or none, or a serious security risk. Medium = degraded behavior or a latent risk. Low = cleanup.
 
-Fixed, IDs not to be reused: #1 to #17, #21, #22, #36 to #44, #46 to #48, #53, and #55 to #60.
+Fixed, IDs not to be reused: #1 to #18, #21 to #25, and #36 to #60.
 - #9 and #16 went away with the move to Supabase Auth and `src/proxy.js`.
 - #36 to #41 were found and fixed on 2026-10-24; see `docs/data_integrity.md`.
-- #42 to #55 come from `docs/review_and_next_moves.md`, and #56 to #60 from the review that followed it. The ones listed above were fixed on 2026-10-26.
+- #42 to #55 come from the code, docs and plans review of 2026-10-24, and #56 to #60 from the review that followed it. The ones listed above were fixed on 2026-10-26, as were #18, #23, #24 and #25.
+- #24's thresholds were checked on 2026-10-26 against the official text of NBTC's 2017 guidelines, as the Union of India filed it in the Supreme Court (WP (C) 275 of 2021, Annexure A5); NACO's own server wasn't reachable. The four mismatches F1 to F4 in `docs/verify_facts.md` are fixed, and abortion (clause 16) was added.
+- Dropped on 2026-10-26 without a fix, IDs not to be reused: #19 (keys in the archive folders), #26 (rotating the database password) and #32 (documents that claim features the code lacks).
+- #49 closed on 2026-11-03: the Mumbai project signs sessions with its ES256 (P-256) key, so `getClaims()` verifies them locally.
+- #27, custom SMTP for sign-up email, moved to `docs/PLANS/plan_panels.md` as foundation item F8.
 - #30 and #31 were retired without a record. Don't reuse them either.
 
 ### P0 · fix now
 
-**#26 · High · Rotate the database password.**
-- It was shared in chat, and the session pooler is reachable from the internet.
-- Reset it in Dashboard > Project Settings > Database. Then update `SUPABASE_DB_URL` in `.env.local` only.
-
-**#25 · Medium · Google sign-in needs dashboard setup.**
-- Google sign-in fails until the one-time setup above is done. Email/password sign-in works now.
+None open.
 
 ### P1 · next
 
-**#32 · Medium · The documents claim features the code doesn't have.**
-- The Sem 7 slides list a greedy-knapsack planner, a chronic-care module and Firebase/OneSignal notifications. The progress report names an Express/MongoDB/JWT stack and a 4,487-record master directory. No kept dataset has 4,487 records; `docs/data_integrity.md` gives the dated counts to use instead.
-- The reviewer asked for completed and planned work to be separated. Update the documents to match: the stack is Next.js on Supabase, and the ranking engine and response plan now exist.
+**#28 · Low · Finish the move to Mumbai.**
+- The project moved from Tokyo to ap-south-1 (Mumbai) on 2026-11-03. Tokyo cost about 175 ms per round trip and 1.2 s to connect; Mumbai measured 10 ms and 113 ms from the laptop.
+  - `scripts/copy-project.mjs` applied all eight migrations and copied every table in 77 s, every count matching (48,500 history rows).
+  - `.env.local` points at Mumbai, and the Tokyo lines are gone. Use the session pooler (`aws-0-ap-south-1.pooler.supabase.com`, user `postgres.<ref>`): the direct `db.<ref>.supabase.co` address is IPv6-only and doesn't resolve here.
+  - Checked on Mumbai: `check-cloud-collector.mjs`, the Data API's refusals, a prune, the failure drill's saved-copy searches (Goa 5 and 3, Rohtak listing 96121), and Google enabled in `/auth/v1/settings`. Accounts and roles were copied; people sign in again.
+- Left:
+  1. Sign in once with Google at `/login`, to check the whole round trip.
+  2. Pause the Tokyo project. On 2026-11-03 it held nothing Mumbai lacks: the same counts in every table, its last write the 14:05 sweep before the copy, and no Storage files, Vault secrets or functions.
+  3. Delete Tokyo from about 2026-11-10, since the free plan keeps no backups, then remove its callback URL from the Google Cloud console.
+  4. Tidy `.env.local`: `SUPABASE_MUMBAI_PWD` is unused, and the `MUMBAI_*` lines repeat the active ones.
 
-**#27 · Medium · Default Supabase email is rate-limited.**
-- Sign-up confirmation emails go through Supabase's built-in sender, which allows only a few emails per hour.
-- Configure custom SMTP in Authentication > Emails before real users sign up.
-
-**#51 · Medium · No security headers.**
-- `next.config.mjs` sets no Content-Security-Policy, `frame-ancestors`, Referrer-Policy or Permissions-Policy. It matters as soon as the app is public.
-- Add `headers()`: `frame-ancestors 'none'`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(self)` and `X-Content-Type-Options: nosniff`. Then try a CSP that allows CARTO tiles, Nominatim and Supabase, in report-only mode first.
-
-**#28 · Low · Database region is far from users.**
-- The project is in Tokyo, so every query from India adds noticeable latency. Measured: about 175 ms per round trip and 1.2 s to connect. The collector's first full upload took minutes because of it.
-- Before real data accumulates, consider recreating the project in ap-south-1 (Mumbai) and re-running the migrations.
-- Decide it before the cloud collector, the donor network or a deployment is built on the project; each makes moving harder (`docs/review_and_next_moves.md`).
-
-**#35 · Low · Collection runs only while the project laptop is on.**
-- The hourly task needs this machine and a logged-in user, so the history will have gaps.
-- It is on the forecast's critical path: the late-December backtest needs history collected from now on.
-- Fix: `docs/supabase_scheduler.md`, approved on 2026-10-23, moves collection to Supabase: `pg_cron` plus an Edge Function, every 4.5 hours.
-  - Rotate the password (#26) and decide the region (#28) first.
-  - The laptop tasks are disabled at cutover and deleted after a 24-hour watch.
-  - A weekly laptop task then keeps a local copy of the archive.
-  - It isn't started; it begins with `npx supabase login` when asked.
-
-**#54 · Low · The `mongodb-final` tag isn't on GitHub.**
-- It exists only on the laptop. Push it with `git push origin mongodb-final`.
-- The rest is done: since 2026-10-26, `supabase-migration` is GitHub's default branch, so the repository shows the current app. `master` still holds the MongoDB version.
+**#35 · Low · Finish moving collection off the laptop.**
+- Cut over on 2026-11-03 (`docs/report3.md`, point 3.1): the laptop's tasks were disabled after its 15:05 sweep, its archive was uploaded and matched the database day by day, and the cloud schedule began at 15:36. The first cloud sweep, at 16:05, passed every check: four batches 2 minutes apart, 36 to 42 s each, 36 of 36 states, and all 63 changed rows archived and synced to the laptop.
+- Left:
+  1. Watch the first 24 hours, to 16:05 on 2026-11-04: the sweeps at 20:35, 01:05, 05:35, 10:05 and 14:35, each with four `collector_runs` rows of 9 states.
+  2. Then delete the two laptop tasks, by name so the sync task stays: `Unregister-ScheduledTask -TaskPath '\bloodLink\' -TaskName 'Stock snapshot (hourly)','Directory snapshot and prune (weekly)' -Confirm:$false`.
+  3. Test the sync's catch-up once: set its trigger a few minutes ahead, shut the laptop down across it, and check `sync.log` about 10 minutes after signing in.
+  4. Check the sync's first scheduled run, Sunday 2026-11-08 at 21:00, and the first weekly directory and prune, Monday 2026-11-09 at 03:20.
+- It is on the forecast's critical path: the late-December backtest needs history collected without gaps.
 
 ### P2 · soon
 
 **#20 · Medium · No CI and no committed end-to-end tests.**
-- 125 unit tests run with `npm test`. Response times and the failure drill are measured by hand; see `docs/report3.md` and `docs/data_integrity.md`.
+- 150 unit tests run with `npm test`. Response times and the failure drill are measured by hand; see `docs/report3.md` and `docs/data_integrity.md`.
 - Add a GitHub Actions job for lint, test and build.
 - Add an end-to-end suite that runs against a local or staging Supabase project, never production.
 
@@ -414,71 +437,33 @@ Fixed, IDs not to be reused: #1 to #17, #21, #22, #36 to #44, #46 to #48, #53, a
 - Re-place them the way #33 suggests (data.gov.in, then geocoding addresses), then clear the flag. The 30 banks within 5 km of their own state are kept as border cases.
 - 6 pairs of eRaktKosh codes look like one bank listed twice (`../blood_data/crosswalk/eraktkosh_possible_duplicates.csv`), for example "Vardaan Charitable Blood Centre" and "VARDAAN BLOOD CENTRE".
 
-**#49 · Medium · Every page waits on a profile query.**
-- `src/app/layout.js` reads the session and the profile on every request. So every page, even the landing page, is rendered on demand and waits on a round trip to Tokyo (about 175 ms, #28).
-- Load the header's user in a small client component, or cache it. Measure before and after.
-- `getClaims()` verifies the token locally only with asymmetric signing keys. Check the project's JWT signing keys in the dashboard: with the legacy shared secret, the proxy and the layout each call the Auth server as well.
-
-**#52 · Medium · The user's location reaches outside services at high precision.**
-- The pin of someone searching for blood is health-adjacent personal data. Nominatim gets it from the browser at full GPS precision; eRaktKosh and the public OSRM server get it at 4 decimals (about 11 m); Open-Meteo gets 0.1°.
-- Round it to 3 decimals (about 110 m) before Nominatim, eRaktKosh and OSRM, and name the services in the privacy note (#18).
-- Nominatim's policy expects the app's total traffic to stay moderate, so before a public launch, route reverse geocoding through the server with a cache.
-
-**#50 · Low · The saved copy is downloaded on every cold lookup.**
-- Without a memory copy, each stock lookup also downloads that state's saved rows, in parallel with the live call, so they are ready if it is slow (`src/lib/eraktkosh.js`).
-- Each component, group and district combination does so separately, and so does each serverless instance. Uttar Pradesh is about 1 MB each time, against the free plan's 5 GB of egress a month.
-- Cache the saved rows per state, not per filter, and cut them in memory with `keepOnlyComponent`.
-
 ### P3 · later
 
-**#18 · Medium · Consent and account deletion.**
-- Health answers are now owner-only and are deleted when someone stops being a donor.
-- Before a public launch, India's Digital Personal Data Protection Act (2023) still calls for consent text, a privacy note and a self-service way to delete an account.
-
-**#19 · Medium · Secrets in archive folders.**
-- `../redundant_bloodlink/bloodlink/.env` and `.env.local` hold real-looking Supabase service-role, OpenRouter, SMS and data.gov.in keys.
-- `../redundant_bloodlink/save_blood.js` and `something.js` hardcode a data.gov.in key.
-- Revoke or rotate them, then delete them. Never copy the values anywhere.
-
-**#24 · Medium · Screening thresholds are unverified.**
-- `src/lib/eligibility.js` uses age 18 to 65, and a 90-day gap for men or 120 days otherwise. The form asks about a 6-month tattoo window and 50 kg.
-- Reproductions of the NBTC (National Blood Transfusion Council) 2017 guidelines differ on four points (`docs/verify_facts.md`, F1 to F4):
-  - tattoos, piercing and acupuncture defer for 12 months;
-  - the minimum weight is 45 kg for a 350 ml collection, and over 55 kg for 450 ml;
-  - first-time donors must be 60 or younger; repeat donors may give up to 65;
-  - mothers are deferred for 12 months after delivery, which the form doesn't ask.
-- Check them against the official NBTC document before changing the rules; it couldn't be loaded on 2026-10-24. The donor network must not use eligibility to choose whom to message until this is done.
-
 **#29 · Low · Scripts skip TLS certificate checks.**
-- `scripts/migrate.mjs`, `make-admin.mjs`, `snapshot.mjs` and `benchmark-geo.mjs` use `rejectUnauthorized: false`.
+- `scripts/migrate.mjs`, `make-admin.mjs`, `snapshot.mjs`, `benchmark-geo.mjs` and `copy-project.mjs` use `rejectUnauthorized: false`.
 - Download the Supabase CA from Dashboard > Database > SSL and pass it as `ssl.ca`.
 
-**#23 · Low · Housekeeping.**
-- The default Next assets are still in `public/`.
-- There is no `.gitattributes`.
-- `.env.local` still holds the unused MongoDB and NextAuth values.
-- `.gitignore`'s `.env*` rule would also hide a `.env.example`; add `!.env.example` with one.
-
-**#45 · Low · A district search from the saved copy misses unplaced banks.**
-- `bank_stock_latest.district_id` comes from `blood_banks`, where the 679 banks without coordinates have no row, and eRaktKosh's stock rows carry no district field.
-- So while eRaktKosh is down, a district search leaves them out, though a state search lists them.
-- Fill the district from `docs/plan_bank_locations.md`'s placements, or from the address text.
+**#61 · Low · Some foreign-key columns have no index.** A potential issue, not yet a problem.
+- `profiles.organization_id`, `organizations.reviewed_by` and `audit_log.actor_id` have none. `organizations.applicant_id` has only the partial unique index on open applications, which neither its cascade nor `GET /api/organization` (every status) can use.
+- So `delete_my_account()` scans `organizations` and `audit_log`, and each application it deletes scans `profiles`. At today's row counts this costs nothing.
+- Fix: one migration with a plain index on each of the four columns. Add `collector_runs.sweep_id` too if sweeps are ever pruned.
+- Found on 2026-11-03 while checking an outside list of suggestions. The rest of that list was about the abandoned prototype in `../redundant_bloodlink/bloodlink/`, and the app already handles the points that held.
 
 ## Where to go next
 
-1. **Finish the platform basics.** Rotate the database password (#26), decide the database region (#28), do the Google setup (#25), set up custom SMTP (#27), align the documents (#32), push the `mongodb-final` tag (#54), and add CI (#20).
-2. **Re-place the banks location search can't use:** the 679 without coordinates (#33) and the 206 in the wrong state (#34), following `docs/plan_bank_locations.md`.
-3. **Move collection off the laptop** with `docs/supabase_scheduler.md` (#35), when asked, after #26 and #28. Check that the first weekly directory run, on Monday 2026-10-26, logged its flags and a `pruned:` line in `../blood_data/eraktkosh/collector.log`, and that Task Scheduler's last result is 0.
-4. **Stock-out forecasting** (reviewer point 5).
-   - Let history accumulate, and re-run `python -I blood_data/scripts/validate_history.py blood_data` from the workspace root (the folder above `bloodlink/`) now and then.
-   - Once about 8 weeks exist, around late December 2026, compare the baselines, the statistical models and gradient-boosted trees by walk-forward backtest (`docs/report3.md`, point 5).
-5. **Build hospital and blood-bank dashboards** (`docs/plan_panels.md`). Verified accounts get a role but no tools yet.
-   - A blood bank links its eRaktKosh code, sees requests for its stock and confirms reservations.
-   - A hospital creates emergency requests and sees ranked sources with the response plan.
-6. **Build the donor network** (`docs/plan_donor_network.md`).
-   - Add donor location as a PostGIS `geography` point with a GiST index. The benchmark in `docs/report3.md`, point 4, shows an index is 75 to 300 times faster than a scan at 100,000 points and more.
-   - Add `blood_requests` and `request_responses` tables with row-level security.
-   - Match donors with the existing compatibility, eligibility and ranking modules, masking contact details until both sides accept.
-   - Notifications: in-app first, then email, then SMS. The fork has MSG91, Fast2SMS and Twilio adapters.
-7. **Routing and ETA.** Self-host OSRM (Docker, Geofabrik India extract) before real traffic, and calibrate the town and rural values against timed trips. `docs/plan_eta_comparison.md` sets out how to compare the methods.
-8. **Ship.** Fix #49 to #52, deploy to Vercel, add consent and account deletion (#18), and build a PWA before any native mobile app.
+`docs/plans.md` has every item in order of priority, with its details. The first ones:
+1. **Push and merge the branch `mumbai-and-cloud-collector`,** when asked. It holds everything since 2026-10-26 (the privacy and consent work, the move to Mumbai and the cloud collector), committed on 2026-11-03 but not pushed, and the deployed `collect-stock` function runs code GitHub doesn't have yet.
+2. **Finish moving collection off the laptop** (#35): the 24-hour watch, then deleting the laptop tasks. Collection has run in Supabase since 2026-11-03.
+3. **Finish the move to Mumbai** (#28): one Google sign-in, then retiring Tokyo.
+4. **Stock-out forecasting** (reviewer point 5). The subplan, the seven models and the decision rule are in `docs/report3.md`, point 5; the scripts are in `../rough_work/ML/`, outside git.
+   - An early walk-forward dry run on 2026-11-03 put the GBM classifier, the hazard model and logistic regression within 0.008 PR-AUC of each other at 48 h, about 40% above the best baseline, and the decision rule's dry run picks logistic regression. Three suggestions wait for approval (`docs/plans.md`, item 4), one before the December test weeks are collected.
+   - Run `npm run archive:sync` before any model run, since `../blood_data/eraktkosh/` can be a week behind the cloud. Then `python -I blood_data/scripts/validate_history.py blood_data` from the workspace root (the folder above `bloodlink/`).
+   - Next is phase 5.1, the labels and features, in November; ETS and SARIMA join from mid-November. Around late December 2026, at about 8 weeks of history, run the walk-forward backtest once and apply the decision rule as written.
+5. **Write to eRaktKosh's team** about the misplaced banks, and ask for the monthly issue data.
+6. **CI and route tests** (#20).
+7. Then bank locations (#33, #34; `docs/PLANS/plan_bank_locations.md`), the ETA bench (`docs/PLANS/plan_eta_comparison.md`), deployment readiness, the panels (`docs/PLANS/plan_panels.md`) and the donor network (`docs/PLANS/plan_donor_network.md`).
+
+Details to keep for the later items:
+- **Donor network.** Donor location as a PostGIS `geography` point with a GiST index: the benchmark in `docs/report3.md`, point 4, shows an index is 75 to 300 times faster than a scan at 100,000 points and more. `blood_requests` and `request_responses` tables with row-level security. Matching with the existing compatibility, eligibility and ranking modules, with contact details masked until both sides accept. Notifications in-app first, then email, then SMS; the fork has MSG91, Fast2SMS and Twilio adapters.
+- **Routing.** Self-host OSRM (Docker, Geofabrik India extract) before real traffic, and calibrate the town and rural values against timed trips.
+- **Ship.** Custom SMTP (`docs/PLANS/plan_panels.md`, F8), `NEXT_PUBLIC_CONTACT_EMAIL`, the project guide's reading of `/privacy`, and the Content-Security-Policy enforced once it reports nothing. Then deploy to Vercel's Mumbai region (`bom1`), and build a PWA before any native mobile app.

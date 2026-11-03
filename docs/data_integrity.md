@@ -31,7 +31,7 @@ This document records how bloodLink's blood-bank data was checked for the review
 | Standardise the records | **Done** | 1,694 blood-group labels renamed to 10 canonical names; names, times and component codes normalised. Re-run: same counts. |
 | Validate them | **Done, and extended** | Unit counts, group names and future dates checked on every response: 30 implausible counts dropped. **New:** coordinates are now checked against state boundaries. 206 banks that eRaktKosh places outside their own state are flagged and left out of location search (#36). |
 | De-duplicate them | **Done, with 6 pairs to review** | No repeated bank codes in 4,707 rows; history unique per bank and update; 6 likely duplicate code pairs listed for review. |
-| Refresh them | **Done** | Hourly stock collection, 36 of 36 states in every run since the fix on 23 October. Weekly directory refresh; its first scheduled run is Monday 26 October. |
+| Refresh them | **Done** | Stock every 4.5 hours in Supabase since 3 November; before that hourly from the laptop, 36 of 36 states in every run since the fix on 23 October. Weekly directory refresh; its first scheduled run is Monday 26 October. |
 | Handle stale data | **Done, two faults fixed** | Two ages on every bank, 297 dormant banks marked. Fixed: dormant banks could choose the search ring (#40); the outage banner could show the directory's age as the stock's (#39). |
 | Demonstrate API failures | **Done, two faults fixed** | Every failure mode re-run on a production build. Fixed: the saved copy could count the wrong blood component (#37); one failing state cut every state off from live data (#38). |
 | Search other datasets | **Done** | Camps, data.gov.in, Malaysia MoH, UCI and NCVBDC, each validated (`report3.md`, point 3.2). Camp data checked for personal details: none. |
@@ -60,7 +60,7 @@ The numbers move as eRaktKosh adds and removes banks, so the documents should qu
 
 ## Standardised
 
-Every eRaktKosh stock response passes through one validator, `src/lib/stockQuality.js`, in the app and in the hourly collector alike.
+Every eRaktKosh stock response passes through one validator, `src/lib/stockQuality.js`, in the app and in the collector alike.
 
 | Field | Standard | Count on the 23 October sweep |
 |---|---|---|
@@ -139,14 +139,14 @@ eRaktKosh's `nearest` call supplies each bank's latitude and longitude. Report 3
 | Data | How often | Where it goes | Status on 24 October |
 |---|---|---|---|
 | Stock, all 36 states | **Hourly**, at 5 past the hour | `bank_stock_latest`, `stock_history`, and a local archive | 36 of 36 states saved at 23:05 and 00:05 India time. A full sweep takes about 2.5 minutes. |
-| Directory (`nearest`) | Weekly, Mondays 03:35 | `blood_banks` | First scheduled run due Monday 26 October. Run by hand once on 24 October to apply the new flags. |
+| Directory (`nearest`) | Weekly, Mondays 03:35 | `blood_banks` | Run by hand once on 24 October to apply the new flags. The first scheduled run, on Monday 26 October, started at 06:49 once the laptop was on: 4,328 banks, the same flags, the prune logged, and a last result of 0. |
 | District list (`master/all`) | By hand, now and then | `assets/district_data.json` | Refreshed 23 October: 3 districts added, and a duplicate Majuli entry (code 746) removed. |
 
 - **Why hourly.** A bank updates its stock about once a day (median gap 24 h), so more often would mostly re-read unchanged data.
 - **Uploads.** Only banks whose update time changed are uploaded in full; the rest get a new fetch time.
 - **Retention.** History is kept 60 days in Supabase and indefinitely in `eraktkosh/history/`. The prune that enforces it could not run until 26 October (#56, below); it works now.
 - **Limits.**
-  - Collection runs only while the project laptop is on (#35). A plan to move it to Supabase is approved but not started (`supabase_scheduler.md`).
+  - Collection ran only while the project laptop was on (#35). Since 3 November it runs in Supabase every 4.5 hours, around the clock, and history is archived for good in Supabase Storage (`docs/report3.md`, point 3.1).
   - Two early runs were stopped by a console signal. Since the collector runs in its own hidden console, no stock sweep has failed.
   - Until 26 October a failed run would also have gone unnoticed (#57, below). Both are now reported: in Task Scheduler's last result and in the log.
 
@@ -230,7 +230,7 @@ The monthly stock and issue reports that a demand model would need (`MonthlyColl
 | 56 | The weekly prune could never run | `prune_stock_store()` runs as `bloodlink_ingest`, which lacked SELECT on `upstream_calls.called_at`: every prune failed with 42501, so nothing was ever trimmed | One-column grant; the prune runs and logs `pruned: {"calls_deleted":0,"history_deleted":0}` |
 | 57 | Collector failures were invisible | Task Scheduler always showed success, and an error at the top of the collector skipped its log | Node's exit code is passed on, and a fatal error is logged |
 
-Faults 36 to 41 were found and fixed on 24 October. 44, 56 and 57 were found in the reviews of 24 and 25 October (`review_and_next_moves.md` and the review that checked it) and fixed on 26 October, with the other review fixes listed in `CLAUDE.md`.
+Faults 36 to 41 were found and fixed on 24 October. 44, 56 and 57 were found in the reviews of 24 and 25 October (the code, docs and plans review and the review that checked it) and fixed on 26 October, with the other review fixes listed in `CLAUDE.md`.
 
 **How the 24 October fixes were checked.**
 - Each fix has unit tests: 24 new, 118 in all (125 after 26 October).
@@ -249,8 +249,7 @@ Faults 36 to 41 were found and fixed on 24 October. 44, 56 and 57 were found in 
 | 679 stocked banks without coordinates (#33) | Location search can't see 14% of stocked banks | Place 15 from data.gov.in (`crosswalk/coordinates_for_unlocated_banks.csv`); geocode the rest from their addresses |
 | 206 wrong-state and 518 shared-point banks (#34) | Wrong-state banks are now hidden from location search; shared-point distances may be off by a few km | Re-place them the same way as #33, then clear the flag |
 | 6 likely duplicate code pairs (#34) | One bank could appear twice | Check by phone or licence number, then merge |
-| Collection depends on the laptop (#35) | History will have gaps | `supabase_scheduler.md`, when approved to start |
-| Weekly directory task not yet run on schedule | The new flags and the prune rely on it | Confirm Monday 26 October's run in `eraktkosh/collector.log`: the directory flags, a `pruned:` line, and a last result of 0 in Task Scheduler |
+| Collection off the laptop (#35) | History with gaps while the laptop was off | Done on 3 November: Supabase every 4.5 hours. Left: the 24-hour watch and deleting the laptop tasks (`docs/plans.md`, item 2) |
 
 ---
 
@@ -260,8 +259,8 @@ Run from `bloodlink/` unless noted.
 
 ```bash
 npm run lint && npm run format:check && npm test && npm run build
-node scripts/migrate.mjs --status                 # 6 migrations applied
-# Directory flags (needs SUPABASE_DB_URL); the weekly task runs this:
+node scripts/migrate.mjs --status                 # 8 migrations applied
+# Directory flags (needs SUPABASE_DB_URL; one eRaktKosh call). The cloud runs this every Monday at 03:20:
 npm run snapshot -- --directory --prune
 # Production build for the live checks; TRUSTED_PROXY_HOPS=1 lets scripts simulate many users:
 TRUSTED_PROXY_HOPS=1 npx next start -p 3126
@@ -273,6 +272,7 @@ Spot checks against those servers:
 - `GET /api/blood-search?lat=28.6139&lng=77.2090&componentId=12&bloodGroupId=15&units=4&urgency=critical` on 3126. Every result's address is in Delhi, and `misplacedBanks` is above 0.
 - `GET /api/blood-search?lat=26.9608&lng=78.9621&componentId=12&bloodGroupId=11&units=2&urgency=critical` on 3128. Bank 1702 (Saifai) is not listed.
 - The central Delhi search above, on 3128. `freshness.source` is `saved`, and `misplacedBanks` is still above 0 (#44).
+- `GET /api/search?stateCode=96&districtId=82` on 3128. Bank 96121 is listed: it has no directory row, so its district comes from its address (#45).
 - On 3129: four Mumbai ranked searches, then `GET /api/search?stateCode=30`. `X-Data-Source` is `live`.
 - From the workspace root, re-run the data validators:
   - `python -I blood_data/scripts/validate_eraktkosh.py blood_data`

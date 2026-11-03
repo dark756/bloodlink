@@ -3,7 +3,7 @@
 **Status: PLAN, not started.** This is a menu of features with priorities and reasons, plus the foundation they share. Nothing has been built.
 
 - Paths are relative to `bloodlink/` unless they start with `../`.
-- It expands item 5 of "Where to go next" in `CLAUDE.md` ("Verified accounts get a role but no tools yet") and answers part of #32 (the slides promise a chronic-care module).
+- It expands item 5 of "Where to go next" in `CLAUDE.md` ("Verified accounts get a role but no tools yet"), and includes the chronic-care module the Sem 7 slides promise.
 - The donor network itself is planned in `plan_donor_network.md`; this file covers the panels people use around it.
 - **Priorities:** **Must** = needed before a pilot with one real bank and hospital. **Should** = makes the pilot work well. **Could** = later or stretch. **Size:** S under a day, M one to three days, L a week or more, for one developer who knows the codebase.
 
@@ -32,7 +32,7 @@
 | **Admin** | `/admin`: counts, review queue with Approve, Reject and Suspend, the eRaktKosh collection-health card, recent activity. `/admin/organizations`, `/admin/users` (grant or remove admin), `/admin/audit` | Evidence for verification, data-quality tools, user suspension, privacy requests, finer admin roles, alerts |
 | **Blood bank** | A verified badge on `/peer-to-peer` and the `blood_bank` role | Everything |
 | **Hospital** | A verified badge and the `hospital` role | Everything |
-| **Donor / user** | `/peer-to-peer`: profile, role badge, live eligibility. `/set-details` to edit | Availability, history, reminders, requests (see `plan_donor_network.md`) |
+| **Donor / user** | `/peer-to-peer`: profile, role badge, live eligibility. `/set-details` to edit, with agreement to the privacy note. `/account`: delete the account. `/privacy`: the privacy note | Availability, history, reminders, requests (see `plan_donor_network.md`), a copy of your data |
 
 Two limits in the current data model matter for every panel:
 - **One person per organization.** `organizations.applicant_id` and `profiles.organization_id` tie an organization to the one person who applied. A real blood bank has a medical officer, technicians and a counsellor on shifts. They can't share one login.
@@ -51,9 +51,9 @@ Two limits in the current data model matter for every panel:
 
 **P3 · Permissions live in the database.** Row-level security plus `security definer` functions, as today. Pages hide what you can't do; the database refuses it. Every action that changes another person's data writes `audit_log`.
 
-**P4 · As little patient data as possible.** No patient names. A hospital refers to a patient by its own internal number, which means nothing outside the hospital. Required by the spirit of the Digital Personal Data Protection Act (#18), and it makes a leak far less harmful.
+**P4 · As little patient data as possible.** No patient names. A hospital refers to a patient by its own internal number, which means nothing outside the hospital. Required by the spirit of the Digital Personal Data Protection Act, and it makes a leak far less harmful.
 
-**P5 · Medical output stays informational** (#24). Panels show eligibility, compatibility and rankings as guidance; the bank screens and cross-matches.
+**P5 · Medical output stays informational.** Panels show eligibility, compatibility and rankings as guidance; the bank screens and cross-matches, and its medical officer decides.
 
 **P6 · Build in the order the donor network and emergency requests need.** A panel feature that nothing else depends on waits.
 
@@ -72,6 +72,7 @@ Build these first; every panel below assumes them.
 | F5 | **Notifications inbox** | A `notifications` table and a bell in the header, live through Supabase Realtime. Shared with the donor network | Reservations, reviews and requests all need to reach someone | M |
 | F6 | **Two-factor sign-in** for admins and organization owners | Supabase Auth's TOTP; policies on sensitive tables require the `aal2` level in the JWT | An admin or bank-owner account can approve, suspend and see donors' contact details | M |
 | F7 | **Private document storage** | A Supabase Storage bucket for licences and requisition slips, readable by the organization's members and admins only | Verification needs evidence, and it must not be public | S |
+| F8 | **Custom email sender** (#27, moved here from `CLAUDE.md`'s issue list) | Custom SMTP in Authentication > Emails, with a verified sender address and a provider's free tier | Supabase's built-in sender allows only a few emails an hour, so sign-up confirmations fail as soon as real users arrive. F1's invitations and F5's email notices need it too | S |
 
 ---
 
@@ -101,7 +102,7 @@ Build these first; every panel below assumes them.
 
 | Feature | What it does | Why | Builds on | Priority | Size |
 |---|---|---|---|---|---|
-| **Collector alerts** | Email to admins when no sweep finished for 6.5 hours, or success fell under 95% | The health card helps only if someone opens it | `supabase_scheduler.md` adds `collector_runs` | Should | S |
+| **Collector alerts** | Email to admins when no sweep finished for 6.5 hours, or success fell under 95% | The health card helps only if someone opens it | Reads `collector_runs`, which exists since 3 November | Should | S |
 | **Search health** | Search counts, the share served from the saved copy, routing fallbacks, rate-limit refusals, 95th-percentile times | Shows when users, not just the collector, are affected | App logging into a small table, aggregated | Could | M |
 | **Zero-result searches** | Where and for which group searches found nothing, rounded to the district | Real unmet demand, useful for the forecast and for camp planning | The same log, anonymised | Could | S |
 
@@ -110,7 +111,7 @@ Build these first; every panel below assumes them.
 | Feature | What it does | Why | Builds on | Priority | Size |
 |---|---|---|---|---|---|
 | **Suspend a user** | Blocks a person from requests and donor matching, with a reason, without deleting them | The donor network will attract misuse (`plan_donor_network.md`) | An `is_suspended` column read by policies and the proxy | Must before the donor network | S |
-| **Privacy requests** | A queue of "delete my account" and "export my data" requests with a due date | #18 and the DPDP Act's rights to erasure and access | A `privacy_requests` table; deletion through a function | Must before launch | M |
+| **Privacy requests** | A queue of "export my data" requests, and of questions sent to the privacy contact, with a due date. Deletion is already self-service on `/account` | The DPDP Act's right of access and its grievance rule | A `privacy_requests` table | Must before launch | M |
 | **Abuse reports** | Reports from donors and banks about a request or a person, with the history | Fake and money-seeking requests are a known problem in informal blood groups | `plan_donor_network.md` | Must with the donor network | M |
 | **Finer admin roles** | `reviewer` (organizations only), `data_steward` (locations and data), `support` (users and reports), `super_admin` | Least privilege: a volunteer reviewing locations doesn't need to grant admin | Extend `set_user_role()` | Should | M |
 | **Audit log search and export** | Filters by actor, action, target and date; CSV export | Needed the first time someone asks "who approved this?" | Existing table | Should | S |
@@ -164,7 +165,7 @@ For members of a verified organization of kind `hospital`.
 | **Reservation requests** | Send the plan's lines to banks that are on bloodLink; see accept or decline live | The other half of the bank feature | Blood-bank panel | Should | L |
 | **Runner tracking** | Assign a runner; they share a link that shows "collected" and "on the way" | Saves calls between ward, runner and bank | A signed link; no live GPS needed at first | Could | M |
 | **Escalate to donors** | When the plan has a shortfall, ask eligible donors to donate at the chosen bank, credited to the request | The donor network's emergency path, started by a verified hospital, so the request is trusted | `plan_donor_network.md` | Must with the network | M |
-| **Chronic-care schedules** | For patients who need regular transfusions (thalassaemia, for example): due dates, a usual bank, reminders a few days ahead, and a pool of regular donors | The slides promise a chronic-care module (#32). Regular, predictable need is where planning helps most | Patient consent; no names (P4) | Could | L |
+| **Chronic-care schedules** | For patients who need regular transfusions (thalassaemia, for example): due dates, a usual bank, reminders a few days ahead, and a pool of regular donors | The Sem 7 slides promise a chronic-care module. Regular, predictable need is where planning helps most | Patient consent; no names (P4) | Could | L |
 | **Saved banks** | Favourite or contracted banks, shown first in the composer | Hospitals have usual suppliers | — | Could | S |
 | **Reports** | Time to secure units, requests met, shortfalls by group and month | Shows the hospital, and the project report, whether bloodLink helps | Request history | Could | M |
 | **Team** | Invite and remove staff; only `manager` and above may raise critical requests | F1 | F1 | Must | S |
@@ -185,7 +186,7 @@ The existing `/peer-to-peer` page, grown. Details of matching and notifications 
 | **Eligibility countdown and reminder** | "You can donate again from 12 March", and a message that day if you want one | Turns a deferral into a return visit | Should | S |
 | **Nearby camps** | Upcoming camps within your areas | A gentle way in for new donors | Could | S |
 | **Your impact** | Donations made, requests helped, a yearly certificate | Recognition helps retention. No leaderboards: they pressure people | Could | S |
-| **Your data** | Download your data, withdraw consent, delete your account | #18 | Must before launch | M |
+| **Your data** | Download a copy of your data. Deleting the account, which also withdraws consent, is already on `/account` | The DPDP Act's right of access | Must before launch | S |
 | **Saved searches** (any user) | Save a search and get told when that group appears within your area | Useful to families during a long hospital stay | Could | M |
 
 ---
@@ -255,7 +256,7 @@ create table public.bank_notes (
   kind text not null check (kind in ('on_hold', 'closed', 'call_first', 'apheresis_today', 'other')),
   text text check (char_length(text) <= 200),
   expires_at timestamptz not null,      -- at most 72 hours ahead, enforced by a trigger
-  created_by uuid references public.profiles (id) on delete set null,  -- so deleting an account (#18) isn't blocked
+  created_by uuid references public.profiles (id) on delete set null,  -- so delete_my_account() isn't blocked
   created_at timestamptz not null default now()
 );
 
@@ -288,7 +289,7 @@ create table public.privacy_requests (
 
 | Phase | Contents | Unlocks | Rough size |
 |---|---|---|---|
-| **A · Foundation** | F1 members, F2 organization profile, F3 eRaktKosh link, F4 shell, admin evidence panel and conflict warnings | Real organizations with teams | 1.5 weeks |
+| **A · Foundation** | F1 members, F2 organization profile, F3 eRaktKosh link, F4 shell, F8 email sender, admin evidence panel and conflict warnings | Real organizations with teams | 1.5 weeks |
 | **B · Banks see themselves** | "How bloodLink sees you", confirm location, status notes, location review queue, suspend a user, audit search | Better data from the source | 1 week |
 | **C · Hospitals act** | Request composer, request board, call script, F5 notifications | The ranked search becomes a workflow | 1.5 weeks |
 | **D · Donor network** | Join, availability, areas, inbox, appeals, check-in, escalation, abuse reports, open-critical view (`plan_donor_network.md`) | The peer-to-peer feature | 3 to 4 weeks |

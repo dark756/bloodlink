@@ -46,10 +46,10 @@ These facts decide the architecture more than any technical choice. Have the pro
 |---|---|
 | In India, blood is collected, tested and issued only by **licensed blood centres**, under the Drugs and Cosmetics Act, 1940 and its 1945 Rules. | **Every request is anchored to a blood centre** (or a hospital with one). A donor goes there, never to a patient. The app never arranges a transfusion. |
 | **Paid ("professional") donation has been banned since 1 January 1998**, following the Supreme Court's 1996 judgment in *Common Cause v. Union of India*. The National Blood Policy aims for 100% voluntary, non-remunerated donation. | **No money anywhere in the system.** Every notification says bloodLink never asks for money. Requests can't carry offers, fees or rewards. |
-| National policy encourages **voluntary** donation and discourages **replacement** donation, where a patient's family is asked to bring donors. *Check NBTC's current guidance.* | The default request is "donors of this group needed at this centre", credited to the centre's stock. A patient-specific request is supported only when raised by the verified institution treating the patient. |
-| **Screening and cross-matching are the blood centre's job.** bloodLink's eligibility check is informational (#24). | The app can say "you may be eligible"; only the centre says "you can donate today". A deferral at screening is normal and never counts against the donor. |
-| The **Digital Personal Data Protection Act, 2023** requires notice, specific consent, a way to withdraw it, and erasure on request. Blood group, health answers and location are personal data; health data deserves the most care. | A **separate, explicit consent** to join the network; approximate locations only; contact details revealed only on acceptance; retention limits; self-service deletion (#18). |
-| Donor-selection thresholds come from NBTC's guidelines (2017, as cited in `src/lib/eligibility.js`). Some values in the current form, such as the 6-month tattoo window and 50 kg, are not yet checked (#24). | Fix #24 **before** eligibility is used to choose whom to message. |
+| National policy encourages **voluntary** donation and discourages **replacement** donation, where a patient's family is asked to bring donors. NBTC's 2017 guidelines say it outright: "Replacement donors should be phased out." | The default request is "donors of this group needed at this centre", credited to the centre's stock. A patient-specific request is supported only when raised by the verified institution treating the patient. |
+| **Screening and cross-matching are the blood centre's job.** bloodLink's eligibility check is informational; in NBTC's words, the "final call on donor selection is taken by the medical officer". | The app can say "you may be eligible"; only the centre says "you can donate today". A deferral at screening is normal and never counts against the donor. |
+| The **Digital Personal Data Protection Act, 2023** requires notice, specific consent, a way to withdraw it, and erasure on request. Blood group, health answers and location are personal data; health data deserves the most care. | A **separate, explicit consent** to join the network, on top of the agreement to the privacy note that saving a profile already needs; approximate locations only; contact details revealed only on acceptance; retention limits; self-service deletion (`/account`). |
+| Donor-selection thresholds come from NBTC's 2017 guidelines. `src/lib/eligibility.js` and the form follow clauses 2 to 4, 15 to 17 and 47, checked against the official text on 26 October 2026. The same guidelines let a centre ask for photo ID but not make it mandatory. | Eligibility may choose whom to message once the partner centre's medical officer has reviewed the screening questions. Identity rests with the centre's screening, so a check-in code shows only that someone accepted. |
 
 ---
 
@@ -181,7 +181,7 @@ flowchart TB
 |---|---|---|
 | **Next.js route handlers** | Validate input with whitelist validators, call database functions as the signed-in user, serve token links | Same pattern as `/api/details` and `/api/organization` |
 | **Postgres functions** | `create_request`, `match_wave`, `respond`, `check_in`, `confirm_donation`, `cancel_request`, `advance_requests` | Matching reads other people's rows, so it must run as `security definer` with its own checks, never with a service-role key (`CLAUDE.md`) |
-| **pg_cron** | Each minute: next waves, expiries, hold timeouts, retrying stuck notifications | Already planned for the collector (`supabase_scheduler.md`); one scheduler for both |
+| **pg_cron** | Each minute: next waves, expiries, hold timeouts, retrying stuck notifications | Already runs the collector's ticks (since 3 November); one scheduler for both |
 | **Outbox + dispatcher** | `notification_outbox` rows become messages; an Edge Function sends them | Sending needs HTTP and provider secrets, which don't belong in SQL or in the browser |
 | **`bloodlink_notifier` role** | The dispatcher connects with `SUPABASE_DB_URL` and runs `set role bloodlink_notifier`, which can only claim and update outbox rows through two functions | The same least-privilege pattern as `bloodlink_ingest` and the collector plan |
 | **Realtime** | Live updates to donors' inboxes and organizations' request boards | Realtime's `postgres_changes` applies row-level security to inserts and updates, so no extra filtering service. Delete events aren't filtered, so the tables the inboxes and boards watch change a row's status instead of deleting it (`verify_facts.md`, F18) |
@@ -265,7 +265,7 @@ create table public.blood_requests (
   wave smallint not null default 0,
   next_wave_at timestamptz,
   units_donated smallint not null default 0,
-  created_by uuid references public.profiles (id) on delete set null,  -- so deleting an account (#18) isn't blocked
+  created_by uuid references public.profiles (id) on delete set null,  -- so delete_my_account() isn't blocked
   created_at timestamptz not null default now(),
   closed_at timestamptz,
   close_reason text
@@ -534,7 +534,7 @@ stateDiagram-v2
 |---|---|---|---|---|
 | **In-app** (inbox + Realtime) | Free | Only while the page is open | F5 in `plan_panels.md` | Phase 2 |
 | **Web push** (VAPID) | Free | Android browsers; iPhones only for an installed web app (iOS 16.4 and later) | Service worker, PWA manifest | Phase 3 |
-| **Email** | Free to cheap | Everyone, but slow to be read | Custom SMTP (#27) | Phase 3 |
+| **Email** | Free to cheap | Everyone, but slow to be read | Custom SMTP (`plan_panels.md`, F8) | Phase 3 |
 | **SMS** | Paid per message | Everyone, fastest to be read | **DLT registration** with an Indian operator: entity, sender header and every message template approved first. Only Indian entities can register. Providers such as MSG91, Fast2SMS and Twilio (adapters exist in the teammate's fork) | Phase 4, critical only at first |
 | **WhatsApp** | Paid per conversation | Very high in India | Business verification, approved templates, a recorded opt-in | Later |
 
@@ -555,7 +555,7 @@ Templates in English first, then Hindi and Marathi for the pilot city. Each SMS 
 - The link in an SMS or email carries a random 128-bit token. Only its SHA-256 hash is stored in `response_tokens`.
 - It allows exactly three actions without signing in: view the request card, accept, decline. It expires at `needed_by`.
 - Accepting by token shows the centre's details and the check-in code, which are about the centre, not the donor. The donor's own details are never on the page.
-- A forwarded link could let someone else accept; the centre checks identity at screening, as it always does.
+- A forwarded link could let someone else accept. The centre screens whoever arrives; it may ask for photo ID, but under NBTC's 2017 guidelines it can't make ID mandatory.
 
 ---
 
@@ -568,7 +568,7 @@ Templates in English first, then Hindi and Marathi for the pilot city. Each SMS 
 | **Patient data** | The hospital's own reference number at most. Donors see none of it. |
 | **Consent** | A separate notice and tick box for the network, versioned. Withdrawing consent clears areas and settings at once and stops all requests. |
 | **Retention** (*assumption*) | Outbox payloads deleted after 90 days. Responses and reveals kept 12 months for safety review, then reduced to counts. Donations kept while the account exists, since they drive eligibility. |
-| **Deletion** | Self-service account deletion (#18) cascades through every table above. |
+| **Deletion** | Self-service account deletion (`delete_my_account()`, on `/account`) cascades through every table above, so each new foreign key to `profiles` must cascade or set null. Network-specific consent is withdrawn with the account. |
 | **Fake requests** | Pilot: only members of verified organizations can raise requests, and critical ones need the `manager` role (`plan_panels.md`). |
 | **Money scams** | "bloodLink never asks for money" in every message and on every card. A one-tap "This person asked me for money" report, which pauses the request for admin review. |
 | **Request floods** | At most 10 open critical requests per organization; creation rate-limited per member. |
@@ -584,7 +584,7 @@ Matching runs in SQL, but the eligibility rules live in `src/lib/eligibility.js`
 - A trigger function `refresh_donor_status(user_id)` runs after any change to `profiles` (date of birth, gender, group), `donor_screening` or `donations`. It writes `donor_status.eligible_from`, `needs_staff_check` and the group.
 - It implements the same rules as `evaluateEligibility`: age 18 to 65, a 90-day or 120-day gap after the latest of the self-reported and centre-confirmed donation dates, and the deferral answers.
 - **Parity test:** one fixture table of cases (ages at the edges, gaps one day either side, each deferral answer, medication) runs through both the JS function and the SQL function on a local Supabase, and the results must match. It runs in CI with #20's suite.
-- Fix #24 first, so both copies start from checked thresholds. Apheresis has its own interval rules; add them only once confirmed against NBTC.
+- Both copies start from thresholds checked against the official 2017 text. Apheresis has its own rules in clauses 2 to 4: donors 18 to 60 and at least 50 kg, 48 hours between apheresis donations, at most twice a week and 24 times a year, and 28 days after a whole-blood donation. Add them when apheresis requests are built.
 - A centre-confirmed donation updates `last_donation_date` in the donor's view only with their consent, since `donor_screening` is theirs. Otherwise it still sets `eligible_from` through `donations`.
 
 ---
@@ -592,7 +592,7 @@ Matching runs in SQL, but the eligibility rules live in `src/lib/eligibility.js`
 ## Scale and performance
 
 - **Spatial lookup.** Report 3's benchmark measured PostGIS `ST_DWithin` on a GiST index at **0.60 ms for 100,000 points within 15 km** and 9.7 ms within 150 km, against 185 ms for a scan. A wave's candidate query adds filters and an `order by score limit k`, still a few milliseconds at that size.
-- **One function per wave.** The project is in Tokyo (#28), about 175 ms per round trip from India. Matching inside one SQL function, in one transaction, avoids several round trips that an outside matcher would need.
+- **One function per wave.** The project is in Mumbai (#28), about 10 ms per round trip from the laptop, but an outside matcher would still add a round trip per step. Matching inside one SQL function, in one transaction, avoids several round trips that an outside matcher would need.
 - **Notification volume.** The largest wave is 40 donors. Even 100 simultaneous requests are 4,000 messages, well inside report 3's planned test of 10,000 in 5 minutes.
 - **Free-plan limits.** Edge Functions run for at most 150 s, ample for a batch of 50 sends. pg_cron at one-minute ticks adds about 1,440 small runs a day; prune `cron.job_run_details` as the collector plan already does.
 
@@ -637,7 +637,7 @@ Logged automatically from the tables, shown on the admin and organization panels
 
 | Phase | Contents | Exit criteria |
 |---|---|---|
-| **0 · Prerequisites** | #24 thresholds checked; #18 consent notice and deletion; #27 custom SMTP; `plan_panels.md` F1 (members) and F6 (two-factor); the project guide's sign-off on the legal frame; a partner blood centre and hospital | All done, in writing |
+| **0 · Prerequisites** | the partner centre's medical officer has reviewed the screening questions; the donor network added to `/privacy`, with a new `PRIVACY_VERSION`; `plan_panels.md` F1 (members), F6 (two-factor) and F8 (custom SMTP); the project guide's sign-off on the legal frame; a partner blood centre and hospital | All done, in writing |
 | **1 · Donors only** | Join, consent, areas, availability, `donor_status` triggers and parity test; admin and centre see aggregated donor counts per 1 km cell (cells under 5 hidden) | 100 donors in the pilot city; parity test green |
 | **2 · Requests in shadow mode** | `blood_requests`, `match_wave`, the cron, the outbox with in-app only for team accounts; real requests matched but not sent | Two weeks of logs; the matches look sensible to the centre's staff; simulation settings chosen |
 | **3 · Live pilot** | One centre and one hospital; in-app, web push and email; daytime only at first; admins watch open critical requests | 20 real requests closed with every outcome recorded; no safety incident |
@@ -657,7 +657,7 @@ Logged automatically from the tables, shown on the admin and organization panels
 - *Alternative:* public requests with a requisition-slip photo reviewed by admins. Wider reach, but slow review in an emergency and a forgery risk. Revisit in phase 5, with confirmation by the anchor centre.
 
 **N3 · Matching runs in SQL, in one transaction.**
-- *Why:* filters, scoring, inserting responses and queuing messages succeed or fail together; it needs no extra privileged connection; and it avoids round trips to Tokyo.
+- *Why:* filters, scoring, inserting responses and queuing messages succeed or fail together; it needs no extra privileged connection; and it avoids round trips to the database.
 - *Alternative:* an Edge Function running a shared JS module, as the collector plan does. One implementation and easier unit tests, but the function needs a privileged database connection, and a wave would span several network round trips. The pure JS module still exists, as the reference for tests and simulation.
 
 **N4 · Areas, not addresses or live location.**
@@ -702,10 +702,10 @@ Logged automatically from the tables, shown on the admin and organization panels
 | **Too few donors** | Requests go unanswered; the feature looks broken | Launch in one city with a partner centre; recruit through college NSS and NCC units and the centre's existing donors; show "N donors near you" to centres before promising anything |
 | **Donor fatigue** | Opt-outs grow | Weekly caps, rest factor, waves, auto-snooze, and the fatigue measure on the admin panel |
 | **Fake or money-seeking requests** | Harm to donors and to trust | Verified institutions only; warnings; one-tap reports that pause a request |
-| **Wrong eligibility** | A donor travels and is turned away, or someone unsafe is asked | Fix #24 first; parity tests; "the centre decides" copy everywhere |
+| **Wrong eligibility** | A donor travels and is turned away, or someone unsafe is asked | Thresholds checked against NBTC's 2017 text; the medical officer's review; parity tests; "the centre decides" copy everywhere |
 | **Privacy breach** | Real harm, and a DPDP Act problem | 1 km cells; no addresses; contact only on acceptance; owner-only health data; two-factor for privileged accounts; retention limits |
 | **SMS regulation and cost** | SMS can't be sent, or costs grow | DLT registration started early; SMS only for critical; push first |
-| **Latency from Tokyo** (#28) | Slower waves | One function per wave; consider moving the project to Mumbai before real data accumulates, as #28 suggests |
+| **Latency to the database** | Slower waves | One function per wave. The project is in Mumbai (#28), the nearest region |
 | **Policy on replacement donation** | A feature that conflicts with national guidance | Default to voluntary appeals; patient-linked requests only from treating institutions; guide's sign-off in phase 0 |
 
 ---
@@ -724,8 +724,8 @@ Logged automatically from the tables, shown on the admin and organization panels
 ## Sources
 
 - `docs/report3.md`: point 4 (PostGIS benchmark; notification tests) and point 5 (donor-response model R, shadow-mode alerts, UCI data).
-- `docs/supabase_scheduler.md`: pg_cron, pg_net, Edge Functions and the limited-role pattern reused here.
+- The cloud collector (`supabase/migrations/20261103000100_cloud_collector.sql`, `supabase/functions/collect-stock/`; `docs/report3.md`, point 3.1): the pg_cron, pg_net, Edge Function, Vault and limited-role pattern reused here.
 - `src/lib/eligibility.js`, `src/lib/compatibility.js`, `src/lib/ranking.js`, `src/lib/traffic.js`: the modules the matching reuses.
 - [DLT registration for SMS to India](https://www.plivo.com/docs/sms/concepts/dlt-registration-process) (Plivo's guide; check the operator's DLT portal for current rules).
-- [Summary of NBTC's 2017 donor-selection guidelines](https://www.slideshare.net/slideshow/blood-donor-selection-guidelines-2017/182369567) (a secondary summary: age 18 to 65, weight over 45 kg, haemoglobin 12.5 g/dl or more). Use the official NBTC document for #24.
+- NBTC, [*Guidelines for Blood Donor Selection & Blood Donor Referral*](https://www.isignal.in/h-library/document-2.pdf), NACO letter S-12016/5/2016-NACO (NBTC), 11 October 2017. Read from the copy the Union of India annexed to its affidavit in *Thangjam Santa Singh v. Union of India*, WP (C) 275 of 2021 (Annexure A5, pages 162 to 192), because NACO's own server wasn't reachable. Clauses 12 and 51, which exclude transgender people, men who have sex with men and female sex workers, are what that case challenges.
 - *Common Cause v. Union of India* (Supreme Court, 1996), the National Blood Policy, and the Drugs and Cosmetics Act, 1940 with its 1945 Rules: cite the official texts in the report after the guide's review.

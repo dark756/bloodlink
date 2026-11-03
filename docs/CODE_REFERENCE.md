@@ -19,7 +19,8 @@ This lists every function, component, constant and variable in the app, file by 
 8. [Admin pages, `src/app/admin/`](#admin-pages-srcappadmin)
 9. [Tests, `tests/`](#tests)
 10. [Scripts and config files](#scripts-and-config-files)
-11. [Database, `supabase/migrations/`](#database)
+11. [Edge Functions, `supabase/functions/`](#edge-functions-supabasefunctions)
+12. [Database, `supabase/migrations/`](#database)
 
 ---
 
@@ -179,7 +180,7 @@ Server-only eRaktKosh client. It validates parameters and rows, caches answers, 
 | `parseAvailabilityQuery(searchParams)` | function | module | Validates a region search. Returns `{ params }` for eRaktKosh, or `{ error }`. |
 | `stateCode`, `state` | variable | `parseAvailabilityQuery` | The requested state code, and its state object. |
 | `districtId` | variable | `parseAvailabilityQuery` | The requested district code, checked against the state. |
-| `parseCoordinates(searchParams, latName, lngName)` | function | module | Validates latitude and longitude and rounds them to 4 decimals, about 11 m. |
+| `parseCoordinates(searchParams, latName, lngName)` | function | module | Validates latitude and longitude and rounds them to 3 decimals, about 110 m, with `roundPinCoordinate`. eRaktKosh, OSRM and Nominatim get no more of a user's position. |
 | `rawLat`, `rawLng` | variable | `parseCoordinates` | The coordinates as received, as text. |
 | `lat`, `lng` | variable | `parseCoordinates` | The coordinates as numbers. |
 | `parseNearestQuery(searchParams)` | function | module | Validates coordinates plus a radius for `/api/nearest`. |
@@ -222,6 +223,9 @@ Pure helpers for eRaktKosh stock rows; safe in the browser and on the server.
 | `formatUpdatedAgo(entryDate, now)` | function | module | Text such as `"updated 3 h ago"`. |
 | `minutes`, `hours` | variable | `formatUpdatedAgo` | How long ago the bank updated its stock. |
 | `cleanText(value)` | function | module | Trims text and removes stray trailing commas. |
+| `toNameKey(text)` | function | module | Lower case, with every run of characters other than letters and digits as one space, for comparing place names. |
+| `districtFromAddress(address, stateName, districts)` | function | module | The code of the district an eRaktKosh address ends with (`"…, <district>, <state>"`), or `null` when the last part isn't the state or the one before isn't one of its districts. Gave the known district for all 4,048 saved banks that have one on 2026-10-26. |
+| `parts`, `district` | variable | `districtFromAddress` | The address's comma-separated parts as name keys, and the matching district. |
 | `normalizeAvailabilityRow(row, filters)` | function | module | Turns one eRaktKosh row into a [bank result](#data-shapes) for display. |
 
 ### `src/lib/stockQuality.js`
@@ -242,6 +246,41 @@ Pure validator for eRaktKosh `blood-availability` rows, used by the app and by `
 | `validateAvailabilityRows(rows, { now })` | function | module | Cleans a response. Returns `{ rows, report }`. |
 | `report`, `rowsByCode`, `existing`, `cleanedRows` | variable | `validateAvailabilityRows` | The counts, rows by bank code, a duplicate already seen, and the result. |
 
+### `src/lib/collector.js`
+The eRaktKosh collector, shared by `scripts/snapshot.mjs` on the laptop and the `collect-stock` Edge Function. The caller passes in a database session already switched to `bloodlink_ingest`, `fetch`, the two asset files and an optional archive, so the module runs in Node and Deno alike. It also holds the pure checks the function and the admin overview use. Its JSDoc types are for Deno, which type-checks the function against it.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `BASE_URL`, `TIMEOUT_MS`, `STATE_GAP_MS`, `BATCH_SIZE` | constant | module | eRaktKosh address, 60 s timeout, 1 s between states, 400 rows per insert. |
+| `DIRECTORY_QUERY` | constant | module | One `nearest` call from central India with a 5,000 km radius. |
+| `ARCHIVE_VERSION` | constant | module | 1: the format version each archive line carries as `v`. Lines without one are version 1. |
+| `REPEAT_GUARD_MINUTES` | constant | module | 50: the Edge Function refuses a job that already started this recently. |
+| `STATE_BATCHES` | constant | module | The four batches of a cloud sweep, 9 state codes each, split by measured time. |
+| `OVERDUE_GRACE_HOURS`, `DEFAULT_SWEEP_HOURS` | constant | module | 2 and 4.5: collection counts as overdue after the sweep interval plus 2 hours. |
+| `intervalHours(interval)` | function | module | Hours in a Postgres interval as PostgREST returns it (`"04:30:00"`, `"1 day 02:00:00"`), or `null`. |
+| `collectionOverdue(lastFinishedAt, sweepInterval, now)` | function | module | `{ isOverdue, hoursSince, limitHours }` for the admin overview. |
+| `REQUEST_KEYS` | constant | module | The fields a function call may carry. |
+| `parseCollectorRequest(body)` | function | module | `{ batch, sweepId, directory, prune }` from `{ batch: 1–4, sweep }` or `{ directory: true, prune: true }`, or `{ error }`. |
+| `isCollectorSecret(given, expected)` | function | module | Compares the `x-collector-secret` header with the function's secret in constant time. A missing or short (under 32 characters) configured secret refuses everything. |
+| `difference` | variable | `isCollectorSecret` | The OR of every character difference, and of the lengths. |
+| `digitsOrNull`, `toIsoOrNull` | function | module | A digits-only value or `null`; an eRaktKosh time as ISO UTC. |
+| `createCollector({ db, fetch, districtData, stateBoundaries, archive, runner, recordRuns, clock, sleep, log, logError })` | function | module | The collector. `archive` has `history(lines)`, `sweep(summary)` and `directory(data, seenAt)`, each optional. `runner` is `edge` or `laptop`. With `recordRuns` false, nothing is written to `collector_runs`. |
+| `stateNames`, `componentShortNames` | constant | `createCollector` | State names by code, and component short names by full name. |
+| `nowIso()` | function | `createCollector` | The clock's time as ISO. |
+| `callEraktkosh(endpoint, params, timeoutMs)` | function | `createCollector` | One GET: `{ ok, data, status, durationMs, bytes, failureKind }`. |
+| `insertRows(table, columns, rows, conflictClause, casts)` | function | `createCollector` | Multi-row inserts in batches. |
+| `batch`, `values`, `tuples`, `placeholders`, `cast` | variable | `insertRows` | One batch of rows, its query values, the `($1, $2, …)` groups, one row's placeholders, and a column's type cast. |
+| `logCall(endpoint, stateCode, call, rowCount, quality)` | function | `createCollector` | Writes one `upstream_calls` row. |
+| `compactStock(row)` | function | `createCollector` | `{ "PRBC": { "O+Ve": 74 } }`: the copy kept in `stock_history`. |
+| `startRun({ job, batch, sweepId, guardMinutes })` | function | `createCollector` | Inserts the job's `collector_runs` row and returns `{ id }`. With `guardMinutes`, it first takes an advisory lock and returns `null` if the same job and batch started that recently. |
+| `finishRun(run, outcome)` | function | `createCollector` | Fills in the finish time, state counts, rows, archive file, `archive_day`, lines archived, result and error. |
+| `collectDirectory()` | function | `createCollector` | Saves the nationwide directory, flagging `missing`, `outside_india`, `wrong_state` (outside its own state, from `locationProblem`) and `shared` locations. Returns `{ isSuccess, banks, qualityCounts }`, or `{ isSuccess: false, error }`. |
+| `stateChecker`, `pointCounts`, `pointKey`, `seenAt`, `banksByCode`, `locationQuality`, `qualityCounts` | variable | `collectDirectory` | The state-outline checker, banks per coordinate point, its key, the run time, rows by code, one bank's flag, and flag totals. |
+| `collectStates(stateCodes, { stopStartingAt, callDeadlineAt })` | function | `createCollector` | Saves each state: validates, uploads changed rows in full, updates the fetch time of the rest, and adds history. A state whose call or save fails is logged and skipped, and the sweep goes on. No state starts after `stopStartingAt`, and no call waits past `callDeadlineAt`; states not started are reported as skipped. Returns `{ isSuccess, statesSaved, statesFailed, statesSkipped, rowsChanged, sweep }`. |
+| `districtByCode`, `sweep`, `okCount`, `failedCount`, `rowsChanged`, `skippedCodes` | variable | `collectStates` | District per bank from the directory, the sweep summary, and the counts. |
+| `timeoutMs`, `previousEntry`, `isChanged`, `changedRows`, `unchangedCodes`, `latestRows`, `historyRows` | variable | `collectStates` | This call's timeout, saved update times, the change test, and the rows to write. |
+| `prune()` | function | `createCollector` | Runs `prune_stock_store()` and logs its report. |
+
 ### `src/lib/stockStore.js`
 Server-only reads of the copy `scripts/snapshot.mjs` saves, with the publishable key and no session.
 
@@ -250,11 +289,16 @@ Server-only reads of the copy `scripts/snapshot.mjs` saves, with the publishable
 | `SUPABASE_URL`, `SUPABASE_KEY` | constant | module | The public project URL and publishable key. |
 | `PAGE_SIZE` | constant | module | 1,000; the Data API's row limit per request. |
 | `DIRECTORY_TTL_MS` | constant | module | 1 h; how long the directory stays in memory. |
+| `STATE_ROWS_TTL_MS` | constant | module | 10 min; how long a state's saved rows stay in memory. |
 | `publicClient` | variable | module | The Supabase client, created on first use. |
 | `getPublicClient()` | function | module | That client, or `null` without the environment variables. |
 | `selectAllRows(buildQuery)` | function | module | Every row of a query, a page at a time. |
-| `rows` | variable | `selectAllRows`, `loadSavedAvailability` | The rows read so far. |
-| `loadSavedAvailability({ stateCode, districtId, componentId })` | function | module | Saved rows for a state or district, with the oldest fetch time. With a `componentId`, cut down to that component by `keepOnlyComponent`. |
+| `rows` | variable | `selectAllRows` | The rows read so far. |
+| `stateRowsCache` | variable | module | State code → `{ rowsPromise, loadedAt }`. The promise is kept, so lookups made during a download share it. Kept on `globalThis`. |
+| `loadStateRows(supabase, stateCode)` | function | module | A state's saved rows as `[{ row, districtId, fetchedAt }]`, downloaded once per 10 minutes. `districtId` is the directory's, or `districtFromAddress` for banks with no directory row. Expired entries are dropped first, and a failed download isn't kept. |
+| `now`, `cached`, `state`, `rowsPromise` | variable | `loadStateRows` | The time, the cache entry, the state's object from `constants.js`, and the download. |
+| `loadSavedAvailability({ stateCode, districtId, componentId })` | function | module | Saved rows for a state or district, cut from the state's cached rows in memory, with the oldest fetch time. With a `componentId`, cut down to that component by `keepOnlyComponent`. `null` when no row matches. |
+| `stateRows`, `rows` | variable | `loadSavedAvailability` | The state's cached rows, and the ones in the district asked for. |
 | `savedRows`, `componentName` | variable | `loadSavedAvailability` | The eRaktKosh rows, and the requested component's name. |
 | `supabase` | variable | `loadSavedAvailability`, `loadSavedNearest` | The public client. |
 | `directoryCache` | variable | module | `{ banks, loadedAt }`. Kept on `globalThis`. |
@@ -270,10 +314,40 @@ Pure distance helpers.
 |---|---|---|---|
 | `EARTH_RADIUS_M` | constant | module | 6,371 km in meters. |
 | `toRadians(degrees)` | function | module | Degrees to radians. |
+| `PIN_DECIMALS` | constant | module | 3; the decimals kept from a user's pin, about 110 m. |
+| `roundPinCoordinate(value)` | function | module | A latitude or longitude rounded to `PIN_DECIMALS`. Used by the search page and the map before the pin leaves the browser, and by `parseCoordinates` on the server. |
 | `haversineMeters(from, to)` | function | module | Straight-line distance between two `{ latitude, longitude }` points. |
 | `dLat`, `dLon`, `a` | variable | `haversineMeters` | The differences in radians, and the haversine term. |
 | `INDIA_BOUNDS` | constant | module | Latitude 6 to 37.5 and longitude 68 to 97.5. |
 | `isInIndia({ latitude, longitude })` | function | module | Whether a point lies inside those bounds. |
+
+### `src/lib/geocoding.js`
+Server-only Nominatim client for the place name under the map pin. The browser never contacts Nominatim; failures return `null`.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `NOMINATIM_URL` | constant | module | The public reverse-geocoding endpoint. |
+| `TIMEOUT_MS` | constant | module | 5 s. |
+| `REQUEST_GAP_MS` | constant | module | 1 s; Nominatim's limit for the whole app. |
+| `MAX_QUEUE_WAIT_MS` | constant | module | 3 s; past this wait for a slot, the lookup gives up and the page shows coordinates. |
+| `CACHE_TTL_MS`, `MAX_CACHE_ENTRIES` | constant | module | A week, and 5,000 points. |
+| `USER_AGENT` | constant | module | Names bloodLink and its repository, as Nominatim's policy asks. |
+| `placeCache`, `requestClock` | variable | module | Names by rounded point, and the next free request slot. Kept on `globalThis`. |
+| `parsePlaceLabel(body)` | function | module | The first of city, city district, town, village, county and state that Nominatim gives, else the first part of the display name, else `null`. |
+| `address` | variable | `parsePlaceLabel` | Nominatim's address parts. |
+| `waitForSlot(minGapMs)` | function | module | Reserves the next request slot one gap after the last, or throws if the wait would pass `MAX_QUEUE_WAIT_MS`. |
+| `now`, `slotAt` | variable | `waitForSlot` | The time, and the reserved slot. |
+| `reverseGeocode({ latitude, longitude }, { http, minGapMs })` | function | module | The place name for a pin `parseCoordinates` has already rounded: from the cache, else one Nominatim request. `http` and `minGapMs` let tests fake the network. |
+| `cacheKey`, `cached`, `response`, `label` | variable | `reverseGeocode` | The rounded point as text, its cache entry, Nominatim's answer, and the name. |
+
+### `src/lib/privacy.js`
+The privacy note's version and contact. Pure; safe in the browser.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `PRIVACY_VERSION` | constant | module | `"2026-11-03"`, when the note began saying the data is kept in Mumbai; the version of `/privacy` that people agree to. Change it when the note changes, and the details form asks everyone again. |
+| `CONTACT_EMAIL` | constant | module | `NEXT_PUBLIC_CONTACT_EMAIL`, or `null`. |
+| `hasAgreedToPrivacy(privacyVersion)` | function | module | Whether a profile's `privacy_version` is the current one. |
 
 ### `src/lib/stateBounds.js`
 Pure check that a bank's coordinates fall in its own state, from the outlines in `assets/state_boundaries.json`. The caller passes the JSON in, so the Node scripts can use it too.
@@ -445,11 +519,11 @@ Server-only Open-Meteo client, used only to slow travel estimates in rain.
 | `cellLat`, `cellLon`, `cacheKey`, `cached` | variable | `fetchRainMmPerHour` | The 0.1° cell, its cache key and any cached answer. |
 
 ### `src/lib/eligibility.js`
-Donor eligibility, worked out every time it is read. Informational only.
+Donor eligibility, worked out every time it is read, from NBTC's 2017 donor-selection guidelines (NACO letter S-12016/5/2016, 11 October 2017), cited by clause in the file. Informational only; the blood bank's medical officer decides.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `ELIGIBILITY_RULES` | constant | module | Age 18–65, and a gap of 90 days (men) or 120 days (others) between donations. |
+| `ELIGIBILITY_RULES` | constant | module | Age 18–65, with 60 the limit for a first donation (clause 2); at least 45 kg (clause 3); a gap of 90 days (men) or 120 days (others) between whole-blood donations (clause 4). |
 | `MS_PER_DAY` | constant | module | Milliseconds in a day. |
 | `toDate(value)` | function | module | A `Date` from a value, or `null`. |
 | `date` | variable | `toDate` | The parsed date. |
@@ -457,11 +531,11 @@ Donor eligibility, worked out every time it is read. Informational only.
 | `birthDate` | variable | `calculateAge` | The date of birth as a `Date`. |
 | `age` | variable | `calculateAge`, `evaluateEligibility` | Age in years. |
 | `isBeforeBirthday` | variable | `calculateAge` | Whether this year's birthday is still to come. |
-| `evaluateEligibility(details, now)` | function | module | Returns `{ status, eligible, reasons, nextEligibleDate }`. `status` is `not-donor`, `eligible`, `review` or `deferred`. |
+| `evaluateEligibility(details, now)` | function | module | Returns `{ status, eligible, reasons, nextEligibleDate }`. `status` is `not-donor`, `eligible`, `review` or `deferred`. Defers for age, a first donation over 60 (no last donation recorded), the gap, a tattoo or similar procedure in 12 months (clause 47), pregnancy, breastfeeding, a birth in 12 months or an abortion in 6 (clauses 15 to 17), weight under 45 kg, and a listed infection; medication alone means `review`. |
 | `donorDetails` | variable | `evaluateEligibility` | The donor's screening answers. |
 | `reasons` | variable | `evaluateEligibility` | Why the person can't donate now, or needs a check. |
 | `nextEligibleDate` | variable | `evaluateEligibility` | The first date they can donate again, as `YYYY-MM-DD`. |
-| `lastDonation` | variable | `evaluateEligibility` | The last donation date as a `Date`. |
+| `lastDonation` | variable | `evaluateEligibility` | The last donation date as a `Date`, or `null` for a first-time donor. |
 | `minGapDays` | variable | `evaluateEligibility` | The required gap for this person: 90 or 120 days. |
 | `daysSinceDonation` | variable | `evaluateEligibility` | Days since the last donation. |
 | `status` | variable | `evaluateEligibility` | The overall result. |
@@ -581,7 +655,7 @@ Runs before every page request.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `PROTECTED_PATHS` | constant | module | Pages that need sign-in: `/peer-to-peer`, `/set-details`, `/organization`, `/admin`. |
+| `PROTECTED_PATHS` | constant | module | Pages that need sign-in: `/peer-to-peer`, `/set-details`, `/organization`, `/account`, `/admin`. |
 | `isUnderPath(pathname, basePath)` | function | module | Whether a path is that path or below it. `/admin` matches `/admin/users`. |
 | `proxy(request)` | function | module | Refreshes the session, then sends people to `/login`, `/set-details` or `/` as needed, and a signed-in user on `/login` to the page its `?next=` names, checked by `safeNextPath`. |
 | `response` | variable | `proxy` | The pass-through response that carries refreshed cookies. |
@@ -611,6 +685,13 @@ Runs before every page request.
 |---|---|---|---|
 | `GET(request)` | handler | module | Banks within a radius of a point. Up to 60 per minute per IP. |
 | `rateLimitResult`, `stale` | variable | `GET` | As in `/api/search`. |
+
+### `src/app/api/reverse-geocode/route.js`: the place name under the map pin
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `GET(request)` | handler | module | `{ label }` for `lat` and `lng`, rounded by `parseCoordinates` and named by `reverseGeocode`. `label` is `null` when Nominatim has no name or fails. Up to 30 per minute per IP; 400 for a bad pin. |
+| `rateLimitResult`, `coords` | variable | `GET` | The rate-limit check, and the rounded pin or `{ error }`. |
 
 ### `src/app/api/blood-search/route.js`: location search and ranked search
 
@@ -681,12 +762,14 @@ Runs before every page request.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `GET()` | handler | module | Returns email, name, avatar, role, `details` (when complete), `draft` and eligibility. |
+| `GET()` | handler | module | Returns email, name, avatar, role, `details` (when complete), `draft`, eligibility, and `hasAgreedToPrivacy` for the current privacy note. |
 | `screening` | variable | `GET` | The user's `donor_screening` row. |
 | `draft` | variable | `GET` | Whatever is saved so far, used to prefill the form. |
 | `details` | variable | `GET`, `POST` | The complete, validated profile. |
-| `POST(request)` | handler | module | Validates and saves the profile. Deletes the screening answers when the person isn't a donor. |
+| `POST(request)` | handler | module | Validates and saves the profile. Refuses (400) unless the person agreed to the current privacy note before or ticks it now (`acceptPrivacy: true`), which stores `privacy_version`. Deletes the screening answers when the person isn't a donor. |
 | `errors` | variable | `POST` | Validation errors from `sanitizeDetails`. |
+| `isAgreeing` | variable | `POST` | Whether this save carries the privacy tick. |
+| `current`, `currentError` | variable | `POST` | The profile's stored `privacy_version`, read when there is no tick. |
 | `rows` | variable | `POST` | `{ profile, screening }` rows from `detailsToRows`. |
 | `updated`, `profileError` | variable | `POST` | The profile update's result and error. |
 | `screeningResult` | variable | `POST` | Result of saving or deleting the screening answers. |
@@ -700,11 +783,17 @@ Runs before every page request.
 | `POST(request)` | handler | module | Submits a new application as `pending`. Returns 409 if one is already open. |
 | `row`, `errors` | variable | `POST` | The validated row and any validation errors. |
 
+### `src/app/api/account/route.js`: delete your own account
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `DELETE()` | handler | module | Signed in only (401 otherwise). Calls `delete_my_account()`, then clears the session cookies with a local sign-out. The last admin gets a 400 with the reason. |
+
 ### `src/app/api/admin/rpcError.js`
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `rpcErrorResponse(error)` | function | module | Turns a database-function error into HTTP 403, 400, 404, 409 or 500. 409 is the one-open-application index (23505), hit when an old application is approved while the same person has another open one. |
+| `rpcErrorResponse(error)` | function | module | Turns an error from an admin database function or `delete_my_account()` into HTTP 403, 400, 404, 409 or 500. 409 is the one-open-application index (23505), hit when an old application is approved while the same person has another open one. |
 
 ### `src/app/api/admin/organizations/review/route.js`
 
@@ -743,8 +832,7 @@ Runs before every page request.
 |---|---|---|---|
 | `geistSans`, `geistMono` | constant | module | The site's fonts. |
 | `metadata` | constant | module | The default page title and description that Next.js puts in `<head>`. |
-| `loadHeaderUser()` | function | module | The signed-in user's name, avatar and role for the header, or `null`. |
-| `RootLayout({ children })` | component | module | The page frame: header, main content and footer. |
+| `RootLayout({ children })` | component | module | The page frame: header, main content, and a footer with the emergency notice and a link to `/privacy`. It reads no cookies, so pages that don't read them either are prerendered (#49). |
 
 ### `src/app/page.js`
 
@@ -756,8 +844,13 @@ Runs before every page request.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `Header({ user })` | component | module | Top navigation bar, with avatar and sign-out. |
+| `Header()` | component | module | Top navigation bar, with sign-out. It finds the signed-in user in the browser, so the root layout needn't (#49). The avatar and name link to `/account`. Nothing shows on the right until the session is known, so a signed-in user never sees "Sign in" flash. |
+| `pathname` | variable | `Header` | The current path; the profile is read again when it changes. |
+| `sessionUser` | state | `Header` | The browser session's user from `onAuthStateChange`: `undefined` until the first event, `null` when signed out. |
+| `profile` | state | `Header` | `{ userId, fullName, role }` from `profiles`, read on each page change, so a saved name or a new role shows without a reload. |
 | `isSigningOut` | state | `Header` | True while sign-out is running. |
+| `userId`, `metadata`, `ownProfile` | variable | `Header` | The session's user id, its sign-in metadata (name and picture from Google), and `profile` when it belongs to that user. |
+| `user` | variable | `Header` | `{ name, avatarUrl, role }` to show, or `null`. The name prefers the profile, then the sign-in metadata, then the email. |
 | `initials` | variable | `Header` | Shown when the user has no avatar picture. |
 | `handleSignOut()` | function | `Header` | Signs out, then reloads the home page. |
 
@@ -769,7 +862,7 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `CARTO_API_KEY` | constant | module | Key for the CARTO map tiles. Without it, the map shows a watermark. |
 | `TILE_URL` | constant | module | The map-tile address. |
 | `TILE_ATTRIBUTION` | constant | module | The OpenStreetMap and CARTO credit line. |
-| `GEOCODE_DELAY_MS` | constant | module | 800 ms; how long the pin must be still before its place name is looked up. |
+| `GEOCODE_DELAY_MS` | constant | module | 800 ms; how long the pin must be still before its place name is looked up, so a burst of clicks sends one lookup. |
 | `INDIA_CENTER` | constant | module | Where the map starts. |
 | `toCoordsKey({ lat, lng })` | function | module | A text key for a pin position, used to match a place name to its pin. |
 | `formatCoords({ lat, lng })` | function | module | `"19.0760, 72.8777"`. |
@@ -782,8 +875,7 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `isGeocoding` | state | `BloodMap` | True while the place name is being looked up. |
 | `isLocating` | state | `BloodMap` | True while waiting for the browser's location. |
 | `gpsError` | state | `BloodMap` | Why the browser's location failed. |
-| `coordsKey`, `controller`, `timer` | variable | `BloodMap` (effect) | The pin's key, a way to cancel the lookup, and the delay timer. |
-| `address`, `label` | variable | `BloodMap` (effect) | Nominatim's address parts, and the place name chosen from them. |
+| `coordsKey`, `controller`, `timer` | variable | `BloodMap` (effect) | The pin's key, a way to cancel the lookup, and the delay timer. The lookup asks `/api/reverse-geocode` with the pin rounded by `roundPinCoordinate`; the browser never contacts Nominatim. |
 | `handleMapClick(nextCoords)` | function | `BloodMap` | Moves the pin to a clicked point. |
 | `handleUseMyLocation()` | function | `BloodMap` | Asks the browser for its location and moves the pin there. |
 | `hasPlaceLabel` | variable | `BloodMap` | Whether a place name is known for the current pin. |
@@ -836,7 +928,7 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `stockFilters` | variable | `handleRegionSearch` | Component and group names to match. |
 | `fetchedAt` | variable | `handleRegionSearch` | When bloodLink fetched the data, from `X-Data-Fetched-At`. |
 | `banks` | variable | `handleRegionSearch` | Normalized results with `checkedAt` and `isDormant`, best-stocked first. |
-| `handleLocationSearch()` | function | `SearchPage` | Runs a nearest or ranked search through `/api/blood-search`. |
+| `handleLocationSearch()` | function | `SearchPage` | Runs a nearest or ranked search through `/api/blood-search`, with the pin rounded by `roundPinCoordinate`. |
 
 ### `src/app/login/page.js` and `src/app/login/LoginForm.js`
 
@@ -847,7 +939,7 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `nextPath` | variable | `LoginPage` | Where to go after signing in. |
 | `callbackFailed` | variable | `LoginPage` | Whether a sign-in link just failed. |
 | `buildCallbackUrl(path)` | function | `LoginForm.js` | The `/auth/callback` address Supabase returns to. |
-| `LoginForm({ nextPath, callbackFailed })` | component | `LoginForm.js` | Google button plus email/password sign-in and sign-up. |
+| `LoginForm({ nextPath, callbackFailed })` | component | `LoginForm.js` | Google button plus email/password sign-in and sign-up, with a note that accounts are for people aged 18 or over and a link to the privacy note. |
 | `mode` | state | `LoginForm` | `"signin"` or `"signup"`. |
 | `fullName`, `email`, `password` | state | `LoginForm` | The form's fields. |
 | `isBusy` | state | `LoginForm` | True while a request runs. |
@@ -870,6 +962,7 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `detailsFromForm(form)` | function | module | Builds the nested `details` object the API expects. |
 | `FormField({ label, htmlFor, children })` | component | module | A label above an input. |
 | `CheckboxRow({ checked, onChange, children })` | component | module | A checkbox with its question. |
+| `PrivacyConsentRow({ checked, onChange })` | component | module | The privacy tick box ("I'm 18 or older, I've read the privacy note, and I agree…"), shown on the step that saves until the person has agreed to the current note. The link opens `/privacy` in a new tab, so the form keeps its answers. |
 | `StepIndicator({ stepCount, currentStep })` | component | module | The numbered dots and lines at the top of the form. |
 | `stepIndexes`, `isDone`, `isLast`, `dotClass` | variable | `StepIndicator` | The step numbers, whether a step is finished or last, and the dot's style. |
 | `SetDetailsPage()` | component | module | The profile form. It prefills when editing. |
@@ -879,12 +972,15 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `isEditing` | state | `SetDetailsPage` | True when a complete profile already exists. |
 | `isSaving` | state | `SetDetailsPage` | True while saving. |
 | `error` | state | `SetDetailsPage` | Error message to show. |
+| `needsPrivacyConsent` | state | `SetDetailsPage` | Whether to show the privacy tick box. True until `/api/details` says the person agreed to the current note. |
+| `isPrivacyAccepted` | state | `SetDetailsPage` | Whether the box is ticked. |
 | `handleFieldChange(fieldName)` | function | `SetDetailsPage` | Returns the change handler that copies one input into `form`. |
 | `value` | variable | `handleFieldChange` | The input's value, or the checkbox's state. |
 | `districts` | variable | `SetDetailsPage` | Districts of the chosen state. |
 | `eligibility` | variable | `SetDetailsPage` | Live eligibility for the answers so far. |
 | `stepCount` | variable | `SetDetailsPage` | 3 for donors, 2 for everyone else. |
-| `handleSubmit()` | function | `SetDetailsPage` | Saves through `/api/details`, then opens `/peer-to-peer`. |
+| `isWaitingForConsent` | variable | `SetDetailsPage` | True while the box is needed but not ticked; it disables the save button. |
+| `handleSubmit()` | function | `SetDetailsPage` | Saves through `/api/details`, with `acceptPrivacy` when the box was ticked, then opens `/peer-to-peer`. |
 | `handlePersonalStepSubmit(event)` | function | `SetDetailsPage` | Checks step 1's required fields, gender included, then moves on. |
 | `handleBloodStepSubmit(event)` | function | `SetDetailsPage` | Checks the blood group, then moves on or saves. |
 
@@ -901,6 +997,30 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `details`, `eligibility` | variable | `PeerToPeerPage` | Parts of that response. |
 | `displayName` | variable | `PeerToPeerPage` | The profile name, falling back to the sign-in name or the email. |
 | `initials` | variable | `PeerToPeerPage` | Shown when there is no avatar. |
+
+### `src/app/account/page.js` and `DeleteAccountCard.js`: "Your account"
+Every signed-in person can reach it, whatever their profile's state, so anyone can delete their account.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `metadata` | constant | `page.js` | The page title, "Your account · Bloodlink". |
+| `AccountPage()` | component | `page.js` | Server component: the email, whether and when the person agreed to the current privacy note, links to `/privacy` and `/set-details`, and the delete card. Sends a signed-out visitor to `/login?next=/account`. |
+| `supabase`, `user`, `profile` | variable | `AccountPage` | The server client, the signed-in user, and their `role`, `privacy_version` and `privacy_accepted_at`. |
+| `CONFIRM_WORD` | constant | `DeleteAccountCard.js` | `"DELETE"`; the word to type before the button works. |
+| `DeleteAccountCard({ isAdmin })` | component | `DeleteAccountCard.js` | Explains what goes, asks for the confirm word, then calls `DELETE /api/account` and opens the home page. Admins are reminded that the last admin can't delete their account. |
+| `isConfirming`, `confirmText`, `isDeleting`, `error` | state | `DeleteAccountCard` | Whether the confirm step shows, the typed word, whether the request is running, and its error. |
+| `handleDelete(event)`, `handleCancel()` | function | `DeleteAccountCard` | Deletes the account, then signs the browser's session out locally so the header updates; closes the confirm step. |
+
+### `src/app/privacy/page.js`: the privacy note
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `metadata` | constant | module | The page title, "Privacy note · Bloodlink". |
+| `STORED_DATA` | constant | module | Rows of the "What bloodLink stores" table: `{ what, why, who }`. |
+| `OUTSIDE_SERVICES` | constant | module | Rows of the "Who else receives data" table: `{ service, gets, why }`. Add a row for any new outside service. |
+| `Section({ title, children })` | component | module | One card of the note. |
+| `PrivacyPage()` | component | module | The note: what is stored, what isn't, who receives what, how long, your rights, and changes. Shows `PRIVACY_VERSION` as its date. |
+| `contact` | variable | `PrivacyPage` | A mail link to `CONTACT_EMAIL`, or the GitHub page when it isn't set. |
 
 ### `src/app/organization/page.js`: apply as a hospital or blood bank
 
@@ -940,12 +1060,15 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `card` | variable | `StatCard` | The tile's content. |
 | `CollectionHealthCard({ stats })` | component | module | eRaktKosh health over the last 24 hours from `upstream_stats`: totals, then the 8 worst-served states. |
 | `rows`, `totalCalls`, `okCalls`, `stateRows` | variable | `CollectionHealthCard` | The view's rows, call totals, and the states sorted by oldest good fetch. |
-| `AdminOverviewPage()` | component | module | Counts, the review queue, collection health and recent activity. |
+| `LastSweepLine({ lastRun, lastSweep })` | component | module | The last finished stock run, cloud or laptop, and a red warning when none has finished within the sweep interval plus 2 hours. Shows nothing while `collector_runs` doesn't exist. |
+| `run`, `interval`, `isOverdue`, `hoursSince`, `limitHours` | variable | `LastSweepLine` | The run, the latest sweep's interval, and `collectionOverdue`'s answer. |
+| `AdminOverviewPage()` | component | module | Counts, the review queue, the last sweep, collection health and recent activity. |
 | `userCount`, `completeProfileCount`, `donorCount`, `adminCount` | variable | `AdminOverviewPage` | Account totals. |
 | `pendingCount`, `approvedCount` | variable | `AdminOverviewPage` | Pending and verified organizations. |
 | `pendingApplications` | variable | `AdminOverviewPage` | Up to 20 applications waiting for review. |
 | `recentAuditEntries`, `auditEntries` | variable | `AdminOverviewPage` | The 8 latest audit-log entries: the query result, and its rows. |
 | `collectionStats` | variable | `AdminOverviewPage` | The `upstream_stats` query result. |
+| `lastRun`, `lastSweep` | variable | `AdminOverviewPage` | The latest finished stock run in `collector_runs`, and the latest row of `collector_sweeps`. |
 
 ### `src/app/admin/AdminActions.js`: buttons used on admin pages
 
@@ -995,6 +1118,7 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 |---|---|---|---|
 | `describeAuditEntry(entry)` | function | module | One line of context for an entry, such as "City Blood Centre (blood_bank), was pending". |
 | `details` | variable | `describeAuditEntry` | The details the database stored with the entry. |
+| `describeActor(entry)` | function | module | Who acted: the admin's email, "system" for the first-admin script, or "a deleted account". |
 | `AdminAuditPage()` | component | module | The 200 latest admin actions. |
 
 ---
@@ -1036,7 +1160,8 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
 | `table(durations, distances)` | function | module | An OSRM table answer with the source in front. |
-| `fakeHttp(...answers)` | function | module | A stand-in for axios that answers from a list and records each URL. |
+| `fakeHttp(...answers)` | function | module | A stand-in for axios that answers from a list and records each URL. Also used for the Nominatim tests. |
+| `point` | constant | cache test | A rounded pin near Panaji; each Nominatim test uses its own point, because the cache is shared. |
 
 ### `tests/eraktkosh-client.test.js`
 
@@ -1052,6 +1177,7 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `goa` | constant | module | `{ stateCode: "30" }`. |
 | `callsWhenOpened` | variable | circuit tests | eRaktKosh calls made before a circuit opened, to show later lookups skip it. |
 | `at(iso)` | function | freshness tests | An ISO time in milliseconds. |
+| `query` | constant | pin-precision test | A pin given to 6 decimals, which `parseCoordinates` must round to 3. |
 
 ### `tests/state-bounds.test.js`
 
@@ -1095,6 +1221,19 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `quantitiesOf(cleanedRow)` | function | module | A row's cleaned red-cell quantities text. |
 | `one`, `two` | constant | report test | Two reports to add together. |
 
+### `tests/collector.test.js`
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `NOW` | constant | module | Fixed test clock: 3 Nov 2026, 12:00 India time. |
+| `stockRow(hospitalCode, entrydate, quantities)` | function | module | A test eRaktKosh row with red-cell stock. |
+| `fakeDb({ previous, directory, recentRun, failOn })` | function | module | A stand-in for the pg session: records every statement, answers the collector's reads, and throws on statements matching `failOn`. |
+| `queries`, `statements(pattern)` | variable | `fakeDb` | Every statement sent, and those matching a pattern. |
+| `fakeFetch(answers)` | function | module | A stand-in for `fetch`, answering by `stateCode` (or `nearest`) with rows, an HTTP status or a network error. |
+| `makeCollector(options)` | function | module | A collector over the fakes, with the archive, errors and called URLs captured. |
+| `archived`, `errors`, `urls` | variable | `makeCollector` | What it archived, logged as errors, and fetched. |
+| `SECRET` | constant | request-checks tests | A 40-character test secret. |
+
 ### `tests/compatibility.test.js`
 
 | Name | Kind | Inside | What it is / does |
@@ -1111,11 +1250,14 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `rows` | variable | `keepOnlyComponent` test | Rows cut down to red cells. |
 | `makeDonor(overrides, donorDetails)` | function | eligibility tests | A test donor's `details`. |
 | `result` | variable | eligibility test | One eligibility result. |
+| `firstTime`, `reasons` | variable | NBTC 2017 tests | A 63-year-old with no recorded donation, and the reasons for three ticked screening answers. |
 | `validProfile` | constant | profile tests | A valid form submission, plus a forbidden `role` field. |
 | `rows`, `roundTrip` | variable | profile test | Database rows, and the `details` read back from them. |
 | `afterMidnightInIndia` | constant | India-date test | 01:30 on 24 October in India, still 23 October in UTC. |
 | `withDonation(lastDonationDate)` | function | India-date test | `validProfile` with that last donation date. |
 | `validApplication` | constant | organization tests | A valid blood-bank application. |
+| `maharashtra`, `westBengal` | constant | district tests | Those states' objects from `constants.js`. |
+| `fromAddress(address, state)` | function | district tests | `districtFromAddress` with the state's name and districts. |
 
 ---
 
@@ -1141,34 +1283,108 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `client` | constant | module | The Postgres connection. |
 | `rows`, `admin` | variable | module | The updated profile, and its id and email. |
 
-### `scripts/snapshot.mjs`: the hourly collector, `npm run snapshot`
-Saves eRaktKosh stock and the directory into the stock store, as `bloodlink_ingest`. Optionally appends changes to a local archive.
+### `scripts/copy-project.mjs`: the move to Mumbai (#28)
+Copies every table from the project in `SUPABASE_DB_URL`, which it only reads, into the project in `MUMBAI_SUPABASE_DB_URL`. Prints project refs, table names and counts, never a connection string.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `BASE_URL`, `TIMEOUT_MS`, `STATE_GAP_MS`, `BATCH_SIZE` | constant | module | eRaktKosh address, 60 s timeout, 1 s between states, 400 rows per insert. |
-| `DIRECTORY_QUERY` | constant | module | One `nearest` call from central India with a 5,000 km radius. |
+| `sourceUrl`, `targetUrl` | constant | module | The two connection strings. The script stops if either is missing or both name one project. |
+| `projectRef(url)` | function | module | The project ref from the pooler user name `postgres.<ref>`. |
+| `TABLES` | constant | module | `[table, primary key, "update" or "skip"]` in copy order: `auth.users` first, since its trigger makes the profile rows; organizations before profiles, which point at them. |
+| `PAGE_SIZE` | constant | module | 500 rows per page. |
+| `quote(name)` | function | module | A quoted column name. |
+| `connect(url)` | function | module | An open Postgres client. |
+| `countRows(client, table)` | function | module | A table's row count. |
+| `insertableColumns(client, table)` | function | module | `[{ name, isIdentity }]` for columns that aren't generated, in table order. |
+| `copyTable(source, target, tableSpec)` | function | module | Copies one table a page at a time, as JSON (`json_agg`, then `json_populate_recordset`), with the columns both projects have. Existing rows are updated or skipped. The app's own triggers are off while a public table is copied, so `updated_at` and the consent time keep their values. Identity sequences are moved past the copied ids. |
+| `sourceNames`, `columns`, `columnList`, `hasIdentity`, `keyList`, `updates`, `conflictClause`, `isPublic`, `page` | variable | `copyTable` | The source's columns, the shared ones, their SQL list, whether one is an identity, the key list, the update list, the `on conflict` clause, whether the app owns the table, and one page of rows. |
+| `compareCounts(source, target)` | function | module | Prints each table's count in both projects; true when all match. |
+| `isCheckOnly` | constant | module | `--check`: compare counts and change nothing. |
+| `migration` | constant | module | The result of running `migrate.mjs` with `SUPABASE_DB_URL` set to the new project. |
+| `source`, `target` | constant | module | The two connections. The source reads inside one repeatable-read, read-only transaction, so the copy is one consistent snapshot; the target writes inside one transaction, committed only when every count matches. |
+
+### `scripts/snapshot.mjs`: the laptop collector, run by hand, `npm run snapshot`
+The Node wrapper around `src/lib/collector.js`: flags, the log file, a pg connection as `bloodlink_ingest`, and the local archive. Runs are recorded in `collector_runs` when that table exists.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
 | `args`, `argValue(name)` | variable | module | The command-line arguments, and the value after a flag. |
 | `isDirectoryRun`, `isAllStates`, `requestedStates`, `archiveDir`, `shouldPrune`, `logFile` | constant | module | What this run does, and the `--log` file, if any. |
 | `write(text)` | function | module | With `--log`: appends a line to the log file. `console.log` and `console.error` are pointed at it. |
 | `signal` | variable | module | Each of SIGINT, SIGBREAK, SIGHUP and SIGTERM. The handler logs it with the time, carries on after Ctrl+C and Ctrl+Break, and exits after a close or terminate. |
 | `databaseUrl` | constant | module | `SUPABASE_DB_URL` from `.env.local`. |
-| `districtData`, `stateNames`, `componentShortNames` | constant | module | The lookup file, state names by code, and component short names by full name. |
-| `stateChecker` | constant | module | `createStateChecker` over `assets/state_boundaries.json`, read with `fs`. |
-| `stateCodes` | constant | module | The states to save. |
-| `sleep`, `digitsOrNull`, `toIsoOrNull` | function | module | A pause; a digits-only value or `null`; an eRaktKosh time as ISO UTC. |
-| `callEraktkosh(endpoint, params)` | function | module | One GET: `{ ok, data, status, durationMs, bytes, failureKind }`. |
-| `insertRows(client, table, columns, rows, conflictClause, casts)` | function | module | Multi-row inserts in batches. |
-| `batch`, `values`, `tuples`, `placeholders`, `cast` | variable | `insertRows` | One batch of rows, its query values, the `($1, $2, …)` groups, one row's placeholders, and a column's type cast. |
-| `logCall(client, endpoint, stateCode, call, rowCount, quality)` | function | module | Writes one `upstream_calls` row. |
-| `compactStock(row)` | function | module | `{ "PRBC": { "O+Ve": 74 } }`: the copy kept in `stock_history`. |
+| `districtData`, `knownStateCodes`, `stateCodes` | constant | module | The lookup file, every state code, and the states to save. An unknown code stops the run before any call. |
 | `appendArchive(fileName, lines)` | function | module | Appends JSON lines to a file in the archive folder. |
-| `snapshotDirectory(client)` | function | module | Saves the nationwide directory, flagging `missing`, `outside_india`, `wrong_state` (outside its own state, from `stateChecker.locationProblem`) and `shared` locations. |
-| `pointCounts`, `pointKey`, `seenAt`, `banksByCode`, `locationQuality`, `qualityCounts` | variable | `snapshotDirectory` | Banks per coordinate point, its key, the run time, rows by code, one bank's flag, and flag totals. |
-| `snapshotStates(client)` | function | module | Saves each state: validates, uploads changed rows in full, updates the fetch time of the rest, and adds history. A state whose save fails is rolled back, logged and skipped, and the sweep goes on. |
-| `districtByCode`, `sweepStartedAt`, `sweep`, `okCount` | variable | `snapshotStates` | District per bank from the directory, when the sweep began, the sweep summary, and states saved. |
-| `previousEntry`, `isChanged`, `changedRows`, `unchangedCodes`, `latestRows`, `historyRows` | variable | `snapshotStates` | Saved update times, the change test, and the rows to write. |
-| `client`, `isSuccess` | variable | module | The Postgres connection, and the exit status. An error from connecting onwards is logged as `fatal: …` and makes the exit status 1, which the Task Scheduler wrapper passes on. |
+| `localArchive` | constant | module | With `--archive`: changed rows to `history/<UTC day>.ndjson`, one line per sweep to `sweeps.ndjson`, and the directory answer to `directory/<UTC day>.json`. |
+| `client`, `isSuccess` | variable | module | The Postgres connection, and the exit status. An error from connecting onwards is logged as `fatal: …` and makes the exit status 1, which `../blood_data/scripts/run_collector.ps1` passes on to Task Scheduler. |
+| `collector` | constant | module | `createCollector` with runner `laptop`. The state outlines are read only for `--directory`. |
+| `runJob(job, work)` | function | module | Records a job (`directory`, `stock` or `prune`) in `collector_runs`, runs it, and records its outcome or error. |
+| `run`, `outcome` | variable | `runJob` | The job's row, and what it returned. |
+
+### `scripts/check-cloud-collector.mjs`: checks the cloud collector's SQL
+Runs on the project in `SUPABASE_DB_URL` inside one transaction that is always rolled back. Applies the `*_cloud_collector.sql` migration first if the project lacks it. No tick runs, so `pg_net` is never called.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `migrationFile` | constant | module | The cloud collector migration's file name. |
+| `check(name, isOk, detail)` | function | module | Prints one result and counts failures. |
+| `one(sql, params)` | function | module | The first row of a query. |
+| `errorCode(sql, params)` | function | module | Runs a statement in a savepoint and returns the SQLSTATE it raised, or `null`. |
+| `due(batch, interval)` | function | module | `collector_due`'s answer. |
+| `moveLastSweep(ago)` | function | module | Moves the newest sweep's start into the past, since `now()` is fixed inside the transaction. |
+| `first`, `second`, `jobs`, `tick`, `pruned`, `left`, `bucket` | variable | module | The values each check reads. |
+
+### `scripts/probe-cloud-collector.mjs`: Phase 0 of the cloud collector
+Deploys the throwaway `collector-probe` function, calls it with `x-region: ap-south-1` and without, then deletes it and its secret. Saves the answers to `../blood_data/measurements/collector_probe_<date>.json`. Four eRaktKosh calls in all.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `SUPABASE_CLI` | constant | module | The pinned CLI, `supabase@3.0.0`. |
+| `MEASUREMENTS_DIR`, `ref`, `probeUrl` | constant | module | Where results go, the project ref (from the pooler user `postgres.<ref>`), and the probe's URL. |
+| `supabase(cliArgs)` | function | module | Runs the CLI against the project with `--remote` and `--yes`; on Windows through a shell, since `npx` is a `.cmd`. |
+| `callProbe(secret, region)` | function | module | One call: status, `x-sb-edge-region`, total time and the probe's answer. |
+| `secret`, `results`, `isDeployed` | variable | module | The probe's random secret, what is saved, and whether cleanup must delete the function. |
+
+### `scripts/setup-cloud-collector.mjs`: sets up, deploys, schedules
+With no flag: a new random secret, stored as the function secret `COLLECTOR_SECRET` and in Vault as `collector_secret`, with the function's URL as `collector_url`; then deploys `collect-stock` with JWT verification off. Re-running rotates the secret. `--deploy-only` redeploys; `--schedule [interval] [--region r | --no-region]` and `--unschedule` run the scheduling functions.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `SUPABASE_CLI`, `args`, `argValue(name)` | constant | module | The pinned CLI, the arguments, and the value after a flag. |
+| `databaseUrl`, `ref`, `publicHost`, `functionUrl` | constant | module | The connection string, the project ref, the public URL's host (which must match), and the function's URL. |
+| `supabase(cliArgs)`, `deploy()` | function | module | Runs the CLI against the project; deploys `collect-stock` with `--use-api --no-verify-jwt`. |
+| `client` | constant | module | The Postgres connection, as `postgres`, for Vault and the scheduling functions. |
+| `interval`, `region`, `scheduled`, `removed`, `secret`, `existing` | variable | module | The values each mode uses. |
+
+### `scripts/sync-archive.mjs`: the laptop's copy of the cloud archive, `npm run archive:sync`
+Downloads `stock-archive` into `../blood_data/eraktkosh/` in the laptop's own layout, so the history readers need no change. Fetches only what the laptop lacks, writes each file under a temporary name and renames it, waits up to 10 minutes for the network, and logs each run to `sync.log`.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `BUCKET`, `PAGE_SIZE`, `NETWORK_WAIT_MS`, `RETRY_EVERY_MS` | constant | module | The bucket, 1,000 entries per listing page, 10 minutes of waiting for the network, a try every 30 s. |
+| `SWEEP_SETTLED_MS` | constant | module | 15 minutes: a sweep whose newest batch is older than this is complete and is merged. |
+| `archiveDir`, `logFile`, `writeLog(text)` | constant | module | The archive folder (`--dir`), `sync.log`, and a function that prints a line and appends it there. |
+| `bucket` | constant | module | The Storage bucket, with `SUPABASE_SECRET_KEY`. |
+| `listAll(prefix)`, `files(entries)`, `folders(entries)` | function | module | Every entry under a folder, page by page; its files; its sub-folders. |
+| `download(objectPath)`, `writeAtomic(target, text)`, `lineCount(text)` | function | module | An object's text, unzipped; a write through a `.part` file and a rename; non-empty lines. |
+| `listRootWhenOnline()` | function | module | The bucket's top level, retried until the network is up or 10 minutes pass. |
+| `counts`, `newestDay` | variable | module | What this run fetched, and the newest UTC day held. |
+| `remoteHistory` | variable | module | `[object path, local file]` for every history file: `history/D/NAME.ndjson.gz` maps to `history/D_NAME.ndjson`, and `history/D.ndjson.gz` to `history/D.ndjson`. |
+| `mergedSources`, `newSummaries`, `sweepsById`, `settledLines` | variable | module | Batch summaries already in `sweeps.ndjson` (from each line's `sources`), the new ones, the new ones by sweep, and one line per settled sweep with its batches' states joined. |
+
+### `scripts/upload-archive.mjs`: the laptop's archive into the bucket, `npm run archive:upload`
+Uploads each local `history/D.ndjson`, `sweeps.ndjson` and the weekly directory files, replacing what is there, and records each day's lines as an `upload` run so the prune counts them. `--check` compares, per UTC day, database rows with archived and local lines. `--from-db D` archives a day straight from `stock_history`, as `history/D/db.ndjson.gz`.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `BUCKET`, `DAY_FILE`, `DIRECTORY_FILE` | constant | module | The bucket, and the names of a laptop day file and a directory file. |
+| `args`, `argValue(name)`, `archiveDir`, `isCheckOnly`, `dbDay` | constant | module | The arguments and the mode. |
+| `lineCount(text)` | function | module | Non-empty lines. |
+| `localDays` | constant | module | Local day files by UTC date. |
+| `client`, `bucket` | constant | module | The Postgres connection as `bloodlink_ingest`, and the Storage bucket (absent with `--check`). |
+| `upload(objectPath, text)` | function | module | Uploads, gzipped when the path ends in `.gz`, replacing any existing file. |
+| `recordUpload(objectPath, day, lines)` | function | module | Inserts or replaces the file's `upload` row in `collector_runs`. |
+| `rows`, `shortDays`, `text`, `objectPath` | variable | module | The values each mode uses. |
 
 ### `scripts/measure-search.mjs`: response times, `npm run measure`
 Point it at a server started with `TRUSTED_PROXY_HOPS=1`, so each simulated user's `X-Forwarded-For` gets its own rate limit.
@@ -1262,20 +1478,60 @@ Downloads geoBoundaries' India state outlines (DataMeet, CC BY 2.5 IN), matches 
 
 | Name | Kind | File | What it is / does |
 |---|---|---|---|
-| `nextConfig` | constant | `next.config.mjs` | Allows Google profile pictures, and redirects the old `/search/v1`–`v3` URLs to `/search`. |
+| `nextConfig` | constant | `next.config.mjs` | Allows Google profile pictures, sends `securityHeaders` on every response, and redirects the old `/search/v1`–`v3` URLs to `/search`. |
+| `isDevelopment`, `supabaseOrigin` | constant | `next.config.mjs` | Whether this is `next dev` (React needs `eval` there), and the Supabase project's origin for `connect-src`. |
+| `contentSecurityPolicy` | constant | `next.config.mjs` | The full policy: only the app itself, Supabase and CARTO tiles, inline scripts and styles (Next.js uses no nonces here), no plugins, no framing. Sent report-only. |
+| `securityHeaders` | constant | `next.config.mjs` | `frame-ancestors 'none'` and `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` (location for bloodLink only, no camera or microphone), `X-Content-Type-Options: nosniff`, and the report-only policy. |
+| (rules) | config | `.gitattributes` | `* text=auto eol=lf`: text files are stored and checked out with LF line endings on every system. |
+| (template) | config | `.env.example` | Every environment variable with a placeholder. Committed, through `!.env.example` in `.gitignore`. |
 | (default export) | config | `vitest.config.mjs` | Test settings, plus the `@` alias for `src/`. |
 | `eslintConfig` | constant | `eslint.config.mjs` | Next.js lint rules. `archive/` is ignored. |
 | `config` | constant | `postcss.config.mjs` | Loads Tailwind. |
 | (settings) | config | `.prettierrc.json` | `printWidth: 100`; everything else uses Prettier's defaults. |
 | (paths) | config | `.prettierignore` | Folders and files Prettier skips. |
 | (data) | asset | `assets/traffic_profiles.json` | TomTom congestion profiles for 10 Indian metros plus an India average, built by `scripts/build-traffic-profiles.mjs`. Read by `src/lib/traffic.js`. |
-| (data) | asset | `assets/state_boundaries.json` | Simplified outlines of the 36 states and union territories, keyed by eRaktKosh state code, with bounding boxes and the CC BY 2.5 IN credit. Built by `scripts/build-state-boundaries.mjs`; read by `/api/blood-search` and `scripts/snapshot.mjs` through `src/lib/stateBounds.js`. |
+| (data) | asset | `assets/state_boundaries.json` | Simplified outlines of the 36 states and union territories, keyed by eRaktKosh state code, with bounding boxes and the CC BY 2.5 IN credit. Built by `scripts/build-state-boundaries.mjs`; read by `/api/blood-search` and by the collector's directory run (`src/lib/collector.js`, on the laptop and in the Edge Function) through `src/lib/stateBounds.js`. |
+
+---
+
+## Edge Functions, `supabase/functions/`
+
+TypeScript for Supabase's Deno runtime. They import `src/lib/` and `assets/` directly, which the CLI's `--use-api` deploy bundles. Prettier skips `/supabase/`; type-check them with `npx deno@2.5.6 check --no-lock --node-modules-dir=none supabase/functions/collect-stock/index.ts supabase/functions/collector-probe/index.ts`.
+
+### `supabase/functions/collect-stock/index.ts`: the cloud collector
+Called by the cron jobs with `x-collector-secret`. Deployed with JWT verification off, so the secret is the only way in.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `BUCKET` | constant | module | `stock-archive`. |
+| `STOP_STARTING_MS`, `CALL_DEADLINE_MS` | constant | module | 110 s and 135 s of the free plan's 150: no state starts after the first, and no eRaktKosh call waits past the second. |
+| `respond(status, body)` | function | module | A JSON response. |
+| `gzip(text)` | function | module | Gzipped bytes, with `CompressionStream`. |
+| `archiveBucket()` | function | module | The Storage bucket, with the `default` key from `SUPABASE_SECRET_KEYS`. Used for nothing but uploads. |
+| `upload(path, body, contentType, upsert)` | function | module | One upload; throws on failure. |
+| `stampName(time, batch)` | function | module | `2026-11-10/0535-b1`: the UTC day, start time and batch, which name the batch's files. |
+| (handler) | handler | module | Checks the method and the secret, parses the body, connects with `SUPABASE_DB_URL` and runs `set role bloodlink_ingest`, then runs the batch, the directory or the prune, each recorded in `collector_runs` and refused (409) if it ran within 50 minutes. A batch uploads its changed rows to `history/<name>.ndjson.gz` and its summary to `sweeps/<name>.json`; the directory uploads `directory/<day>.json.gz`. |
+| `receivedAt`, `job`, `historyLines`, `directoryAnswer`, `client`, `finishOnError` | variable | handler | When the call came in (the time budget starts there), the parsed request, what the archive hooks buffered, the Postgres connection, and the hook that records a fatal error against the job in progress. |
+| `collector`, `results`, `status`, `refuse(name)` | variable | handler | The shared collector with runner `edge`, the answer, its HTTP status, and a helper for a refused job. |
+| `run`, `outcome`, `name`, `archived`, `errors`, `summary` | variable | handler | One job's row and outcome, the file name, the archive fields for `finishRun`, upload errors, and the batch summary. |
+
+### `supabase/functions/collector-probe/index.ts`: Phase 0's throwaway probe
+Deployed, called and deleted by `scripts/probe-cloud-collector.mjs`. Guarded by `COLLECTOR_PROBE_SECRET`.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `respond(status, body)` | function | module | A JSON response. |
+| `fetchState(stateCode)` | function | module | One `blood-availability` call: status, bytes, rows, fetch time, and the time to parse and validate it, which is CPU time. |
+| `probeDatabase()` | function | module | Connects with `SUPABASE_DB_URL` as given, then with certificate checks off if that fails; runs `set role bloodlink_ingest` and three timed reads. Reports the host and port, never the password. |
+| `host`, `attempts`, `roundTrips` | variable | `probeDatabase` | The connection's host, each attempt's result, and the read times. |
+| (handler) | handler | module | Checks the secret; reports the region, whether the shared modules and assets bundled, whether a secret key is present, Goa and Uttar Pradesh one second apart, and the database. |
+| `secretKeys`, `goa`, `uttarPradesh` | variable | handler | The secret keys, and the two states' results. |
 
 ---
 
 ## Database
 
-Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stock_store.sql`, `20261023000300_blood_bank_locations.sql`, `20261024000100_wrong_state_locations.sql`, `20261026000100_ingest_prune_grant.sql` and `20261026000200_review_and_india_dates.sql`. All are applied to the live project, so changes go in a new migration file, never into an existing one. SQL uses `snake_case`. Function parameters start with `p_` and local variables with `v_`.
+Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stock_store.sql`, `20261023000300_blood_bank_locations.sql`, `20261024000100_wrong_state_locations.sql`, `20261026000100_ingest_prune_grant.sql`, `20261026000200_review_and_india_dates.sql`, `20261026000300_privacy_consent_and_account_deletion.sql` and `20261103000100_cloud_collector.sql`. All are applied to the live project (Mumbai, since 2026-11-03), so changes go in a new migration file, never into an applied one. SQL uses `snake_case`. Function parameters start with `p_` and local variables with `v_`.
 
 ### Tables and columns
 
@@ -1290,10 +1546,12 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | | `is_profile_complete` | Set by a trigger when the required fields are filled. Clients can't write it. |
 | | `role` | `user`, `hospital`, `blood_bank` or `admin`. Changed only by database functions. |
 | | `organization_id` | The approved organization behind a hospital or blood-bank role. |
+| | `privacy_version` | The date of the privacy note the person agreed to, as `YYYY-MM-DD`. The owner may write it; `/api/details` writes `PRIVACY_VERSION`. |
+| | `privacy_accepted_at` | When they agreed. Set by the trigger from the database clock; clients can't write it. |
 | | `created_at`, `updated_at` | Timestamps. |
 | `donor_screening` | `user_id` | The donor; one row per person. |
 | | `last_donation_date`, `donation_camp` | Last donation, and where it happened. |
-| | `recent_tattoo`, `pregnant`, `underweight`, `on_medication`, `medication_details`, `has_disease` | Health answers. Only their owner can read them. |
+| | `recent_tattoo`, `pregnant`, `underweight`, `on_medication`, `medication_details`, `has_disease` | Health answers. Only their owner can read them. As the form asks them: a tattoo, piercing, acupuncture or other invasive cosmetic procedure in 12 months, by the donor or their partner; pregnancy, breastfeeding, a birth in 12 months, or an abortion or miscarriage in 6; under 45 kg; current medication and which; and HIV, hepatitis, malaria or syphilis. |
 | | `updated_at` | Timestamp. |
 | `organizations` | `id`, `kind` | Application id; `hospital` or `blood_bank`. |
 | | `name`, `registration_number`, `eraktkosh_code` | Who the organization is. |
@@ -1302,7 +1560,7 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | | `applicant_id` | Who applied. |
 | | `review_note`, `reviewed_by`, `reviewed_at` | The last admin review. |
 | | `created_at`, `updated_at` | Timestamps. |
-| `audit_log` | `id`, `actor_id` | Entry number, and the admin who acted. `actor_id` is null for scripts. |
+| `audit_log` | `id`, `actor_id` | Entry number, and the admin who acted. `actor_id` is null for scripts, and for an admin who has since deleted their account. |
 | | `action` | Such as `organization.approved` or `user.role_changed`. |
 | | `target_type`, `target_id` | What was acted on. |
 | | `details` | Extra facts, such as the previous status or a note. |
@@ -1324,13 +1582,21 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | | `endpoint`, `state_code` | Which eRaktKosh call. |
 | | `ok`, `http_status`, `duration_ms`, `bytes`, `rows`, `failure_kind` | How it went. |
 | | `quality` | The validation counts for that response. |
+| `collector_sweeps` | `id`, `started_at` | One cloud sweep, started by `collector_tick(1)`. |
+| | `sweep_interval` | The interval it was started under; at least 1 hour. |
+| | `posted_batches` | The batches `collector_tick` has sent for it. |
+| `collector_runs` | `id`, `job`, `batch`, `sweep_id`, `runner` | One collector job: `stock` (a cloud batch 1–4, or the laptop's states), `directory`, `prune` or `upload` (laptop history put into the archive); `edge` or `laptop`. |
+| | `started_at`, `finished_at` | When it started, and when it finished; null while running or after a crash. |
+| | `states_saved`, `states_failed`, `states_skipped`, `rows_changed` | How the states went, and history rows written. |
+| | `archive_path`, `archive_day`, `rows_archived` | The `stock-archive` file it wrote, the UTC day its lines belong to, and how many. Only Storage files count; laptop runs leave them empty. |
+| | `result`, `error` | The directory's flags or the prune's report, and any error. |
 
 ### Functions and triggers
 
 | Name | Kind | What it does |
 |---|---|---|
 | `set_updated_at()` | trigger function | Stamps `updated_at` on `organizations`. |
-| `profiles_before_write()` | trigger function | Rejects a date of birth after today's date in India, and sets `is_profile_complete` and `updated_at`. |
+| `profiles_before_write()` | trigger function | Rejects a date of birth after today's date in India, and sets `is_profile_complete` and `updated_at`. When `privacy_version` changes, it stamps `privacy_accepted_at` with the current time, or clears it. |
 | `donor_screening_before_write()` | trigger function | Rejects a donation date after today's date in India, and sets `updated_at`. |
 | `handle_new_user()` | trigger function | Creates a `profiles` row for every new sign-up. |
 | `handle_user_email_change()` | trigger function | Copies an email change into `profiles`. |
@@ -1339,10 +1605,23 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | `v_org` | variable | Inside `review_organization`: the application being reviewed. |
 | `set_user_role(p_user_id, p_role)` | function | Admin only. Grants or removes admin, refuses to remove the last admin, and writes the audit log. |
 | `v_old_role` | variable | Inside `set_user_role`: the user's role before the change. |
-| `prune_stock_store(p_history_days, p_call_days)` | function | `bloodlink_ingest` only, with that role's rights. Deletes history older than 60 days and call logs older than 90; returns the counts. Reading `upstream_calls.called_at` in its `WHERE` needs the column grant added on 26 October. |
-| `v_history`, `v_calls` | variable | Inside `prune_stock_store`: rows deleted from each table. |
+| `delete_my_account()` | function | Signed-in users only. Deletes the caller's own auth user, which cascades to their profile, screening answers and organization applications; audit entries keep their rows with no actor. Refuses the only admin (22023), and raises P0002 when there is no such user. |
+| `v_role` | variable | Inside `delete_my_account`: the caller's role. |
+| `prune_stock_store(p_history_days, p_call_days)` | function | `bloodlink_ingest` only, with that role's rights. Deletes history older than 60 days, but only for UTC days whose rows the Storage archive holds in full (the `rows_archived` recorded for the day cover every row of it), and call logs older than 90. Returns `history_deleted`, `calls_deleted` and `history_days_kept`, each short day with its rows and archived lines. Reading `upstream_calls.called_at` in its `WHERE` needs the column grant added on 26 October. |
+| `v_cutoff`, `v_last_day`, `v_kept`, `v_kept_days`, `v_history`, `v_calls` | variable | Inside `prune_stock_store`: the cutoff, its UTC day, the short days as JSON and as dates, and rows deleted from each table. |
+| `collector_due(p_batch, p_interval)` | function | `postgres` only (security definer). Whether a batch is due, recording it if so; returns the sweep's id or null. Batch 1 starts a sweep once the last began `p_interval` less 5 minutes ago; batches 2 to 4 follow only a sweep that began in the last 10 minutes, once each. Refuses a batch outside 1–4 or an interval under 1 hour (22023). |
+| `v_sweep` | variable | Inside `collector_due`: the latest sweep. |
+| `collector_post(p_body, p_region)` | function | `postgres` only. Posts to the function with `pg_net`, with the URL and secret from Vault, `x-region` when given, and a 150 s timeout. Raises P0002 when Vault lacks them. |
+| `v_url`, `v_secret`, `v_headers` | variable | Inside `collector_post`. |
+| `collector_tick(p_batch, p_interval, p_region)` | function | `postgres` only. What each cron tick runs: `collector_due`, then `collector_post` only when due. Returns the request id or null. |
+| `collector_weekly(p_region)` | function | `postgres` only. Trims `cron.job_run_details` to 7 days, then posts `{ directory: true, prune: true }`. |
+| `schedule_stock_collector(p_interval, p_region)` | function | `postgres` only. Creates or replaces the five cron jobs (UTC): `collector-batch-1` to `-4` at `5,35`, `7,37`, `9,39` and `11,41` past each hour, and `collector-weekly` at `50 21 * * 0` (Monday 03:20 India time). Defaults: 4.5 hours, `ap-south-1`. Refuses under 1 hour, and without the Vault secrets. |
+| `v_minutes`, `v_jobs`, `v_batch` | variable | Inside `schedule_stock_collector`. |
+| `unschedule_stock_collector()` | function | `postgres` only. Removes the five jobs; returns how many there were. |
 | `upstream_stats` | view | eRaktKosh calls in the last 24 hours per endpoint and state: calls, success %, median and 95th-percentile ms, last good call. Runs with the caller's rights, so only admins see rows. |
-| `bloodlink_ingest` | role | No login. The collector switches to it with `set role`; it may write only the stock tables. On `upstream_calls` it may insert and delete, and read only `called_at`. |
+| `bloodlink_ingest` | role | No login. The collector switches to it with `set role`; it may write only the stock tables. On `upstream_calls` it may insert and delete, and read only `called_at`. On `collector_runs` it may read, insert and update; `collector_sweeps` and the scheduling functions are closed to it. |
+| `pg_cron`, `pg_net` | extension | Added by the cloud collector migration, in `pg_catalog` and `extensions`. |
+| `stock-archive` | Storage bucket | Private, with no policies, so only a secret key reaches it. `history/D/HHMM-bN.ndjson.gz` (a cloud batch's changes), `history/D.ndjson.gz` (a laptop day), `sweeps/D/HHMM-bN.json`, `sweeps.ndjson.gz`, `directory/D.json.gz`; D is a UTC date. |
 | `profiles_before_write`, `donor_screening_before_write`, `organizations_set_updated_at` | trigger | Run those functions before each write. |
 | `on_auth_user_created`, `on_auth_user_email_changed` | trigger | Run `handle_new_user` and `handle_user_email_change` on `auth.users`. |
 
@@ -1365,3 +1644,7 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | `bank_stock_latest_state_district`, `stock_history_fetched_at`, `upstream_calls_called_at` | Indexes for the saved-copy reads, pruning and the stats view. |
 | `blood_banks_location_gist` | GiST index on `blood_banks.location`, for radius searches with `ST_DWithin`. PostGIS lives in the `extensions` schema. Rebuilt with the column by the `wrong_state` migration. |
 | `blood_banks_location_quality_check` | `location_quality` must be `ok`, `shared`, `wrong_state`, `outside_india` or `missing`. |
+| `collector_sweeps_select_admin`, `collector_runs_select_admin` | Only admins can read the collector's tables. |
+| `collector_runs_ingest` | `bloodlink_ingest` may write `collector_runs`. |
+| `collector_sweeps_started_at`, `collector_runs_started_at`, `collector_runs_archive_day` | Indexes for the tick, the admin overview and the prune. |
+| `collector_runs_upload_path` | Unique partial index on `archive_path` for `upload` runs: re-uploading a file replaces its row, so the prune never counts it twice. |

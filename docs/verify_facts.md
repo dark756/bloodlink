@@ -5,7 +5,7 @@
 - Paths are relative to `bloodlink/` unless they start with `../`.
 - "Docs" means `CLAUDE.md` and the files in `md files/`. Each finding names where the fact is used.
 
-> **Status update, 26 October 2026.** The documents now live in `docs/`; this file says `md files/`, the folder's name when it was written. Since this check:
+> **Status update, 26 October 2026.** The documents now live in `docs/`, and the plans in `docs/PLANS/`, listed in `docs/plans.md`; this file says `md files/`, the folder's name when it was written. Since this check:
 > - **Recorded, rules unchanged:** F1 to F4 are listed under #24 in `CLAUDE.md`. The eligibility rules wait for the official NBTC document.
 > - **Corrected in the documents and code comments:**
 >   - F5, the zone scales' derivation;
@@ -19,6 +19,8 @@
 >   - F20, the geoBoundaries metadata;
 >   - F22, the gap for "other".
 > - **Tracked:** F16 under #52 and F17 under #49. F15 was fixed here; F21 needs no change.
+> - **Later on 26 October:** F1 to F4 are fixed in the form and `eligibility.js`, each checked against the official text of the 2017 guidelines: the copy the Union of India filed in the Supreme Court (WP (C) 275 of 2021, Annexure A5). Clause 16, 6 months after an abortion, was added too.
+> - **Also later on 26 October:** F16 is resolved. Place names now come from bloodLink's server, which asks Nominatim at most once a second and caches each rounded point for a week (#52).
 
 **Labels used below**
 
@@ -30,6 +32,8 @@
 | **Ambiguous** | Correct under one reading, wrong or unclear under another; needs a clarifying word in the docs |
 | **Unverified** | Couldn't be checked from here (site blocked, data outside the repo) |
 | **Project choice** | A design parameter or the project's own analysis, not an outside fact; judged for reasonableness only |
+
+> **Status update, 3 November 2026.** `supabase_scheduler.md` was carried out and folded into `docs/report3.md`, point 3.1, which uses F13's one-year figure. `review_and_next_moves.md` was merged into `docs/plans.md`. References to either below are to the files as they were checked.
 
 **Contents**
 1. [How the checks were done](#how-the-checks-were-done)
