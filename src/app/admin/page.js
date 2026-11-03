@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/format";
 import { getStateName } from "@/lib/constants";
+import { OVERDUE_GRACE_HOURS, collectionOverdue, intervalHours } from "@/lib/collector";
 import OrganizationCard, { ORGANIZATION_SELECT } from "./OrganizationCard";
 
 // Select options that return only the row count, not the rows.
@@ -20,6 +21,33 @@ function StatCard({ label, value, href }) {
     </div>
   );
   return href ? <Link href={href}>{card}</Link> : card;
+}
+
+// The last finished stock run, from the cloud or the laptop, and a red warning when
+// none has finished within the sweep interval plus 2 hours. Shows nothing until the
+// cloud collector's migration has added collector_runs.
+function LastSweepLine({ lastRun, lastSweep }) {
+  if (lastRun.error || lastSweep.error) return null;
+  const run = lastRun.data?.[0];
+  const interval = lastSweep.data?.[0]?.sweep_interval ?? null;
+  const { isOverdue, hoursSince, limitHours } = collectionOverdue(run?.finished_at, interval);
+  return (
+    <>
+      <p className="card-body text-sm">
+        {run
+          ? `Last sweep: ${run.batch ? `batch ${run.batch} ` : ""}from ${run.runner === "edge" ? "Supabase" : "the laptop"}, finished ${formatDateTime(run.finished_at)}, ${run.states_saved ?? 0} states saved${run.states_failed ? `, ${run.states_failed} failed` : ""}${run.states_skipped ? `, ${run.states_skipped} skipped` : ""}.`
+          : "No sweep has been recorded yet."}
+        {interval && ` Sweeps every ${intervalHours(interval)} hours.`}
+      </p>
+      {isOverdue && run && (
+        <p className="card-body notice notice-error">
+          No sweep has finished for {hoursSince.toFixed(1)} hours, more than the{" "}
+          {limitHours - OVERDUE_GRACE_HOURS}-hour interval plus {OVERDUE_GRACE_HOURS} hours. Check
+          collector_runs and the cron jobs.
+        </p>
+      )}
+    </>
+  );
 }
 
 // eRaktKosh health over the last 24 hours, from the collector's call log
@@ -80,6 +108,8 @@ export default async function AdminOverviewPage() {
     pendingApplications,
     recentAuditEntries,
     collectionStats,
+    lastRun,
+    lastSweep,
   ] = await Promise.all([
     countRows(supabase.from("profiles").select("id", COUNT_ONLY)),
     countRows(supabase.from("profiles").select("id", COUNT_ONLY).eq("is_profile_complete", true)),
@@ -99,6 +129,18 @@ export default async function AdminOverviewPage() {
       .order("created_at", { ascending: false })
       .limit(8),
     supabase.from("upstream_stats").select("*"),
+    supabase
+      .from("collector_runs")
+      .select("runner, batch, finished_at, states_saved, states_failed, states_skipped")
+      .eq("job", "stock")
+      .not("finished_at", "is", null)
+      .order("finished_at", { ascending: false })
+      .limit(1),
+    supabase
+      .from("collector_sweeps")
+      .select("sweep_interval")
+      .order("started_at", { ascending: false })
+      .limit(1),
   ]);
   const auditEntries = recentAuditEntries.data ?? [];
 
@@ -142,6 +184,7 @@ export default async function AdminOverviewPage() {
 
       <div className="card mt-5">
         <h2 className="card-title">eRaktKosh data collection, last 24 hours</h2>
+        <LastSweepLine lastRun={lastRun} lastSweep={lastSweep} />
         <CollectionHealthCard stats={collectionStats} />
       </div>
 
