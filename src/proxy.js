@@ -10,7 +10,7 @@ import { safeNextPath } from "@/lib/auth";
 // 4. Keeps non-admins out of /admin. Admin pages and admin database functions
 //    check the role again, so this is a convenience, not the only guard.
 
-const PROTECTED_PATHS = ["/peer-to-peer", "/set-details", "/organization", "/admin"];
+const PROTECTED_PATHS = ["/peer-to-peer", "/set-details", "/organization", "/account", "/admin"];
 
 // True for the path itself and anything below it: "/admin" matches "/admin/users".
 function isUnderPath(pathname, basePath) {

@@ -3,6 +3,12 @@
 const EARTH_RADIUS_M = 6_371_000;
 const toRadians = (degrees) => (degrees * Math.PI) / 180;
 
+// A user's pin is personal data. It is rounded to 3 decimals (about 110 m) before it
+// leaves the browser, and the server rounds it again before eRaktKosh, OSRM or
+// Nominatim see it. 110 m is plenty for finding blood banks.
+export const PIN_DECIMALS = 3;
+export const roundPinCoordinate = (value) => Number(Number(value).toFixed(PIN_DECIMALS));
+
 // Great-circle (straight-line) distance in meters between two { latitude, longitude } points.
 export function haversineMeters(from, to) {
   const dLat = toRadians(to.latitude - from.latitude);

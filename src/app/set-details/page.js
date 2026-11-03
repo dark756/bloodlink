@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { BLOOD_GROUPS, STATES, districtsFor } from "@/lib/constants";
@@ -105,6 +106,21 @@ function CheckboxRow({ checked, onChange, children }) {
   );
 }
 
+// Shown on the step that saves, until the person has agreed to the current privacy note.
+function PrivacyConsentRow({ checked, onChange }) {
+  return (
+    <div className="mt-5">
+      <CheckboxRow checked={checked} onChange={onChange}>
+        I&apos;m 18 or older, I&apos;ve read the{" "}
+        <Link href="/privacy" target="_blank" className="text-[#d32f2f] font-semibold">
+          privacy note
+        </Link>
+        , and I agree to bloodLink storing these details as it describes.
+      </CheckboxRow>
+    </div>
+  );
+}
+
 function StepIndicator({ stepCount, currentStep }) {
   const stepIndexes = Array.from({ length: stepCount }, (_, index) => index);
   return (
@@ -140,6 +156,10 @@ export default function SetDetailsPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  // Until the saved profile says otherwise, the privacy box is shown; the API
+  // refuses to save without agreement anyway.
+  const [needsPrivacyConsent, setNeedsPrivacyConsent] = useState(true);
+  const [isPrivacyAccepted, setIsPrivacyAccepted] = useState(false);
 
   // Prefill from the saved profile (or partial answers, such as the name from
   // Google) so editing never starts from a blank form. The proxy guarantees a
@@ -150,6 +170,7 @@ export default function SetDetailsPage() {
       .get("/api/details")
       .then(({ data }) => {
         if (isCancelled) return;
+        setNeedsPrivacyConsent(data.hasAgreedToPrivacy !== true);
         if (data.details) {
           setForm(formFromDetails(data.details));
           setIsEditing(true);
@@ -185,12 +206,20 @@ export default function SetDetailsPage() {
   const districts = districtsFor(form.stateCode);
   const eligibility = evaluateEligibility(detailsFromForm(form));
   const stepCount = form.isDonor ? 3 : 2;
+  const isWaitingForConsent = needsPrivacyConsent && !isPrivacyAccepted;
 
   async function handleSubmit() {
+    if (isWaitingForConsent) {
+      setError("Please read the privacy note and tick the box to agree before saving.");
+      return;
+    }
     setIsSaving(true);
     setError("");
     try {
-      await axios.post("/api/details", { details: detailsFromForm(form) });
+      await axios.post("/api/details", {
+        details: detailsFromForm(form),
+        acceptPrivacy: needsPrivacyConsent && isPrivacyAccepted,
+      });
       router.push("/peer-to-peer");
       router.refresh();
     } catch (err) {
@@ -406,6 +435,13 @@ export default function SetDetailsPage() {
               </FormField>
             </div>
 
+            {!form.isDonor && needsPrivacyConsent && (
+              <PrivacyConsentRow
+                checked={isPrivacyAccepted}
+                onChange={(event) => setIsPrivacyAccepted(event.target.checked)}
+              />
+            )}
+
             <div className="flex gap-2 mt-6">
               <button
                 type="button"
@@ -415,7 +451,11 @@ export default function SetDetailsPage() {
               >
                 ← Back
               </button>
-              <button type="submit" className="btn btn-primary" disabled={isSaving}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={isSaving || (!form.isDonor && isWaitingForConsent)}
+              >
                 {form.isDonor ? "Continue →" : isSaving ? "Saving…" : "Save Details"}
               </button>
             </div>
@@ -434,6 +474,10 @@ export default function SetDetailsPage() {
                   value={form.lastDonationDate}
                   onChange={handleFieldChange("lastDonationDate")}
                 />
+                {/* Without a date, eligibility treats the person as a first-time donor. */}
+                <p className="text-xs text-[#666] mt-1">
+                  Leave it empty if you have never donated.
+                </p>
               </FormField>
               <FormField label="Donation Camp / Organisation" htmlFor="donationCamp">
                 <input
@@ -447,16 +491,23 @@ export default function SetDetailsPage() {
               </FormField>
             </div>
 
-            <h2 className="font-semibold text-[#222] mb-3">Health Screening</h2>
+            <h2 className="font-semibold text-[#222] mb-1">Health Screening</h2>
+            <p className="text-xs text-[#666] mb-3">
+              Only you can see these answers, not even bloodLink&apos;s admins. They are deleted as
+              soon as you are no longer a donor, or when you delete your account.
+            </p>
             <div className="flex flex-col gap-2 mb-4">
+              {/* Worded as NBTC's 2017 guidelines put them; see src/lib/eligibility.js. */}
               <CheckboxRow checked={form.recentTattoo} onChange={handleFieldChange("recentTattoo")}>
-                Tattoo or piercing in the last 6 months?
+                Tattoo, piercing, acupuncture or another invasive cosmetic procedure in the last 12
+                months, for you or your partner?
               </CheckboxRow>
               <CheckboxRow checked={form.pregnant} onChange={handleFieldChange("pregnant")}>
-                Currently pregnant or breastfeeding?
+                Pregnant or breastfeeding now, gave birth in the last 12 months, or had an abortion
+                or miscarriage in the last 6 months?
               </CheckboxRow>
               <CheckboxRow checked={form.underweight} onChange={handleFieldChange("underweight")}>
-                Body weight under 50 kg?
+                Body weight under 45 kg?
               </CheckboxRow>
               <CheckboxRow checked={form.onMedication} onChange={handleFieldChange("onMedication")}>
                 Currently on any medication?
@@ -496,6 +547,13 @@ export default function SetDetailsPage() {
               </div>
             )}
 
+            {needsPrivacyConsent && (
+              <PrivacyConsentRow
+                checked={isPrivacyAccepted}
+                onChange={(event) => setIsPrivacyAccepted(event.target.checked)}
+              />
+            )}
+
             <div className="flex gap-2 mt-6">
               <button
                 type="button"
@@ -509,7 +567,7 @@ export default function SetDetailsPage() {
                 type="button"
                 className="btn btn-primary"
                 onClick={handleSubmit}
-                disabled={isSaving}
+                disabled={isSaving || isWaitingForConsent}
               >
                 {isSaving ? "Saving…" : "Save Details"}
               </button>
