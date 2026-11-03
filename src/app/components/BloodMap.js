@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import axios from "axios";
+import { roundPinCoordinate } from "@/lib/geo";
 
 // ── CARTO basemap tiles ───────────────────────────────────────────────────────
 // Without NEXT_PUBLIC_CARTO_API_KEY, CARTO stamps an "API key required"
@@ -18,8 +19,8 @@ const TILE_URL =
 const TILE_ATTRIBUTION =
   '&copy; <a href="https://openstreetmap.org">OpenStreetMap</a> &copy; <a href="https://carto.com">CARTO</a>';
 
-// Nominatim's public server allows about one request per second, so reverse
-// geocoding waits until the pin has stopped moving for this long.
+// The place name is looked up once the pin has stopped moving for this long, so a
+// burst of clicks sends one lookup. The server spaces its own Nominatim requests.
 const GEOCODE_DELAY_MS = 800;
 
 const INDIA_CENTER = [20.5937, 78.9629];
@@ -65,7 +66,8 @@ export default function BloodMap({ coords, onCoordsChange }) {
   const [isLocating, setIsLocating] = useState(false);
   const [gpsError, setGpsError] = useState("");
 
-  // Reverse-geocode the pin once it settles; a newer pin cancels the older lookup.
+  // Name the pin's place once it settles; a newer pin cancels the older lookup. The
+  // server asks Nominatim (src/lib/geocoding.js), so the pin goes only to bloodLink.
   useEffect(() => {
     if (!coords) return undefined;
     const coordsKey = toCoordsKey(coords);
@@ -73,22 +75,11 @@ export default function BloodMap({ coords, onCoordsChange }) {
     const timer = setTimeout(async () => {
       setIsGeocoding(true);
       try {
-        const { data } = await axios.get("https://nominatim.openstreetmap.org/reverse", {
-          params: { format: "json", lat: coords.lat, lon: coords.lng },
-          headers: { "Accept-Language": "en" },
+        const { data } = await axios.get("/api/reverse-geocode", {
+          params: { lat: roundPinCoordinate(coords.lat), lng: roundPinCoordinate(coords.lng) },
           signal: controller.signal,
         });
-        const address = data.address ?? {};
-        const label =
-          address.city ||
-          address.city_district ||
-          address.town ||
-          address.village ||
-          address.county ||
-          address.state ||
-          data.display_name?.split(",")[0] ||
-          null;
-        setGeocodedPlace({ coordsKey, label });
+        setGeocodedPlace({ coordsKey, label: data.label ?? null });
       } catch (err) {
         if (!axios.isCancel(err)) setGeocodedPlace({ coordsKey, label: null });
       } finally {

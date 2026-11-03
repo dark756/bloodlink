@@ -1,5 +1,6 @@
 import axios from "axios";
 import { BLOOD_GROUPS, COMPONENTS, findState } from "./constants";
+import { roundPinCoordinate } from "./geo";
 import { validateAvailabilityRows } from "./stockQuality";
 import { loadSavedAvailability, loadSavedNearest } from "./stockStore";
 
@@ -206,8 +207,9 @@ export function createEraktkoshClient({
     }
 
     // The older copy in memory, else the saved copy. Without a memory copy the
-    // saved one is looked up straight away (one small query per state every
-    // 5 minutes at most), so it is ready if the live call is slow or fails.
+    // saved one is looked up straight away, so it is ready if the live call is slow
+    // or fails. src/lib/stockStore.js downloads each state once per 10 minutes and
+    // cuts it to the filters in memory, so this costs no extra download per filter.
     let savedPromise = null;
     const backupAnswer = async (upstream) => {
       if (cachedEntry) return answer(cachedEntry, "memory", upstream);
@@ -350,8 +352,9 @@ export function parseCoordinates(searchParams, latName = "latitude", lngName = "
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
     return { error: "Valid latitude and longitude are required." };
   }
-  // 4 decimals is about 11 m, plenty for finding blood banks, and keeps cache keys reusable.
-  return { latitude: Number(lat.toFixed(4)), longitude: Number(lng.toFixed(4)) };
+  // 3 decimals is about 110 m: no more of the user's position reaches eRaktKosh, OSRM or
+  // Nominatim, and cache keys are reused more often (src/lib/geo.js).
+  return { latitude: roundPinCoordinate(lat), longitude: roundPinCoordinate(lng) };
 }
 
 export function parseNearestQuery(searchParams) {

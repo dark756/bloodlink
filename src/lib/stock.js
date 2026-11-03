@@ -153,6 +153,31 @@ export function cleanText(value) {
   return typeof value === "string" ? value.trim().replace(/[,\s]+$/, "") : "";
 }
 
+// Lower case, with runs of anything but letters and digits as one space.
+const toNameKey = (text) =>
+  String(text ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+// eRaktKosh addresses end with the bank's district and state, spelt as in
+// assets/district_data.json: "…, Andheri (W), Mumbai Suburban, Mumbai, Maharashtra".
+// Returns that district's code as a string, or null when the address doesn't end
+// that way. On 2026-10-26 this gave the right district for all 4,048 saved banks
+// whose district was known, and placed 674 of the 683 that had none; the other 9
+// have no address. districts: the state's [{ districtCode, districtName }].
+export function districtFromAddress(address, stateName, districts) {
+  const parts = String(address ?? "")
+    .split(",")
+    .map(toNameKey)
+    .filter(Boolean);
+  if (parts.length < 2 || parts[parts.length - 1] !== toNameKey(stateName)) return null;
+  const district = districts.find(
+    (candidate) => toNameKey(candidate.districtName) === parts[parts.length - 2],
+  );
+  return district ? String(district.districtCode) : null;
+}
+
 // Shape a blood-availability row for display.
 export function normalizeAvailabilityRow(row, filters = {}) {
   return {

@@ -1,7 +1,7 @@
 import { jsonError } from "@/lib/auth";
 
-// Maps errors raised by the admin database functions to HTTP responses.
-// The functions raise with these SQLSTATE codes on purpose.
+// Maps errors raised by the admin database functions, and by delete_my_account(),
+// to HTTP responses. The functions raise with these SQLSTATE codes on purpose.
 export function rpcErrorResponse(error) {
   switch (error.code) {
     case "42501":
@@ -18,7 +18,7 @@ export function rpcErrorResponse(error) {
         409,
       );
     default:
-      console.error("admin rpc failed:", error.code, error.message);
+      console.error("rpc failed:", error.code, error.message);
       return jsonError("The action failed. Please try again.", 500);
   }
 }

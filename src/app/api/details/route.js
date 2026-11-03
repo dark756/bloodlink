@@ -4,9 +4,11 @@ import { jsonError, requireUser } from "@/lib/auth";
 import { sanitizeDetails } from "@/lib/profile";
 import { detailsToRows, rowsToDetails } from "@/lib/profileStore";
 import { evaluateEligibility } from "@/lib/eligibility";
+import { PRIVACY_VERSION, hasAgreedToPrivacy } from "@/lib/privacy";
 
 // The signed-in user's own profile. Queries run as that user, so row-level
 // security limits them to their own rows; there is no way to name another user.
+// Details are saved only once the person has agreed to the current privacy note.
 
 export async function GET() {
   const supabase = await createClient();
@@ -34,6 +36,7 @@ export async function GET() {
     // Partial answers (for example the name from Google) to prefill the form.
     draft,
     eligibility: details ? evaluateEligibility(details) : null,
+    hasAgreedToPrivacy: hasAgreedToPrivacy(profile?.privacy_version),
   });
 }
 
@@ -54,10 +57,30 @@ export async function POST(request) {
     return NextResponse.json({ error: errors[0], errors }, { status: 400 });
   }
 
+  // acceptPrivacy: true when the person ticked the privacy box on this save.
+  const isAgreeing = body?.acceptPrivacy === true;
+  if (!isAgreeing) {
+    const { data: current, error: currentError } = await supabase
+      .from("profiles")
+      .select("privacy_version")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (currentError) {
+      console.error("privacy check failed:", currentError.message);
+      return jsonError("Could not save your details. Please try again.", 500);
+    }
+    if (current && !hasAgreedToPrivacy(current.privacy_version)) {
+      return jsonError(
+        "Please read the privacy note and tick the box to agree before saving.",
+        400,
+      );
+    }
+  }
+
   const rows = detailsToRows(details);
   const { data: updated, error: profileError } = await supabase
     .from("profiles")
-    .update(rows.profile)
+    .update(isAgreeing ? { ...rows.profile, privacy_version: PRIVACY_VERSION } : rows.profile)
     .eq("id", user.id)
     .select("id");
 

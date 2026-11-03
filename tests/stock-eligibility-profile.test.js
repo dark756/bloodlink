@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  districtFromAddress,
   exactGroupUnits,
   extractPhone,
   formatUpdatedAgo,
@@ -11,7 +12,7 @@ import {
 import { calculateAge, evaluateEligibility } from "@/lib/eligibility";
 import { sanitizeDetails } from "@/lib/profile";
 import { sanitizeOrganization } from "@/lib/organization";
-import { BLOOD_GROUPS, COMPONENTS, getComponentName } from "@/lib/constants";
+import { BLOOD_GROUPS, COMPONENTS, findState, getComponentName } from "@/lib/constants";
 import { detailsToRows, rowsToDetails } from "@/lib/profileStore";
 
 const NOW = new Date("2026-10-23T12:00:00Z");
@@ -102,6 +103,32 @@ describe("eligibility", () => {
   it("respects birthdays", () => {
     expect(calculateAge("2000-10-24", NOW)).toBe(25);
     expect(calculateAge("2000-10-23", NOW)).toBe(26);
+  });
+  // NBTC 2017, clause 2: a first-time donor shall not be over 60; repeat donors up to 65.
+  it("allows donors over 60 only if they have donated before", () => {
+    const firstTime = evaluateEligibility(makeDonor({ dob: "1963-01-01" }), NOW);
+    expect(firstTime.status).toBe("deferred");
+    expect(firstTime.reasons[0]).toMatch(/First-time donors must be 60 or younger/);
+    expect(
+      evaluateEligibility(makeDonor({ dob: "1963-01-01" }, { lastDonationDate: "2025-12-01" }), NOW)
+        .status,
+    ).toBe("eligible");
+    expect(evaluateEligibility(makeDonor({ dob: "1966-01-01" }), NOW).status).toBe("eligible");
+    expect(
+      evaluateEligibility(makeDonor({ dob: "1960-01-01" }, { lastDonationDate: "2025-12-01" }), NOW)
+        .status,
+    ).toBe("deferred");
+  });
+  it("names the 2017 deferral windows in its reasons", () => {
+    const { reasons } = evaluateEligibility(
+      makeDonor({}, { recentTattoo: true, pregnant: true, underweight: true }),
+      NOW,
+    );
+    expect(reasons).toEqual([
+      "Tattoo, piercing, acupuncture or a similar procedure in the last 12 months.",
+      "Pregnancy, breastfeeding, a birth in the last 12 months, or an abortion or miscarriage in the last 6 months.",
+      "Body weight under 45 kg.",
+    ]);
   });
 });
 
@@ -200,5 +227,34 @@ describe("organization validation", () => {
       phone: "x",
     });
     expect(errors.length).toBe(3);
+  });
+});
+
+// The saved copy's district for banks with no directory row (#45).
+describe("district from an eRaktKosh address", () => {
+  const maharashtra = findState("27");
+  const westBengal = findState("19");
+  const fromAddress = (address, state) =>
+    districtFromAddress(address, state.stateName, state.districts);
+
+  it("reads the district just before the state at the end of the address", () => {
+    // Andheri is in Mumbai Suburban, but eRaktKosh files this bank under Mumbai.
+    expect(
+      fromAddress(
+        "2nd floor, Opp Bus Depot,  Near Railway Station Andheri (W), Mumbai Suburban, Mumbai, Maharashtra",
+        maharashtra,
+      ),
+    ).toBe("519");
+  });
+  it("ignores case, punctuation and stray commas", () => {
+    expect(
+      fromAddress("Rajarhat, Kolkata,, NORTH TWENTY-FOUR PARGANAS ,West Bengal,", westBengal),
+    ).toBe("337");
+  });
+  it("returns null unless the address ends with a district and its own state", () => {
+    expect(fromAddress("-", maharashtra)).toBeNull();
+    expect(fromAddress("Civil Lines, Mumbai, Gujarat", maharashtra)).toBeNull();
+    expect(fromAddress("Station Road, Andheri, Maharashtra", maharashtra)).toBeNull();
+    expect(fromAddress(null, maharashtra)).toBeNull();
   });
 });

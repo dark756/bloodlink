@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -163,6 +164,16 @@ export default function LoginForm({ nextPath, callbackFailed }) {
           <button type="button" className="text-[#d32f2f] font-semibold" onClick={handleToggleMode}>
             {isSignIn ? "Create an account" : "Sign in instead"}
           </button>
+        </p>
+
+        {/* Continuing with Google creates an account too, so this shows in both modes. */}
+        <p className="text-xs text-[#666] mt-4">
+          bloodLink is for people aged 18 or over. Until you fill in your details, an account holds
+          only your name and email, and your profile picture if you use Google. The{" "}
+          <Link href="/privacy" className="text-[#d32f2f] font-semibold">
+            privacy note
+          </Link>{" "}
+          says what is stored and why.
         </p>
       </div>
     </div>

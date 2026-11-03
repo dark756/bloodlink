@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEraktkoshClient, summarizeFreshness } from "@/lib/eraktkosh";
+import { createEraktkoshClient, parseCoordinates, summarizeFreshness } from "@/lib/eraktkosh";
 
 const ROW = {
   hospitalCode: "101",
@@ -260,5 +260,21 @@ describe("a shorter wait when eRaktKosh is known to be slow", () => {
     const answer = await client.fetchAvailability(goa, { giveUpMs: 30 });
     expect(answer.source).toBe("saved");
     expect(Date.now() - started).toBeLessThan(150);
+  });
+});
+
+// A user's pin is personal data; eRaktKosh, OSRM and Nominatim get it to about 110 m (#52).
+describe("pin precision", () => {
+  it("rounds the pin to 3 decimals", () => {
+    const query = new URLSearchParams({ lat: "19.076090", lng: "72.877426" });
+    expect(parseCoordinates(query, "lat", "lng")).toEqual({ latitude: 19.076, longitude: 72.877 });
+  });
+  it("refuses a missing or impossible pin", () => {
+    expect(
+      parseCoordinates(new URLSearchParams({ lat: "19.07" }), "lat", "lng").error,
+    ).toBeTruthy();
+    expect(
+      parseCoordinates(new URLSearchParams({ lat: "91", lng: "72" }), "lat", "lng").error,
+    ).toBeTruthy();
   });
 });

@@ -14,6 +14,7 @@ import {
 } from "@/lib/constants";
 import { formatUpdatedAgo, isDormant, normalizeAvailabilityRow } from "@/lib/stock";
 import { formatTimeAgo, hoursSince } from "@/lib/format";
+import { roundPinCoordinate } from "@/lib/geo";
 
 const MAX_UNITS = 50;
 // A saved copy older than this gets a red warning instead of a yellow one.
@@ -362,8 +363,8 @@ export default function SearchPage() {
     startSearch("location");
     try {
       const params = buildFilterParams();
-      params.set("lat", String(coords.lat));
-      params.set("lng", String(coords.lng));
+      params.set("lat", String(roundPinCoordinate(coords.lat)));
+      params.set("lng", String(roundPinCoordinate(coords.lng)));
       if (canRank) {
         params.set("units", String(unitsNeeded));
         params.set("urgency", urgency);

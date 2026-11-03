@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fetchRoadLegs, parseTable } from "@/lib/routing";
 import { parseRainRate } from "@/lib/weather";
+import { parsePlaceLabel, reverseGeocode } from "@/lib/geocoding";
 
 const table = (durations, distances) => ({
   code: "Ok",
@@ -93,5 +94,28 @@ describe("Open-Meteo rain rate", () => {
   it("returns null for a missing or odd answer", () => {
     expect(parseRainRate({})).toBeNull();
     expect(parseRainRate({ current: { precipitation: 1, interval: 0 } })).toBeNull();
+  });
+});
+
+describe("Nominatim place names", () => {
+  it("prefers the city, then smaller places, then the first part of the name", () => {
+    expect(parsePlaceLabel({ address: { city: "Pune", state: "Maharashtra" } })).toBe("Pune");
+    expect(parsePlaceLabel({ address: { village: "Saifai", county: "Etawah" } })).toBe("Saifai");
+    expect(parsePlaceLabel({ display_name: "Arabian Sea, India" })).toBe("Arabian Sea");
+    expect(parsePlaceLabel({ error: "Unable to geocode" })).toBeNull();
+  });
+  // Each test uses its own point, because the cache is shared.
+  it("asks once per rounded point, then serves the cache", async () => {
+    const http = fakeHttp({ address: { town: "Panaji" } });
+    const point = { latitude: 15.491, longitude: 73.828 };
+    expect(await reverseGeocode(point, { http, minGapMs: 0 })).toBe("Panaji");
+    expect(await reverseGeocode(point, { http, minGapMs: 0 })).toBe("Panaji");
+    expect(http.calls).toHaveLength(1);
+  });
+  it("returns null instead of throwing when Nominatim fails", async () => {
+    const http = fakeHttp(new Error("timeout of 5000ms exceeded"));
+    expect(
+      await reverseGeocode({ latitude: 26.961, longitude: 78.962 }, { http, minGapMs: 0 }),
+    ).toBe(null);
   });
 });

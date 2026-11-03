@@ -11,6 +11,13 @@ function describeAuditEntry(entry) {
   return "";
 }
 
+// Who acted. The actor is null for the first-admin script, and for an admin who has
+// since deleted their account.
+function describeActor(entry) {
+  if (entry.actor?.email) return entry.actor.email;
+  return entry.action === "user.role_bootstrap" ? "system" : "a deleted account";
+}
+
 export default async function AdminAuditPage() {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -40,7 +47,7 @@ export default async function AdminAuditPage() {
               </p>
               {entry.details?.note && <p className="text-xs mt-1">Note: {entry.details.note}</p>}
               <p className="text-xs text-[#666] mt-1">
-                {entry.actor?.email ?? "system"} · {formatDateTime(entry.created_at)}
+                {describeActor(entry)} · {formatDateTime(entry.created_at)}
               </p>
             </li>
           ))}

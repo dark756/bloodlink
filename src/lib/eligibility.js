@@ -1,16 +1,26 @@
 // Donor eligibility, computed when it is read rather than frozen at submit time.
 //
-// Thresholds follow India's NBTC (National Blood Transfusion Council) 2017
-// donor-selection guidelines as we understand them: age 18-65 and a minimum
-// gap of 90 days (men) or 120 days (women) between whole-blood donations.
-// "other" gets the 120-day gap, the conservative choice; the guidelines name only
-// men and women. Re-check them against the official guidelines before relying on
-// them: reproductions of the 2017 text differ from the form on four points (#24).
-// This is informational only; blood banks do the real screening.
+// Thresholds follow India's NBTC (National Blood Transfusion Council) "Guidelines for
+// Blood Donor Selection & Blood Donor Referral" (NACO letter S-12016/5/2016, 11 October
+// 2017), checked on 2026-10-26 against the copy the Union of India filed in the Supreme
+// Court (WP (C) 275 of 2021, Annexure A5):
+// - clause 2: age 18 to 65, but a first-time donor shall not be over 60;
+// - clause 3: at least 45 kg for a 350 ml donation (more than 55 kg for 450 ml, which
+//   the blood bank chooses);
+// - clause 4: 90 days between whole-blood donations for men, 120 for women;
+// - clauses 15 to 17: 12 months after delivery, 6 months after an abortion, and the
+//   whole period of breastfeeding;
+// - clause 47: 12 months after a tattoo, acupuncture, piercing or other invasive
+//   cosmetic procedure, by the donor or their spouse or partner.
+// "other" gets the 120-day gap, the conservative choice; the guidelines name only men
+// and women. With no last donation recorded, the person counts as a first-time donor.
+// This is informational only; the blood bank's medical officer makes the final call.
 
 export const ELIGIBILITY_RULES = {
   minAge: 18,
   maxAge: 65,
+  maxFirstTimeAge: 60,
+  minWeightKg: 45,
   intervalDaysMale: 90,
   intervalDaysOther: 120,
 };
@@ -44,6 +54,7 @@ export function evaluateEligibility(details, now = new Date()) {
   const donorDetails = details.donorDetails ?? {};
   const reasons = [];
   let nextEligibleDate = null;
+  const lastDonation = toDate(donorDetails.lastDonationDate);
 
   const age = calculateAge(details.dob, now);
   if (age === null) reasons.push("Date of birth is missing.");
@@ -51,9 +62,12 @@ export function evaluateEligibility(details, now = new Date()) {
     reasons.push(`Donors must be at least ${ELIGIBILITY_RULES.minAge}.`);
   } else if (age > ELIGIBILITY_RULES.maxAge) {
     reasons.push(`Donors must be ${ELIGIBILITY_RULES.maxAge} or younger.`);
+  } else if (age > ELIGIBILITY_RULES.maxFirstTimeAge && !lastDonation) {
+    reasons.push(
+      `First-time donors must be ${ELIGIBILITY_RULES.maxFirstTimeAge} or younger. If you have donated before, add your last donation date.`,
+    );
   }
 
-  const lastDonation = toDate(donorDetails.lastDonationDate);
   if (lastDonation) {
     const minGapDays =
       details.gender === "male"
@@ -70,9 +84,17 @@ export function evaluateEligibility(details, now = new Date()) {
     }
   }
 
-  if (donorDetails.recentTattoo) reasons.push("Tattoo or piercing in the last 6 months.");
-  if (donorDetails.pregnant) reasons.push("Currently pregnant or breastfeeding.");
-  if (donorDetails.underweight) reasons.push("Body weight under 50 kg.");
+  if (donorDetails.recentTattoo) {
+    reasons.push("Tattoo, piercing, acupuncture or a similar procedure in the last 12 months.");
+  }
+  if (donorDetails.pregnant) {
+    reasons.push(
+      "Pregnancy, breastfeeding, a birth in the last 12 months, or an abortion or miscarriage in the last 6 months.",
+    );
+  }
+  if (donorDetails.underweight) {
+    reasons.push(`Body weight under ${ELIGIBILITY_RULES.minWeightKg} kg.`);
+  }
   if (donorDetails.hasDisease) reasons.push("Reported a blood-transmissible infection.");
 
   const status =
