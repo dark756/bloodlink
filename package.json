@@ -13,6 +13,8 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:make-admin": "node scripts/make-admin.mjs",
     "snapshot": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/snapshot.mjs",
+    "archive:sync": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/sync-archive.mjs",
+    "archive:upload": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/upload-archive.mjs",
     "measure": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/measure-search.mjs"
   },
   "dependencies": {
