@@ -3,7 +3,7 @@
 This report records every decision and step taken on 2026-10-23 to answer the reviewer's feedback in `documentation/suggested changes after sem 7 report 1.txt`. Each section has a plan, the decisions with their evidence, the steps taken, and how the result was checked.
 
 - **Code paths** are relative to `bloodlink/` unless they start with `../`.
-- **Where the work is.** Branch `supabase-migration`, GitHub's default branch since 26 October. Report 3's work was committed on 24 October as `5af73b9`, on top of `798fe73`, and the review fixes on 26 October. The later fixes of 26 October and the work of 3 November were committed on 3 November, on the branch `mumbai-and-cloud-collector`.
+- **Where the work is.** Branch `supabase-migration`, GitHub's default branch since 26 October. Report 3's work was committed on 24 October as `5af73b9`, on top of `798fe73`, and the review fixes on 26 October. The later fixes of 26 October and the work of 3 November were committed on 3 November.
 - **Order of work.** The points are worked in the order they were asked, not by number: 2, 1, 3.1, 3.2, 4, 5.
 - **Follow-up on 2026-10-24.** `docs/data_integrity.md` re-checks point 3 independently and records six faults it found and fixed (#36 to #41). The counts and results here that it changed have been updated, and each point says where.
 - **Reviews of 24 and 25 October.** A review of the code, docs and plans, whose next moves are now in `docs/plans.md`, and `docs/verify_facts.md`, which checked every number and outside fact. Thirteen of the faults they and a follow-up review found were fixed on 26 October; `CLAUDE.md` lists them and the ones still open. Where they corrected a figure or a source here, the text has been updated.

@@ -10,7 +10,7 @@ All the planned work for bloodLink, in order of priority: what each item involve
 
 | # | Item | Plan | Status | Size | Next step |
 |---|---|---|---|---|---|
-| 1 | [Push and merge the work committed on 3 November](#1--push-and-merge-the-work-committed-on-3-november) | — | Committed on a branch, not pushed | Minutes | Your go-ahead |
+| 1 | [Push the work committed on 3 November](#1--push-the-work-committed-on-3-november) | — | Committed, not pushed | Minutes | Your go-ahead |
 | 2 | [Finish moving collection off the laptop](#2--finish-moving-collection-off-the-laptop-35) (#35) | Done; the record is in `report3.md`, point 3.1 | Cut over; the first cloud sweep passed | Minutes, spread over a week | Delete the laptop tasks after 16:05 on 4 November |
 | 3 | [Finish the move to Mumbai](#3--finish-the-move-to-mumbai-28) (#28) | — | Moved; Tokyo still running | 30 minutes | Pause Tokyo |
 | 4 | [Stock-out forecasting](#4--stock-out-forecasting-reviewer-point-5) | `report3.md`, point 5 | Models chosen; an early walk-forward dry run done | Ongoing, to January | Three decisions; phase 5.1 |
@@ -27,11 +27,11 @@ All the planned work for bloodLink, in order of priority: what each item involve
 
 ---
 
-## 1 · Push and merge the work committed on 3 November
+## 1 · Push the work committed on 3 November
 
-- **Where it is.** Everything since `b55dbfa` (26 October, 02:37) was committed on 3 November on the branch `mumbai-and-cloud-collector`: the later fixes of 26 October (consent, the privacy page and account deletion among them), the move to Mumbai, the cloud collector and the documents. It isn't pushed, so GitHub's default branch, `supabase-migration`, still stops at `b55dbfa`.
+- **Where it is.** Everything since `b55dbfa` (26 October, 02:37) was committed on 3 November on `supabase-migration`, GitHub's default branch: the later fixes of 26 October (consent, the privacy page and account deletion among them), the move to Mumbai, the cloud collector and the documents. It isn't pushed, so GitHub's copy still stops at `b55dbfa`.
 - **Why first.** The `collect-stock` function deployed in Supabase runs code GitHub doesn't have yet, so losing the laptop would lose its source.
-- **What.** Push the branch, and merge it into `supabase-migration`, which is a fast-forward.
+- **What.** `git push`.
 - **Needs:** your go-ahead.
 
 ## 2 · Finish moving collection off the laptop (#35)

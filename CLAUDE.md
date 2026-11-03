@@ -452,7 +452,7 @@ None open.
 ## Where to go next
 
 `docs/plans.md` has every item in order of priority, with its details. The first ones:
-1. **Push and merge the branch `mumbai-and-cloud-collector`,** when asked. It holds everything since 2026-10-26 (the privacy and consent work, the move to Mumbai and the cloud collector), committed on 2026-11-03 but not pushed, and the deployed `collect-stock` function runs code GitHub doesn't have yet.
+1. **Push `supabase-migration`,** when asked. Everything since 2026-10-26 (the privacy and consent work, the move to Mumbai and the cloud collector) was committed on 2026-11-03 but not pushed, and the deployed `collect-stock` function runs code GitHub doesn't have yet.
 2. **Finish moving collection off the laptop** (#35): the 24-hour watch, then deleting the laptop tasks. Collection has run in Supabase since 2026-11-03.
 3. **Finish the move to Mumbai** (#28): one Google sign-in, then retiring Tokyo.
 4. **Stock-out forecasting** (reviewer point 5). The subplan, the seven models and the decision rule are in `docs/report3.md`, point 5; the scripts are in `../rough_work/ML/`, outside git.

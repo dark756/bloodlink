@@ -19,7 +19,7 @@ The ranking section below is up to date with report 3. Where the rest of this li
 
 **Review fixes (2026-10-26).** Thirteen faults found in the reviews of 24 and 25 October were fixed. They are listed under [Found in the reviews of 24 and 25 October](#found-in-the-reviews-of-24-and-25-october). There are now 125 tests.
 
-**Cloud collection (2026-11-03).** The database moved from Tokyo to Mumbai (#28), and stock collection moved off the laptop to Supabase (#35): see [Stock collected in Supabase, every 4.5 hours](#stock-collected-in-supabase-every-45-hours). It was committed on 3 November, on the branch `mumbai-and-cloud-collector`. There are now 150 tests.
+**Cloud collection (2026-11-03).** The database moved from Tokyo to Mumbai (#28), and stock collection moved off the laptop to Supabase (#35): see [Stock collected in Supabase, every 4.5 hours](#stock-collected-in-supabase-every-45-hours). It was committed on 3 November. There are now 150 tests.
 
 ---
 
@@ -348,7 +348,7 @@ Separately, a one-off script ran 47 end-to-end checks against the live database.
 
 ## 2. Bug fixes
 
-The first four groups are in commit `fdb2b2a`. The 23 and 24 October fixes are in `5af73b9`, on `supabase-migration`. The fixes from the 24 and 25 October reviews were committed on 26 October, on the same branch, and the later ones of that day on 3 November, on `mumbai-and-cloud-collector`.
+The first four groups are in commit `fdb2b2a`. The 23 and 24 October fixes are in `5af73b9`, on `supabase-migration`. The fixes from the 24 and 25 October reviews were committed on 26 October, on the same branch, and the later ones of that day on 3 November.
 
 ### Security
 - **Anyone could overwrite anyone's profile.** `/api/details` trusted the email address sent in the request. It now takes your identity from your sign-in session only.
