@@ -11,12 +11,12 @@
 - **A six-step fallback** answers every search when eRaktKosh is down, slow or failing, as a drill showed.
 - **Six other datasets** were found, validated and catalogued.
 
-The known gaps are bank locations: 679 banks have no coordinates and 206 sit in the wrong state.
+The known gaps are bank locations. On 4 November, 699 stocked banks had no coordinates from eRaktKosh and 193 sat in the wrong state or outside India, so location search could see 3,864 of 4,756 (81.2%). Corrected positions for 140 of them raised that to 4,004 (84.2%) the same day.
 
 | Status | |
 |---|---|
 | **Done** | Standardise, validate, de-duplicate, refresh; stale data and failures demonstrated; six other datasets |
-| **Planned** | Placing the 679 unlocated banks and the 206 in the wrong state (#33, #34) |
+| **In progress** | Placing the 892 stocked banks location search couldn't see (#33, #34): 140 placed, so it sees 4,004 of 4,756; 81 positions wait for review |
 | **Not touched** | Merging 6 likely duplicate bank pairs; monthly issue data (it needs a login); refreshing the data.gov.in directory (it needs our own API key) |
 
 ---
@@ -100,10 +100,19 @@ Not used: eRaktKosh's monthly reports need a login, Indiastat is paid, Kaggle ne
 
 ## What is left
 
-- **Bank locations** (planned, #33 and #34; `../PLANS/plan_bank_locations.md`):
-  - 679 stocked banks have no coordinates, 14% of stocked banks, invisible to location search;
-  - 206 are placed in the wrong state;
-  - 15 can be placed from data.gov.in now.
+- **Bank locations** (in progress, #33 and #34; `../PLANS/plan_bank_locations.md`, "Progress"):
+  - On 4 November, 699 stocked banks had no coordinates (15%), and 193 were in the wrong state or outside India, all invisible to location search.
+  - **Built:**
+    - a table of corrected positions that the weekly directory run can't overwrite;
+    - their merge into every location search;
+    - a review page, `/admin/locations`;
+    - `scripts/place-banks.mjs`, which finds positions from data.gov.in and OpenStreetMap.
+  - **Measured first, on 200 banks of known position:**
+    - Matching the bank's name places 27% of banks, with a median error of 40 m, but 2 of 53 were same-named hospitals more than 10 km away.
+    - Addresses and PIN codes are only accurate to a few km.
+    - No step met the rule fixed in advance (90% within 2 km, at most 2% false matches).
+  - **In search since 4 November:** 140 corrected positions, 15 from data.gov.in, 115 by name and 10 by address, all hospital buildings. Location search sees 4,004 of 4,756 stocked banks, up from 3,864, with 6,982 more packed red-cell units. 81 positions wait for review on `/admin/locations`, and 671 banks have none yet.
+  - eRaktKosh's `bloodbanks?stateCode=` call was tried, and carries no positions.
 - **The 6 likely duplicate pairs,** to check by phone or licence number, then merge.
 - **Monthly issue data,** real demand per bank. It needs a blood-bank login. A letter to NBTC or MoHFW is suggested in [`../plans.md`](../plans.md), item 5.
 

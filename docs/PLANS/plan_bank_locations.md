@@ -1,12 +1,13 @@
 # Plan: let location search see the banks it can't place (#33, #34)
 
-**Status: PLAN, not started.** Nothing has been built, run or written to the database. Work starts only when you ask.
+**Status: IN PROGRESS, started 4 November 2026.** Corrected positions are in the database and in location search: 140 accepted, and 81 waiting for review on `/admin/locations`. Location search sees 4,004 of 4,756 stocked banks, up from 3,864. See [Progress](#progress-4-november-2026).
 
 - Paths are relative to `bloodlink/` unless they start with `../`.
 - Counts are from the 23 and 24 October checks (`data_integrity.md`) unless a step says it re-measures them.
 - Issue numbers are the stable IDs in `CLAUDE.md`.
 
 **Contents**
+0. [Progress, 4 November 2026](#progress-4-november-2026)
 1. [Why](#why)
 2. [Where it stands](#where-it-stands)
 3. [Goals and non-goals](#goals-and-non-goals)
@@ -20,6 +21,38 @@
 11. [Risks](#risks)
 12. [What to update when it's done](#what-to-update-when-its-done)
 13. [Sources](#sources)
+
+---
+
+## Progress, 4 November 2026
+
+| Phase | State | Where |
+|---|---|---|
+| 0 · Checks | **Done.** `bloodbanks?stateCode=` (one call, for Andhra Pradesh) returns only a code, name and mobile number, with no coordinates, district or address, and lists 17 of the state's 181 unplaced banks, so step 0 is dropped. `camps/details`, already saved, has a district but usually no bank name ("-"), so it adds little. India Post's PIN directory needs a data.gov.in key we don't have, so the PIN step asks Nominatim for the PIN code's centre instead, cached per PIN; only 75 of the 891 targets have a PIN in their address. geoBoundaries' district outlines (ADM2, 2021, 736 districts, ODbL) match 693 of eRaktKosh's 781 districts; most of the rest are districts created since 2021, chiefly Andhra Pradesh's, whose banks get only the state check | `../blood_data/external/geoboundaries/`, `../blood_data/geocoding/district_outlines.json`, `phase0/` |
+| 1 · Baseline | **Done.** 3,864 of 4,756 stocked banks visible (81.2%); 699 with no coordinates; 193 in the wrong state or outside India; 44 misplaced banks within 25 km of central Delhi; no probe search ends in a shortfall | `scripts/location-coverage.mjs`; `../blood_data/measurements/locations/snapshot_2026-11-04.json` and `before/` |
+| 2 · Migration | **Applied** on 4 November, after `scripts/check-location-schema.mjs` passed all 22 checks of the ingest, public, non-admin and admin rights in a rolled-back transaction | `supabase/migrations/20261105000100_bank_location_fixes.sql` |
+| 3 · Script and control run | **Done.** No step met the rule fixed in advance (below) | `scripts/place-banks.mjs`; `../blood_data/geocoding/control_2026-11-04.md` |
+| 4 · Target run | **Done:** 2,238 Nominatim requests, none failed. Of 892 banks, positions were found for 221 (15 from data.gov.in, 117 by name, 29 by address, 60 PIN code centres). 671 were not placed, mostly for no PIN (666), no street in the address (154), or no health facility of that name in OpenStreetMap (125) | `../blood_data/geocoding/targets_2026-11-04.json` |
+| 5 · Loaded and reviewed | **In `bank_location_fixes` since 4 November.** 140 accepted: 15 from data.gov.in, 115 by name and 10 by address, all hospital buildings. 81 waiting for review on `/admin/locations`, each with a note on what to check: 60 PIN code centres, 19 address results (mostly road centres) and 2 name matches | `/admin/locations`, `src/app/admin/locations/`, `src/app/api/admin/locations/review/route.js` |
+| 6 · Search | **On.** Checked on 4 November at three newly placed banks, in Amritsar, Bankura and Kerala: each is listed with `locationSource: "fixed"`, and none with `BANK_LOCATION_FIXES=off`. The cloud collector, with the supersede step, was redeployed on 4 November; its first weekly run with it is Monday 9 November | `src/lib/bankLocations.js`, `stockStore.js` (`loadLocationFixes`), `src/app/api/blood-search/route.js`, `src/app/search/page.js`; 22 tests |
+| 7 · After | **Measured** on the baseline snapshot with the 140 accepted fixes: 4,004 of 4,756 stocked banks visible (84.2%, from 81.2%); 6,982 more packed red-cell units and 211 more O-; 35 misplaced banks near central Delhi, from 44. Of the 140 banks added, 34 are more than 10 km from any bank search saw before, and 10 more than 25 km. If every waiting position passed review: 4,085 (85.9%) | `../blood_data/measurements/locations/after_2026-11-04/`, `after_2026-11-04_if_all_reviewed_pass/` |
+
+**The control run** (200 banks where eRaktKosh and data.gov.in agree within 300 m, 25 states, half rural, none of them storage units: the data.gov.in list has few):
+
+| Step | Placed | Median error | 90th percentile | False matches (> 10 km) | Meets the rule |
+|---|---|---|---|---|---|
+| Name (`nominatim_name`) | 53 of 197 (27%) | 0.04 km | 1.55 km | 2 (3.8%) | No: false matches over 2% |
+| Address (`nominatim_address`) | 11 of 193 (6%) | 3.1 km | 5.6 km | 0 | No: 90th percentile over 2 km |
+| PIN code centre (`pincode`) | 4 of 4 | 2.7 km | 16 km | 1 | No |
+
+- **The name step is very accurate when it is right.** Its two false matches are both same-named hospitals in the same district, about 17 and 21 km from the truth: a Guru Nanak Mission Hospital in Nawanshahr, and Kailash Hospital Greater Noida, where the truth itself may be the error. The checks can't tell these apart.
+- **The address step** finds streets more often than buildings, and a street's centre can be km from the bank.
+- **No town-only name matches** turned up in the control.
+
+**Left:**
+1. **Review the 81 waiting positions** on `/admin/locations`, with a teammate. Each carries a note: place the pin on the bank, accept, reject, or mark it "can't place".
+2. **After the first weekly directory run with the supersede step**, Monday 9 November at 03:20, check its `collector_runs` result for `locationFixes`.
+3. **Measure again after the review,** on the same snapshot: `node scripts/location-coverage.mjs --snapshot ../blood_data/measurements/locations/snapshot_2026-11-04.json --placements db`. Then update the documents listed at the end.
 
 ---
 
@@ -113,12 +146,12 @@ Each target bank goes down the ladder and stops at the first step that gives an 
 
 | Step | Source | Applies to | Cost | Expected precision | Status |
 |---|---|---|---|---|---|
-| 0 | eRaktKosh's other public calls: `bloodbanks?stateCode=`, `camps/hospitalCode` | all 887 | 36 calls, under a minute, plus one call per sampled bank | Unknown: check whether any of them carries coordinates, a district or a cleaner address | To check |
-| 1 | data.gov.in directory crosswalk | 15 | Already done | Within 300 m of a matching data.gov.in point | Ready to apply |
-| 2 | Nominatim, the bank's or its parent hospital's **name** as a point of interest | the rest | 1 request a bank | Building level when it matches | Script to write |
-| 3 | Nominatim, the bank's **address** (structured, with the PIN code) | banks step 2 didn't place | 1 to 2 requests a bank | Street to locality level | Script to write |
-| 4 | **PIN-code centroid**, offline, from India Post's directory on data.gov.in | banks with a PIN in their address | No requests | Locality level; a few km in towns, more in rural PINs | Download to check |
-| 5 | **Manual placement** by an admin, or confirmation by the bank's own verified account | whatever is left | About a minute a bank by hand | Building level | Needs the review page (Part B) |
+| 0 | eRaktKosh's other public calls: `bloodbanks?stateCode=`, `camps/hospitalCode` | all 887 | — | None: `bloodbanks?stateCode=` carries only a code, name and mobile number | **Dropped** after one test call (Progress, phase 0) |
+| 1 | data.gov.in directory crosswalk | 15 | Already done | Within 300 m of a matching data.gov.in point | 15 in search |
+| 2 | Nominatim, the bank's or its parent hospital's **name** as a point of interest | the rest | 1 request a bank | Measured: median 0.04 km, 90% within 1.55 km, 3.8% false matches | `scripts/place-banks.mjs`; 115 in search, 2 to review |
+| 3 | Nominatim, the bank's **address** (structured, with the PIN code, then free-form), only when it has a street | banks step 2 didn't place | 1 to 2 requests a bank | Measured: median 3.1 km, 90% within 5.6 km | `scripts/place-banks.mjs`; 10 in search (hospital buildings), 19 to review |
+| 4 | **PIN-code centre**, from Nominatim's postcode search, cached per PIN (India Post's directory needs a data.gov.in key) | banks with a PIN in their address (75 of 891) | 1 request a PIN | Measured on 4 banks only: median 2.7 km | `scripts/place-banks.mjs`; 60 to review |
+| 5 | **Manual placement** by an admin, or confirmation by the bank's own verified account | whatever is left | About a minute a bank by hand | Building level | `/admin/locations` built; bank confirmation waits for `plan_panels.md` |
 
 **Preparing the inputs (before step 2).** For each target, build one clean record from `bank_stock_latest.row` and, for wrong-state banks, `blood_banks`:
 - `name` through `cleanText`, with "Blood Bank", "Blood Centre", "BSU" and "Blood Storage Unit" stripped for searching.

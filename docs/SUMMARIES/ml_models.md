@@ -1,6 +1,6 @@
 # Summary: the stock-out forecast (AI/ML)
 
-*As of 4 November 2026. The plan, decision rule and dates follow the summary, in [report 3's record](#report-3s-record) of point 5. The scripts and the latest results are in `../rough_work/ML/` (`SUMMARY.md`), outside git. Its place in the work queue is [`../plans.md`](../plans.md), item 4.*
+*As of 4 November 2026. The plan, decision rule and dates follow the summary, in [report 3's record](#report-3s-record) of point 5. The scripts and the latest results are in `../rough_work/ML-comparison/` (`SUMMARY.md`), outside git. Its place in the work queue is [`../plans.md`](../plans.md), item 4.*
 
 **What was asked** (reviewer point 5): where AI/ML fits into bloodLink's core problem, which decision it improves, and what its input data, output and use by the matching engine would be. The reviewer offered blood-demand forecasting and donor-availability prediction as examples.
 
@@ -115,15 +115,24 @@ Donation camps were checked and add nothing to red-cell stock. True demand (unit
 
 ## What is left
 
+**Decided on 4 November:** logistic regression is the model, adopted without waiting for the December backtest; each group's lift is reported; and the model predicts **low stock**, a group falling to 2 units or fewer, rather than only a stock-out (the label rules below). Further testing on more history goes on apart from the app, and a better model can replace this one later.
+
+Phase 5.1 was done on 4 November. `ml/dataset.py` rebuilds the dataset from the raw history, the same way each time, and 16 unit tests pin the label rules and the inputs. Its inputs are exactly those of `src/lib/stockoutFeatures.js`, which the app scores with, and the parity test checks the two on a real week. `ml/train.py` trained the live model on it, `stockout-logit-t2-2026-11-04`, with a threshold of 2 (`ml/MODEL_CARDS.md`). At 48 h, walking forward, it scores PR-AUC 0.348, against 0.232 for the best baseline. It catches 22.6% of falls to 2 units within the alert budget; predicting stock-outs on the same data caught 15.2%.
+
 | Phase | When | Work |
 |---|---|---|
-| 5.1 · Labels and features | November 2026 | One script that rebuilds the dataset from the raw history; the label rules unit-tested |
 | 5.2 · Dry runs | Every 2 weeks from mid-November | The harness re-run on the growing history; ETS and SARIMA on daily values once possible |
-| 5.3 · The backtest | Late December 2026, at about 8 weeks of history | Run once; the decision rule applied as written; a table per metric for the panel |
-| 5.4 · Shadow mode | January 2027 | The chosen model scores every series at each 6-hourly grid time. Ranked search reads it behind a flag. Donor alerts are logged, not sent, for 2 weeks |
+| 5.3 · A comparison | Late December 2026, at about 8 weeks of history | The seven models on unseen weeks, at the same threshold; a table per metric for the panel; a better model replaces logistic regression |
+| 5.4 · Scoring in the app | Built 4 November for the closed beta, with no shadow period | The model scores every series at each 6-hourly grid time; ranked search marks banks that may run low and, behind a flag, lowers their stock scores |
 | 5.5 · Later | 2027 | Monthly retraining; output 1b; the deferred models |
 
-**How it reaches the app:** [`../PLANS/ML_system.md`](../PLANS/ML_system.md) plans the deployment (scoring, daily calibration, a kill switch) and the donor suggestions. Suggestions go to active people nearby who are eligible to donate that day, ranked by the donor network's score. A trained donor-response model was left out (the plan's S7): at the pilot's size, most appeals have fewer people who pass the rules than one wave asks, so the order rarely matters. Admins can also raise a stock-out event by hand: a drill for test accounts, or a manual appeal a partner centre approves. Its phase 0 began on 4 November: the 19 inputs and the label rules are in `src/lib/stockoutFeatures.js`, and scoring, daily Platt calibration, the alert cut-off and the kill switch in `src/lib/stockoutModel.js`, whose Platt fit and PR-AUC match scikit-learn's. The Python dataset builder must match the JS inputs before any model is deployed.
+**How it reaches the app:** [`../PLANS/ML_system.md`](../PLANS/ML_system.md) plans the deployment (scoring, daily calibration, a kill switch) and the donor suggestions. Suggestions go to active people nearby who are eligible to donate that day, ranked by the donor network's score. A trained donor-response model was left out (the plan's S7): at the pilot's size, most appeals have fewer people who pass the rules than one wave asks, so the order rarely matters. Admins can also raise a stock-out event by hand: a drill for test accounts, or a manual appeal a partner centre approves. Its phase 0 began on 4 November:
+- the 19 inputs and the label rules are in `src/lib/stockoutFeatures.js`;
+- scoring, daily Platt calibration, the alert cut-off and the kill switch are in `src/lib/stockoutModel.js`, whose Platt fit and PR-AUC match scikit-learn's;
+- `ml/dataset.py` builds the same inputs in Python, and the parity test (`tests/stockout-parity.test.js`) checks the two builders and the two scorers on a real week;
+- the `score-stock` Edge Function scores every 6 hours and runs the daily calibration and kill switch, and ranked search shows the mark.
+
+It goes live once its two migrations are applied (the plan's "Part A in the beta").
 
 **Not touched:** blood-demand forecasting. It needs eRaktKosh's monthly issue reports, which require a login.
 
@@ -139,7 +148,7 @@ Donation camps were checked and add nothing to red-cell stock. True demand (unit
 
 This also answers the reviewer's point 5: where AI/ML fits in BloodLink, what decision it improves, what goes in, what comes out, and how the matching and response engine uses it.
 
-The shortlist, two low-fidelity checks and the subplan were added on 2026-10-26, and a walk-forward dry run of all seven models, with an interim choice, on 3 and 4 November. The scripts are in `../rough_work/ML/`, outside git, with a README and a summary, `SUMMARY.md`.
+The shortlist, two low-fidelity checks and the subplan were added on 2026-10-26, and a walk-forward dry run of all seven models, with an interim choice, on 3 and 4 November. The scripts are in `../rough_work/ML-comparison/`, outside git, with a README and a summary, `SUMMARY.md`.
 
 > **Note, 4 November 2026: model R was dropped.** The donor-response model R below (the candidates table, "Who" under "How the prediction feeds the engine", and phase 5.5) is no longer planned. Donors are ranked by the donor network's score, from each person's own record of answering and turning up. At the pilot's size, most appeals have fewer people who pass the rules than one wave asks, so a trained ranking would change little. See [`../PLANS/ML_system.md`](../PLANS/ML_system.md), decision S7.
 
@@ -224,7 +233,7 @@ Report 2 set the use case: *"ML stock-out forecasting: periodic stock snapshots 
 
 #### Early results, at low fidelity
 
-Two quick checks, run on 26 October in `../rough_work/ML/`, test the pipelines and give a first, rough ranking. **Neither decides anything:** the walk-forward backtest on bloodLink's own history does, in late December.
+Two quick checks, run on 26 October in `../rough_work/ML-comparison/`, test the pipelines and give a first, rough ranking. **Neither decides anything:** the walk-forward backtest on bloodLink's own history does, in late December.
 
 **Check 1: a rehearsal on Malaysia's donations.**
 - **Why Malaysia:** bloodLink's history is days old, while Malaysia's Ministry of Health publishes 20 years of daily donations by state and blood group. They are donations (supply), not stock, so the check ranks methods on a long, real series. It says nothing about accuracy in India.
@@ -283,7 +292,7 @@ The intervals and the "beats it" shares come from 1,000 resamples of whole forec
 #### The walk-forward dry run (4 November)
 
 A run of the walk-forward test on bloodLink's own history, held early as a phase 5.2 dry run, with all seven models and with each input and design detail tested in turn. **It decides nothing:** the backtest at about 8 weeks, in late December, does, with the decision rule applied once as written. It gives an interim choice, so that phase 5.1 builds the right dataset.
-- The full tables, the input tests, each input's reason and weight, and the sources behind them are in `../rough_work/ML/SUMMARY.md`.
+- The full tables, the input tests, each input's reason and weight, and the sources behind them are in `../rough_work/ML-comparison/SUMMARY.md`.
 - The scripts: `walk_forward_check.py` (the models), `series_models.py` (ETS and SARIMA), `feature_tests.py` (inputs and design details), `input_weights.py` (what each input weighs) and `camps_check.py`.
 
 **The test.**
@@ -430,16 +439,18 @@ A run of the walk-forward test on bloodLink's own history, held early as a phase
 
 | Phase | When | Work | Done when |
 |---|---|---|---|
-| **5.0 · Choose and rehearse** | 26 October 2026: **done** | The criteria, the longlist and the seven models; the Malaysia rehearsal and the plumbing test, in `../rough_work/ML/` | This section |
-| **5.1 · Labels and features** | November 2026 | Build the dataset from `stock_history`, or the local archive: every bank × component × group at 00:00, 06:00, 12:00 and 18:00 India time, carrying the last value forward. This grid gives the same rows from the laptop's hourly sweeps and the cloud's 4.5-hourly ones. Write down the label rules below. Add the 19 core inputs the [dry run](#the-walk-forward-dry-run-4-november) chose: stock now, past drops to zero, recent change, use and refills with days of supply, the bank's update rhythm and freshness, bank type, auto-refresh, state and blood group. Retest weekday at 4 weeks, and add the Indian holiday calendar and Open-Meteo rain once the history spans a festival and rainy days. Camps are left out: they don't show up in red-cell stock | One script rebuilds the same dataset from the raw history, identically each time, and unit tests pin the label rules |
+| **5.0 · Choose and rehearse** | 26 October 2026: **done** | The criteria, the longlist and the seven models; the Malaysia rehearsal and the plumbing test, in `../rough_work/ML-comparison/` | This section |
+| **5.1 · Labels and features** | 4 November 2026: **done**, in `ml/dataset.py` | Build the dataset from `stock_history`, or the local archive: every bank × component × group at 00:00, 06:00, 12:00 and 18:00 India time, carrying the last value forward. This grid gives the same rows from the laptop's hourly sweeps and the cloud's 4.5-hourly ones. Write down the label rules below. Add the 19 core inputs the [dry run](#the-walk-forward-dry-run-4-november) chose: stock now, past drops to zero, recent change, use and refills with days of supply, the bank's update rhythm and freshness, bank type, auto-refresh, state and blood group. Retest weekday at 4 weeks, and add the Indian holiday calendar and Open-Meteo rain once the history spans a festival and rainy days. Camps are left out: they don't show up in red-cell stock | One script rebuilds the same dataset from the raw history, identically each time, and unit tests pin the label rules |
 | **5.2 · Dry runs of the harness** | Every 2 weeks from mid-November; the first on 3 and 4 November ([above](#the-walk-forward-dry-run-4-november)) | Run the baselines and all seven models through the walk-forward harness on the history so far. Check only that it runs and the numbers are sane, not which model leads | The harness runs end to end in under an hour on the laptop |
 | **5.3 · The backtest** | Late December 2026, at about 8 weeks | Run it once and apply the decision rule as written | A table per metric with intervals, the chosen model and example banks, presented to the panel |
 | **5.4 · Scoring and shadow mode** | January 2027 | The chosen model scores every series at each 6-hourly grid time, the grid it was trained on, and the probabilities are stored with the model's version. How it is deployed, and how suggestions to eligible donors follow, is in `docs/PLANS/ML_system.md`. Ranked search reads them behind a flag. Donor alerts are logged, not sent, for 2 weeks | Calibration and false alerts per bank per week measured on live data |
 | **5.5 · Later** | 2027 | Retrain monthly and watch for calibration drift. Output 1b once daily use is reliable. The LSTM, TFT and a pretrained model once 6 to 12 months exist. Model R once notifications collect responses | — |
 
-**Label rules (phase 5.1), fixed before the backtest:**
-- **Stock-out:** the units of that component and group reach zero within (t, t + H], given more than zero at t. Cases already at zero at t aren't scored.
-- **A whole component cleared at once:** when every group of a component falls from 10 or more units in total to zero in one update, the bank is treated as not reporting, and the case is left out. Using that much of every group between two updates is far less likely than a cleared page. A small bank using its last few units still counts as a stock-out.
-- **Quick refills still count.** A zero refilled within hours was real for anyone who arrived then. Their share is reported.
+**Label rules (phase 5.1), with the threshold chosen on 4 November:**
+- **Low stock:** the units of that component and group fall to the threshold or below within (t, t + H], given more than the threshold at t. The threshold is 2 units; at 0 the event is report 3's stock-out. Cases at or below the threshold at t aren't scored.
+- **A whole component cleared at once:** when every group of a component falls from 10 or more units in total to zero in one update, the bank is treated as not reporting, and a case whose fall comes that way is left out. Using that much of every group between two updates is far less likely than a cleared page. A small bank using its last few units still counts.
+- **Quick refills still count.** A fall refilled within hours was real for anyone who arrived then.
 - **Dormant banks,** with no update in 30 days (point 3.1), are left out.
-- **Censoring:** a case whose window runs past the end of the data, or into a collection gap (#35), is dropped for that horizon. The hazard model keeps it up to the gap.
+- **Censoring:** a case whose window runs past the end of the data is dropped for that horizon. Collection gaps (#35) aren't censored, as decided on 4 November.
+  - The written clause dropped a window that ran into a gap unless the fall was seen, which keeps falls and drops the rest. On the laptop's history, with a gap over 6.5 hours nearly every night, it would have left nothing but falls at 48 h.
+  - Stock is rebuilt at the banks' own update times, so a gap hides only a fall refilled inside it: 1.2% of drops. `labelCase` and `ml/dataset.py` still take gaps, if this is revisited.

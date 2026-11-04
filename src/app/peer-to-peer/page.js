@@ -5,6 +5,7 @@ import Link from "next/link";
 import axios from "axios";
 import { getBloodGroupName, getDistrictName, getStateName } from "@/lib/constants";
 import { capitalize, formatDate, getInitials } from "@/lib/format";
+import DonateNearby from "./DonateNearby";
 
 const ROLE_LABELS = {
   hospital: "Verified hospital account",
@@ -186,6 +187,13 @@ export default function PeerToPeerPage() {
           )}
         </div>
       </div>
+
+      {details?.isDonor && (
+        <div className="card mt-5">
+          <h2 className="card-title">Where your blood may be needed soon (beta)</h2>
+          <DonateNearby />
+        </div>
+      )}
     </div>
   );
 }

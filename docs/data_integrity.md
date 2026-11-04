@@ -246,8 +246,8 @@ Faults 36 to 41 were found and fixed on 24 October. 44, 56 and 57 were found in 
 
 | Item | Why it matters | Next step |
 |---|---|---|
-| 679 stocked banks without coordinates (#33) | Location search can't see 14% of stocked banks | Place 15 from data.gov.in (`crosswalk/coordinates_for_unlocated_banks.csv`); geocode the rest from their addresses |
-| 206 wrong-state and 518 shared-point banks (#34) | Wrong-state banks are now hidden from location search; shared-point distances may be off by a few km | Re-place them the same way as #33, then clear the flag |
+| 699 stocked banks without coordinates (#33), 4 November | Location search can't see 15% of stocked banks | In progress (`docs/PLANS/plan_bank_locations.md`, "Progress"): 140 corrected positions are in search (15 from data.gov.in, 125 from OpenStreetMap), and 81 wait for review on `/admin/locations`. Location search sees 4,004 of 4,756 stocked banks |
+| 193 wrong-state or outside-India banks with stock, and 518 shared-point banks (#34) | Wrong-state banks are hidden from location search; shared-point distances may be off by a few km | The wrong-state and outside-India ones go through the same fixes as #33. The shared-point ones are left for a later phase, since search can already see them |
 | 6 likely duplicate code pairs (#34) | One bank could appear twice | Check by phone or licence number, then merge |
 | Collection off the laptop (#35) | History with gaps while the laptop was off | Done on 3 November: Supabase every 4.5 hours. Left: the 24-hour watch and deleting the laptop tasks (`docs/plans.md`, item 2) |
 

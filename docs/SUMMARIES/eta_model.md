@@ -23,7 +23,7 @@ The ETA benchmark calls this method **M3**, and the fallback **M1**. Against Goo
 | **Done** | OSRM routing with a 24-hour cache and the public server's rules kept; the TomTom profiles; zones by density; season and rain; the fallback; checked against Google |
 | **Planned** | The town and rural values set from timed trips (December); self-hosted OSRM before real traffic |
 
-**What is left:** the rural free-flow speed (57.8 km/h) is the weak spot, since rural trips come out 28% too quick. It and the town congestion scale are set from timed trips in [the plan to finish the benchmark](eta_benchmark.md#the-plan-to-finish-it), never from Google's numbers.
+**What is left:** the rural free-flow speed (57.8 km/h) is the weak spot, since rural trips come out 28% too quick. It and the town congestion scale are set from timed trips in [the plan to finish the benchmark](eta_benchmark.md#the-plan-to-finish-it), never from Google's numbers. What the benchmark found about each part of the model is in [`eta_benchmark.md`](eta_benchmark.md#what-it-says-about-the-model). The ablations, which remove one part at a time, are under [Which parts of M3 earn their place](eta_benchmark.md#how-well-it-does-the-eta-benchmark-4-november-2026).
 
 ---
 

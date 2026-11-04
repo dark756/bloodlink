@@ -169,6 +169,15 @@ describe("the 19 inputs", () => {
     expect(inputs.increasesPerDay).toBeCloseTo(2 / 3);
   });
 
+  it("counts the Bombay groups in the bank's totals, as ml/dataset.py does", () => {
+    const inputs = buildInputs({
+      events: [event(-2 * DAY, { "O+Ve": 3, "Oh+VE": 2 }), event(-1 * DAY, { "O+Ve": 3 })],
+      group: "O+Ve",
+      asOf: T,
+    });
+    expect(inputs).toMatchObject({ bankUnits: 3, groupsStocked: 1, bankUsePerDay: 1 });
+  });
+
   it("builds cases for every bank and group in stock", () => {
     const series = new Map([
       ["101", events],
@@ -210,6 +219,22 @@ describe("labels", () => {
   it("leaves out a case whose first zero is a cleared page", () => {
     expect(label([event(10 * HOUR), event(20 * HOUR, { "O+Ve": 3 })])).toEqual([null, null, null]);
     expect(label([event(50 * HOUR)])).toEqual([false, false, null]);
+  });
+
+  it("scores only groups above a threshold, and labels the fall to it, as ml/dataset.py does", () => {
+    const events = [
+      event(-HOUR, { "O+Ve": 4, "A+Ve": 2 }),
+      event(30 * HOUR, { "O+Ve": 2, "A+Ve": 2 }),
+      event(60 * HOUR, { "O+Ve": 1, "A+Ve": 2 }),
+    ];
+    const at = (group, threshold) => buildInputs({ events, group, asOf: T, threshold });
+    expect(at("A+Ve", 2)).toBeNull(); // already at the threshold
+    expect(at("O+Ve", 2).units).toBe(4);
+    const labelled = (threshold) =>
+      labelCase({ events, group: "O+Ve", asOf: T, dataEnd: T + 100 * HOUR, threshold });
+    expect(labelled(2)).toEqual([false, true, true]);
+    expect(labelled(1)).toEqual([false, false, true]);
+    expect(labelled(0)).toEqual([false, false, false]);
   });
 
   it("drops windows that run past the data or into a gap", () => {

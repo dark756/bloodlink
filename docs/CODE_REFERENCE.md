@@ -257,6 +257,7 @@ The eRaktKosh collector, shared by `scripts/snapshot.mjs` on the laptop and the 
 | `AUTO_REFRESH_ENDPOINT` | constant | module | `master/portal-refresh-hospitals`: the banks eRaktKosh refreshes automatically, as a list of codes. |
 | `ARCHIVE_VERSION` | constant | module | 1: the format version each archive line carries as `v`. Lines without one are version 1. |
 | `REPEAT_GUARD_MINUTES` | constant | module | 50: the Edge Function refuses a job that already started this recently. |
+| `SUPERSEDE_WITHIN_M` | constant | module | 2,000: a machine location fix gives way to eRaktKosh's own usable point within this distance of it; further away, the difference is logged for review. |
 | `STATE_BATCHES` | constant | module | The four batches of a cloud sweep, 9 state codes each, split by measured time. |
 | `OVERDUE_GRACE_HOURS`, `DEFAULT_SWEEP_HOURS` | constant | module | 2 and 4.5: collection counts as overdue after the sweep interval plus 2 hours. |
 | `intervalHours(interval)` | function | module | Hours in a Postgres interval as PostgREST returns it (`"04:30:00"`, `"1 day 02:00:00"`), or `null`. |
@@ -276,7 +277,9 @@ The eRaktKosh collector, shared by `scripts/snapshot.mjs` on the laptop and the 
 | `compactStock(row)` | function | `createCollector` | `{ "PRBC": { "O+Ve": 74 } }`: the copy kept in `stock_history`. |
 | `startRun({ job, batch, sweepId, guardMinutes })` | function | `createCollector` | Inserts the job's `collector_runs` row and returns `{ id }`. With `guardMinutes`, it first takes an advisory lock and returns `null` if the same job and batch started that recently. |
 | `finishRun(run, outcome)` | function | `createCollector` | Fills in the finish time, state counts, rows, archive file, `archive_day`, lines archived, result and error. |
-| `collectDirectory()` | function | `createCollector` | Saves the nationwide directory, flagging `missing`, `outside_india`, `wrong_state` (outside its own state, from `locationProblem`) and `shared` locations, then runs `collectAutoRefresh`. Returns `{ isSuccess, banks, qualityCounts, autoRefresh }`, or `{ isSuccess: false, error }`. |
+| `collectDirectory()` | function | `createCollector` | Saves the nationwide directory, flagging `missing`, `outside_india`, `wrong_state` (outside its own state, from `locationProblem`) and `shared` locations, then runs `collectAutoRefresh` and `supersedeLocationFixes`. Returns `{ isSuccess, banks, qualityCounts, autoRefresh, locationFixes }`, or `{ isSuccess: false, error }`. |
+| `supersedeLocationFixes()` | function | `createCollector` | Marks `superseded` each accepted, unreviewed machine fix in `bank_location_fixes` whose bank now has a usable eRaktKosh point within `SUPERSEDE_WITHIN_M`, and logs those further away for review on `/admin/locations`. Does nothing before the table exists, and a failure never fails the directory run. Returns `{ isSuccess, superseded, conflicts }`, `{ isSuccess, skipped }` or `{ isSuccess: false, error }`. |
+| `present`, `near`, `conflicts`, `distanceM` | variable | `supersedeLocationFixes` | Whether the table exists, the codes to supersede, those too far apart (`{ hospitalCode, distanceM }`), and one fix's distance from eRaktKosh's point. |
 | `collectAutoRefresh()` | function | `createCollector` | Sets `blood_banks.auto_refresh` from the auto-refresh list: true for the banks on it, false for the rest, writing only rows that change. A failed call, or a list with no valid code, keeps last week's values and logs the failure. Returns `{ isSuccess, banks }` or `{ isSuccess: false, error }`. |
 | `codes`, `failed` | variable | `collectAutoRefresh` | The list's valid codes, without repeats, and the call as logged when it failed. |
 | `stateChecker`, `pointCounts`, `pointKey`, `seenAt`, `banksByCode`, `locationQuality`, `qualityCounts` | variable | `collectDirectory` | The state-outline checker, banks per coordinate point, its key, the run time, rows by code, one bank's flag, and flag totals. |
@@ -310,6 +313,52 @@ Server-only reads of the copy `scripts/snapshot.mjs` saves, with the publishable
 | `banks` | variable | `loadDirectory`, `loadSavedNearest` | The directory rows. |
 | `loadSavedNearest({ latitude, longitude, radius })` | function | module | Saved banks within a radius, in eRaktKosh's `nearest` shape, with straight-line distances. |
 | `origin`, `data` | variable | `loadSavedNearest` | The search point, and the banks found. |
+| `fixesCache` | variable | module | `{ fixes, loadedAt, ttlMs }`: the accepted location fixes. Kept on `globalThis`. |
+| `FIXES_TTL_MS`, `FIXES_RETRY_MS` | constant | module | 1 h, how long the fixes stay in memory; 5 min, how long a failed read waits before the next try. |
+| `loadLocationFixes()` | function | module | The accepted `bank_location_fixes` rows as `toLocationFix` gives them, cached. Never throws: with no client, no table or a failed read, it returns `[]`. |
+| `rows` | variable | `loadLocationFixes` | The rows read. |
+
+### `src/lib/bankLocations.js`
+Corrected bank positions for location search (#33, #34; `docs/PLANS/plan_bank_locations.md`, Part C). Pure.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `HUMAN_METHODS`, `MACHINE_METHODS`, `FIX_METHODS` | constant | module | `manual` and `bank_confirmed`; the five machine methods; all seven. |
+| `METHOD_LABELS`, `REASON_LABELS` | constant | module | Plain words for each method and each reason, for `/admin/locations`. |
+| `REVIEW_DECISIONS` | constant | module | `accepted`, `moved`, `rejected`, `cant_place`: what `review_bank_location()` takes. |
+| `SHOWN_PRECISION_M` | constant | module | 500: pages show a position's error radius only above this. |
+| `toLocationFix(row)` | function | module | A `bank_location_fixes` row → `{ hospitalCode, stateCode, latitude, longitude, method, precisionM, isConfirmed }`, or `null` when it can't be used. `isConfirmed` is true for a human method or a reviewed row. |
+| `applyLocationFixes(nearbyBanks, fixes, { origin, radiusM, stateChecker })` | function | module | Merges fixes into a `nearest` answer: a bank takes its fix's position when the fix is confirmed or eRaktKosh's point has a problem; a fixed bank the answer left out is added when within the radius. Moved and added banks carry `locationSource: "fixed"` and `locationPrecisionM`. Returns `{ banks, relocated, added }`. |
+| `fixesByCode`, `withFix`, `seenCodes`, `takesFix`, `moved` | variable | `applyLocationFixes` | Fixes by code, a bank moved to its fix, the codes the answer had, whether a bank takes its fix, and the moved bank. |
+| `locationFixesEnabled(env)` | function | module | False only when `BANK_LOCATION_FIXES` is `off`. |
+| `locationVisibility({ latitude, longitude, locationQuality, hasFix })` | function | module | What search can do with a stocked bank: `fixed`, `eraktkosh`, or why it is hidden (`missing`, `wrong_state`, `outside_india`). For `scripts/location-coverage.mjs`. |
+
+### `src/lib/bankPlacement.js`
+Pure helpers for `scripts/place-banks.mjs`. The app itself never geocodes banks.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `GENERIC_WORDS` | constant | module | Words that say nothing about which bank a name means, word for word from report 3's matcher (`../blood_data/scripts/validate_eraktkosh.py`, D3.2.2). |
+| `BLOOD_BANK_WORDS` | constant | module | A pattern for "Blood Bank", "Blood Centre", "BSU", "Blood Storage Unit" and the like. |
+| `searchName(name)` | function | module | The name without its blood-bank words: the bank, or the hospital a storage unit sits in. |
+| `nameWords(text)` | function | module | Lower-case words, with "I.M.A." read as "ima". |
+| `distinctiveWords(text, placeWords)` | function | module | The words that can identify a bank: not generic, not a place, not a number, at least 3 letters. |
+| `placeWordsOf(...names)` | function | module | Every word of some place names, for leaving them out. |
+| `sharesDistinctiveWord(a, b, placeWords)` | function | module | Whether two names share a distinctive word. |
+| `PIN_PATTERN` | constant | module | A six-digit PIN code, possibly written "500 001". |
+| `extractPin(address)` | function | module | The last PIN code in an address, ignoring phone numbers, or `null`. |
+| `cleanAddress(address, { name })` | function | module | An address with phone numbers, e-mail addresses, PIN labels and the bank's own name removed. |
+| `addressParts(cleanedAddress, { stateName, districtName })` | function | module | `{ street, city }`: the town is the last part that is not the state, the district or "India". |
+| `isHealthFacility(result)`, `isSpecific(result)`, `isPostcode(result)` | function | module | What a Nominatim jsonv2 result is: a hospital, clinic or healthcare place; street or building level (`place_rank` 26 and above); a postcode. |
+| `stateViewbox(state)` | function | module | A state outline's bounding box as Nominatim's `viewbox`. |
+| `centroidTraps(positions, { minOthers })` | function | module | The points (to about 10 m) that more than `minOthers` + 0 other banks also landed on: a geocoder's town-centre fallback. |
+| `pointKey(position)` | function | module | A point rounded to 4 decimals, as a key. |
+| `quantile(sortedValues, p)` | function | module | The value at fraction `p`, interpolated. |
+| `FALSE_MATCH_M`, `ACCEPT_P90_M`, `ACCEPT_FALSE_MATCH_RATE` | constant | module | 10 km; 2 km; 2%: the acceptance rule, fixed before the control run. |
+| `accuracyOf(errorsM, banksTried)` | function | module | A step's yield, median, 90th percentile, shares within 1, 2 and 5 km, false matches and whether it meets the rule. |
+| `meetsAcceptance(stats)` | function | module | Whether a step placed any bank, with 90% within 2 km and at most 2% false matches. |
+| `errorMeters(found, truth)` | function | module | The distance between a found position and the truth. |
+| `seededShuffle(items, seed)` | function | module | A repeatable shuffle (mulberry32), for drawing the control sample. |
 
 ### `src/lib/geo.js`
 Pure distance helpers.
@@ -411,7 +460,7 @@ Which blood groups a patient can receive, for each type of component. Informatio
 | `groups` | variable | `describeCompatibility` | The accepted donor groups. |
 
 ### `src/lib/ranking.js`
-Emergency ranking for exact-group stock: four scores per bank, urgency weights, plain-language reasons, and the response plan.
+Emergency ranking for exact-group stock: four scores per bank, urgency weights, plain-language reasons, and the response plan. A bank's `stockoutRisk`, set by the blood-search route while the forecast's ranking flag is on, scales its coverage and surplus by (1 − risk).
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
@@ -435,12 +484,14 @@ Emergency ranking for exact-group stock: four scores per bank, urgency weights, 
 | `condition` | variable | `describeEta` | The traffic label in brackets, or nothing. |
 | `describeStock(source, unitsNeeded)` | function | module | `"6 O-Ve units listed: covers the 3 needed, with 3 to spare"`, or how short the bank is. |
 | `listed` | variable | `describeStock` | The "N group units listed" part. |
-| `buildReasons(source, freshness, unitsNeeded, now, trafficLabel)` | function | module | The three reason sentences shown under a ranked bank: travel, stock, freshness. |
+| `buildReasons(source, freshness, unitsNeeded, now, trafficLabel)` | function | module | The reason sentences shown under a ranked bank: travel, stock, freshness, and the forecast's risk when it lowered the bank. |
+| `hasRisk(source)` | function | module | Whether a bank carries a forecast risk between 0 and 1. |
 | `reasons` | variable | `buildReasons`, `rankSources` | The list of reason sentences. |
 | `age` | variable | `buildReasons` | How old the stock data is, as text. |
 | `rankSources(sources, { urgency, unitsNeeded, now, trafficLabel, weights })` | function | module | Drops banks without exact-group units, scores the rest and sorts them by score, then by ETA. `weights` overrides the urgency's weights, for sensitivity analysis. |
 | `weights` | variable | `rankSources` | The weight set for the chosen urgency. |
-| `breakdown` | variable | `rankSources` | The four part scores: ETA, coverage, surplus, freshness. |
+| `forecastFactor` | variable | `rankSources` | 1 − the bank's forecast risk, or 1 without one. |
+| `breakdown` | variable | `rankSources` | The four part scores: ETA, coverage, surplus, freshness; and `forecastFactor` when the forecast applied. |
 | `score` | variable | `rankSources` | The weighted total, 0–100. |
 | `buildResponsePlan(rankedSources, unitsNeeded)` | function | module | Takes units from banks in rank order until the request is covered. |
 | `unitsRemaining` | variable | `buildResponsePlan` | Units still to find. |
@@ -655,7 +706,7 @@ Per-IP request limits, kept in server memory. The IP is read from `X-Forwarded-F
 | `tooManyRequests(rateLimitResult)` | function | module | A 429 response with a `Retry-After` header. |
 
 ### `src/lib/stockoutFeatures.js`
-The stock-out forecast's inputs and labels (`docs/PLANS/ML_system.md`, A2 and A4). Pure, with one import (`./stock.js`), so the Edge Function, scripts and tests build the same rows. A case is one bank × component × group at a grid time: 00:00, 06:00, 12:00 or 18:00 India time. Stock is rebuilt at the bank's own update times, carrying the last value forward. The Python dataset builder must give the same inputs (the parity test); the module's comments list each choice the summaries leave open.
+The stock-out forecast's inputs and labels (`docs/PLANS/ML_system.md`, A2 and A4). Pure, with one import (`./stock.js`), so the Edge Function, scripts and tests build the same rows. A case is one bank × component × group at a grid time: 00:00, 06:00, 12:00 or 18:00 India time. Stock is rebuilt at the bank's own update times, carrying the last value forward. `ml/dataset.py` builds the same inputs and labels in Python, and `tests/stockout-parity.test.js` checks the two on a real week; the module's comments list each choice the summaries leave open.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
@@ -666,7 +717,8 @@ The stock-out forecast's inputs and labels (`docs/PLANS/ML_system.md`, A2 and A4
 | `DAYS_OF_SUPPLY_CAP` | constant | module | 30: days of supply when nothing was used, and its cap. |
 | `CLEARED_PAGE_MIN_UNITS` | constant | module | 10: a whole component falling from this many to zero in one update is a cleared page. |
 | `DEFAULT_COMPONENT`, `FORECAST_GROUPS` | constant | module | `PRBC`, and the 8 ABO and Rh groups (no Bombay groups). |
-| `DEFAULT_GAP_HOURS` | constant | module | 6.5: sweeps further apart than this leave a gap that drops a case's window. |
+| `DEFAULT_GAP_HOURS` | constant | module | 6.5: sweeps further apart than this leave a gap that drops a case's window, when gaps are given. |
+| `DEFAULT_THRESHOLD_UNITS` | constant | module | 2: the low-stock threshold `ml/dataset.py` trains with. The functions below take a `threshold` (0 by default); callers pass the artifact's. |
 | `INPUT_NAMES`, `CATEGORICAL_INPUTS` | constant | module | The 19 inputs in order, and the three that are categories (`ownership`, `stateCode`, `bloodGroup`). |
 | `toMs(time)` | function | module | A time as ms, from ms or an ISO string. |
 | `isGridTime(time)`, `latestGridTime(time)`, `gridTimesBetween(from, to)` | function | module | Whether a time is on the grid; the last grid time at or before it; every grid time in a range, both ends included. |
@@ -677,15 +729,15 @@ The stock-out forecast's inputs and labels (`docs/PLANS/ML_system.md`, A2 and A4
 | `indexAt(events, time)` | function | module | Binary search: the last event at or before a time, or −1. |
 | `ownershipOf(hospitalType)` | function | module | `blood_banks.hospital_type` as `govt`, `private`, `charitable`, `red_cross` or `other`. |
 | `isRhNegative(group)` | function | module | Whether a group name ends in `-Ve`. |
-| `buildInputs({ events, bank, group, asOf, component })` | function | module | The 19 inputs for one case, or `null` when it isn't scored (no update yet, no stock, or a dormant bank). |
+| `buildInputs({ events, bank, group, asOf, component, threshold })` | function | module | The 19 inputs for one case, or `null` when it isn't scored (no update yet, stock at or below the threshold, or a dormant bank). |
 | `current`, `latest`, `units`, `bankUnits`, `groupsStocked`, `windowStart`, `daysSeen` | variable | `buildInputs` | The latest event at `asOf`, its stock, the lookback's start, and the days the rates divide by. |
 | `zeroDrops`, `decreases`, `increases`, `bankUse`, `updates`, `updates24h`, `isCleared` | variable | `buildInputs` | The lookback's counts, and whether the page stood cleared after the previous update. |
 | `isClearStep`, `isRestoreStep`, `before`, `after` | variable | `buildInputs` | One step: a cleared page, the update that ends one, and the group's units either side. |
 | `unitsBefore(hours)`, `units24h`, `units72h` | variable | `buildInputs` | The group's units that long before, or `null`. |
-| `buildCases({ series, banks, asOf, component, groups })` | function | module | Every scored case at one grid time: `[{ hospitalCode, group, asOf, inputs }]`. |
+| `buildCases({ series, banks, asOf, component, groups, threshold })` | function | module | Every scored case at one grid time: `[{ hospitalCode, group, asOf, inputs }]`. |
 | `findGaps(sweepTimes, maxGapHours)` | function | module | Pairs of consecutive sweeps further apart than the limit, as `[start, end]`. |
-| `labelCase({ events, group, asOf, dataEnd, component, horizons, gaps })` | function | module | The label rules: per horizon, `true` if the group reaches zero within it, `null` if a cleared page comes first or the window runs past the data or into a gap, else `false`. `null` overall when the case isn't scored. |
-| `firstZero` | variable | `labelCase` | When the group first reaches zero after `asOf`, and whether that was a cleared page. |
+| `labelCase({ events, group, asOf, dataEnd, component, horizons, gaps, threshold })` | function | module | The label rules: per horizon, `true` if the group falls to the threshold or below within it, `null` if a cleared page comes first or the window runs past the data or into a gap, else `false`. `null` overall when the case isn't scored. |
+| `firstZero` | variable | `labelCase` | When the group first falls to the threshold or below after `asOf`, and whether that was a cleared page. |
 
 ### `src/lib/stockoutModel.js`
 Applies the forecast's exported JSON artifact and holds the daily jobs' maths (A2 to A4, A7). Pure. The artifact's format is described at the top of the file: per horizon, an intercept, terms (an input, a transform, mean, scale and coefficient, or a dummy's level) and Platt parameters.
@@ -693,6 +745,7 @@ Applies the forecast's exported JSON artifact and holds the daily jobs' maths (A
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
 | `ARTIFACT_FORMAT`, `TRANSFORMS` | constant | module | `bloodlink-stockout/1`; `identity`, `log1p`, `slog` (signed log) and `dummy`. |
+| `MAX_THRESHOLD_UNITS`, `thresholdOf(artifact)` | constant, function | module | 20, the highest `thresholdUnits` an artifact may give; and an artifact's threshold, 0 when it gives none. |
 | `KILL_FALSE_ALERTS`, `KILL_FALSE_ALERT_DAYS`, `CALIBRATION_RANGE`, `KILL_FAILED_RUNS` | constant | module | The kill switch: above 1.5 false alerts per bank per week for 3 days, a calibration ratio outside 0.8 to 1.25, or the last 2 runs failed. *Assumptions.* |
 | `SHADOW_FALSE_ALERTS`, `SHADOW_CLEAN_DAYS` | constant | module | Shadow mode's exit: at most 1.2 false alerts, and no failed run for 7 days. |
 | `ALERT_BUDGET` | constant | module | 1 false alert per bank per week, the cut-off's limit. |
@@ -723,6 +776,60 @@ Applies the forecast's exported JSON artifact and holds the daily jobs' maths (A
 | `evaluateKillSwitch({ metrics, runs, now })` | function | module | `{ shouldStop, reasons }` from one horizon's daily metrics (oldest first) and the scoring runs (newest first). |
 | `evaluateShadowExit({ metrics, runs, isParityPassed, now })` | function | module | `{ canExit, blockers }`: A7's four conditions. |
 | `forecastOverdue(lastFinishedAt, now)` | function | module | `{ isOverdue, hoursSince, limitHours }` for the admin overview. |
+
+### `src/lib/forecastJobs.js`
+The forecast's two scheduled jobs (`docs/PLANS/ML_system.md`, A3 and A4), run by the `score-stock` Edge Function as `bloodlink_ml`. The database is passed in, as for `collector.js`; the explicit `.js` imports let Deno load it.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `COMPONENT_CODES`, `GROUP_CODES` | constant | module | `PRBC` as `12`, and the 8 groups' eRaktKosh codes (`A+Ve` is `11` … `AB-Ve` is `18`), as `stock_forecasts` stores them. |
+| `GROUP_NAMES_BY_CODE`, `HOUR_MS`, `DAY_MS` | constant | module | The reverse of `GROUP_CODES`; an hour and a day in ms. |
+| `HISTORY_DAYS` | constant | module | 8: the history each run reads before the grid time. |
+| `LABEL_GRID_TIMES_PER_RUN`, `LABEL_LOOKBACK_DAYS` | constant | module | 8 grid times labelled per daily run at most, and none older than 10 days. |
+| `KILL_SWITCH_DAYS`, `KILL_SWITCH_RUNS`, `INSERT_BATCH`, `P_FLOOR` | constant | module | 7 days of metrics and 5 runs for the kill switch; 500 rows per insert; 1e-7, which keeps a stored probability's logit finite. |
+| `parseForecastRequest(body)` | function | module | `{ job: "score" \| "daily", asOf? }` → `{ job, asOf }` or `{ error }`. |
+| `clampP(p)` | function | module | A probability kept within `P_FLOOR` of 0 and 1. |
+| `HISTORY_SQL` | constant | module | Every `stock_history` row in (from, to], plus each bank's two rows at or before from. |
+| `createForecastJobs({ db, loadArtifact, clock, log })` | function | module | Returns `{ score, daily, liveModel, dataEnd }`. `loadArtifact(model)` fetches and checks the live artifact. |
+| `insertRows(table, columns, rows, conflictClause, casts)` | function | `createForecastJobs` | Multi-row inserts, 500 rows at a time. |
+| `startRun(job, asOf, modelVersion)`, `finishRun(runId, { rowsScored, result, error })` | function | `createForecastJobs` | A `forecast_runs` row, and its end. |
+| `liveModel()` | function | `createForecastJobs` | The `live` row of `model_versions` and its artifact, validated, whose id must match. Throws when there is none. |
+| `latestCalibration(modelVersion)` | function | `createForecastJobs` | The newest daily Platt parameters per horizon. |
+| `loadHistory(from, to)` | function | `createForecastJobs` | `HISTORY_SQL` as series, with each bank's state from its newest row. |
+| `loadBanks(states)` | function | `createForecastJobs` | Each bank's state, `hospital_type` and `auto_refresh`, as `buildInputs` takes them. |
+| `score({ asOf })` | function | `createForecastJobs` | Scores the latest grid time (or `asOf`'s) once: every bank and group above the model's threshold, with the newest calibration, into `stock_forecasts` in one transaction. Skips a grid time already scored. |
+| `dataEnd()` | function | `createForecastJobs` | The start of the newest cloud sweep whose four batches all finished, or `null`. |
+| `labelOutcomes(model, end)` | function | `createForecastJobs` | Labels up to 8 scored grid times whose 72 hours have closed, into `forecast_outcomes`, by the model's threshold. |
+| `dayToCalibrate(model)` | function | `createForecastJobs` | The newest India day with all four grid times labelled and no metrics yet. |
+| `calibrateDay(model, day)` | function | `createForecastJobs` | Per horizon: how the scores in force did (stored P, the cut-off then in force), and the next Platt parameters and cut-off, fitted on the day's raw logits, into `forecast_daily_metrics`. |
+| `killSwitch(model)` | function | `createForecastJobs` | `evaluateKillSwitch` on the 48-hour metrics and the scoring runs; calls `stop_forecast_flags()` when it says stop. |
+| `daily()` | function | `createForecastJobs` | Labels, calibrates, runs the kill switch and prunes, recording the run. |
+
+### `src/lib/forecastMarks.js`
+What search does with the forecast (A6): the marks and the ranking factor. Pure.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `FORECAST_COMPONENT_ID`, `FORECAST_GROUP_CODES` | constant | module | `12` (red cells), and the 8 group codes the model covers. |
+| `rankingHorizonFor(urgency)` | function | module | 24 h for critical and urgent requests, 48 h for routine ones. |
+| `HORIZON_INDEX` | constant | module | Each horizon's place in a probability array. |
+| `isForecastable(componentId, bloodGroupId)` | function | module | Whether a search asks about something the model forecasts. |
+| `parseForecastStatus(answer)` | function | module | `forecast_marks()`'s answer → `{ showBadge, useInRanking, suggestDonors, showEvents, cutOff, thresholdUnits, asOf, modelVersion, marks, events }`, with `marks` a Map of code → `{ p, reasons }` and `events` a Map of code → the event. Anything malformed is "everything off"; a missing cut-off stays `null`. |
+| `forecastForBank(status, hospitalCode, units)` | function | module | The forecast a result shows, or `null`: `{ p24, p48, p72, mayRunLowSoon, isLowNow, thresholdUnits, reasons, asOf }`. |
+| `rankingRiskFor(status, hospitalCode, urgency)` | function | module | The risk the ranking uses, or `null` when its flag is off or the bank wasn't scored. |
+| `eventForBank(status, hospitalCode)` | function | module | An admin's active event at a bank, `{ id, reason, windowHours, endsAt }`, or `null` when there is none or `admin_events` is off. |
+| `SUGGESTION_RADIUS_KM`, `MAX_SUGGESTIONS` | constant | module | 15 km (*assumption*) and 10: how far a suggested bank may be, and how many are shown. |
+| `suggestionGate(details, eligibility)` | function | module | `{ canSuggest, message }`: suggestions only for a complete donor profile whose eligibility is "eligible" today, else why not. |
+| `buildSuggestions(banks, status, { limit })` | function | module | The banks to suggest: an admin's event first, then the forecast's P48 above the cut-off (while `suggestDonors`), nearest first, each with its source, reason or chance and reasons. |
+
+### `src/lib/forecastStore.js`
+Reads `forecast_marks()` with the publishable key, for a search.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `TIMEOUT_MS` | constant | module | 1.5 s; after that the search goes on without the forecast. |
+| `getClient()` | function | module | The shared publishable-key client. |
+| `fetchForecastStatus({ hospitalCodes, componentId, bloodGroupId })` | function | module | The parsed status for up to 500 banks. Never throws: an error or the timeout gives "everything off". |
 
 ### `src/lib/supabase/client.js` and `src/lib/supabase/server.js`
 
@@ -791,6 +898,8 @@ Runs before every page request.
 | `UPSTREAM_ERROR_MESSAGE` | constant | module | The message shown when eRaktKosh doesn't respond. |
 | `stateBoundaries` | import | module | `assets/state_boundaries.json`, the state outlines. |
 | `stateChecker` | constant | module | `createStateChecker(stateBoundaries)`, used to leave out banks placed outside their own state. |
+| `forecastPromise`, `forecastStatus` | variable | `GET` (ranked mode) | The forecast's scores and admins' events for the candidate banks, read alongside the stock lookups. |
+| `stockoutRisk` | variable | `GET` (ranked mode) | A bank's ranking risk, set on the result only when the ranking flag is on. Each result also carries `forecast` and `event` (an admin's, from `eventForBank`). |
 | `parseRankingOptions(searchParams)` | function | module | Validates `units` and `urgency`. |
 | `units`, `urgency` | variable | `parseRankingOptions` | Units needed, and the urgency level. |
 | `loadInventory(candidateBanks, params, options)` | function | module | Stock for every state the banks are in, fetched in parallel. Returns `{ inventory, answers, failedStateNames }`. |
@@ -803,7 +912,7 @@ Runs before every page request.
 | `freshnessFields(inventoryResult)` | function | `GET` | The `freshness` block, with the `nearest` answer passed as `locationAnswer`, plus `stale` and `partial` for older clients. |
 | `loadRoadLegs(origin, candidateBanks)` | function | module | OSRM legs for every candidate bank, keyed by `hospitalCode`: `{ legsByCode, failed }`. |
 | `legs`, `failed`, `legsByCode` | variable | `loadRoadLegs`, `loadTravel` | The legs in bank order, whether any OSRM call failed, and the legs by bank code. |
-| `toBankResult(nearbyBank, { stockRow, checkedAt }, stock, now)` | function | module | One [bank result](#data-shapes): location from `nearest`, details and stock from `blood-availability`, `checkedAt` and `isDormant`. |
+| `toBankResult(nearbyBank, { stockRow, checkedAt }, stock, now)` | function | module | One [bank result](#data-shapes): location from `nearest` or a fix, with `locationSource` (`eraktkosh` or `fixed`) and `locationPrecisionM`, details and stock from `blood-availability`, `checkedAt` and `isDormant`. |
 | `GET(request)` | handler | module | Location search. Nearest mode without component and group; ranked mode with both. Up to 20 per minute per IP. |
 | `rateLimitResult` | variable | `GET` | The rate-limit check. |
 | `coords` | variable | `GET` | The validated pin position. |
@@ -813,9 +922,9 @@ Runs before every page request.
 | `componentName`, `bloodGroupName` | variable | `GET` | Display names of the filters, used to match eRaktKosh's labels. |
 | `now` | variable | `GET` | The request time, used for traffic and freshness. |
 | `rainPromise` | variable | `GET` | The Open-Meteo lookup, started first. It never rejects. |
-| `nearestResponse` | variable | `GET` | eRaktKosh's banks within 150 km. |
-| `reachableBanks` | variable | `GET` | Those with a distance. |
-| `misplacedBanks` | variable | `GET` | Those whose point is outside their own state or India, left out. How many lie within the widest ring is returned as `misplacedBanks`. |
+| `nearestResponse`, `locationFixes` | variable | `GET` | eRaktKosh's banks within 150 km, and the accepted location fixes (`loadLocationFixes`, none with `BANK_LOCATION_FIXES=off`), read together. |
+| `reachableBanks` | variable | `GET` | Those with a distance, with the fixes merged in by `applyLocationFixes`. |
+| `misplacedBanks` | variable | `GET` | Those whose point is still outside their own state or India, left out. How many lie within the widest ring is returned as `misplacedBanks`; `relocatedBanks` counts the candidates placed by a fix. |
 | `nearbyBanks` | variable | `GET` | The rest, sorted by distance. |
 | `banksWithinDensityRadius` | variable | `GET` | How many banks are within 15 km. Returned as `density`, and used to pick the traffic zone. |
 | `area` | variable | `GET` | `"urban"` or `"rural"`. |
@@ -889,6 +998,49 @@ Runs before every page request.
 | `POST(request)` | handler | module | Admin only. Approves, rejects or suspends an application through `review_organization()`. |
 | `organizationId`, `decision`, `note` | variable | `POST` | Which application, what to do, and an optional note to the applicant. |
 
+### `src/app/api/admin/flags/route.js`
+`POST { name, isEnabled }`: an admin turns one of `SWITCHABLE_FLAGS` on or off through `set_feature_flag()`, which checks `is_admin()` and writes the audit log.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `SWITCHABLE_FLAGS` | constant | module | `forecast_badge`, `forecast_ranking`, `forecast_appeals` and `admin_events`. |
+| `POST(request)` | handler | module | Checks the admin and the body, then calls the function. |
+
+### `src/app/api/admin/events/route.js`
+`POST { action: "create", hospitalCode, componentId, bloodGroupId, windowHours, reason }` or `{ action: "end", id }`: an admin's stock-out events, through `create_admin_event()` and `end_admin_event()`, which check `is_admin()` and write the audit log.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `WINDOWS`, `CODE_PATTERN` | constant | module | 24, 48 and 72 hours; an eRaktKosh code. |
+| `POST(request)` | handler | module | Checks the admin and the body, then calls the function. |
+
+### `src/app/api/admin/locations/review/route.js`
+`POST { hospitalCode, decision, latitude?, longitude?, note? }`: an admin's decision on a bank's position (`accepted`, `moved`, `rejected` or `cant_place`), through `review_bank_location()`, which checks `is_admin()` and writes the audit log.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `stateChecker`, `CODE_PATTERN` | constant | module | The state-outline checker; an eRaktKosh code. |
+| `POST(request)` | handler | module | Checks the admin and the body. For `moved`, reads the bank's state from `bank_stock_latest` and refuses a pin outside it (400). Then calls the function. |
+| `stockRow`, `stateCode`, `problem` | variable | `POST` | The bank's saved row, its state, and the pin's `locationProblem`. |
+
+### `src/app/api/suggestions/route.js`
+`GET [?lat=..&lng=..]`, signed in: the banks where the person's blood group may run low, for a complete donor profile eligible today. It looks within `SUGGESTION_RADIUS_KM` of the pin, rounded to about 110 m and never stored, or in the profile's district without one.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `USABLE_LOCATIONS`, `KM_PER_DEGREE`, `BANK_FIELDS` | constant | module | Bank locations good enough to measure from (`ok`, `shared`); km per degree of latitude; the columns read. |
+| `toBank(row, distanceKm)` | function | module | A `blood_banks` row in `buildSuggestions`' shape. |
+| `GET(request)` | handler | module | Rate-limits, reads the person's own profile and screening, applies `suggestionGate`, finds the banks, reads `forecast_marks()` for red cells of their group, and returns `{ canSuggest, basis, radiusKm, bloodGroupCode, banksChecked, suggestions }`. |
+| `latSpan`, `lngSpan`, `banks`, `basis`, `status` | variable | `GET` | The bounding box, the banks found, `location` or `district`, and the forecast's answer. |
+
+### `src/app/api/forecast-marks/route.js`
+`GET ?codes=..&componentId=..&bloodGroupId=..`, public: the forecast's marks and admins' events for up to 500 banks, for region search. `isLowNow` is left to the page.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `MAX_CODES`, `CODE_PATTERN`, `ID_PATTERN` | constant | module | 500; an eRaktKosh code; a component or group code. |
+| `GET(request)` | handler | module | Rate-limits, checks the query, and returns `{ showBadge, thresholdUnits, banks: { code: { forecast, event } } }`. |
+
 ### `src/app/api/admin/users/role/route.js`
 
 | Name | Kind | Inside | What it is / does |
@@ -939,7 +1091,7 @@ Runs before every page request.
 | `initials` | variable | `Header` | Shown when the user has no avatar picture. |
 | `handleSignOut()` | function | `Header` | Signs out, then reloads the home page. |
 
-### `src/app/components/BloodMap.js`: the map on `/search`
+### `src/app/components/BloodMap.js`: the map on `/search` and `/admin/locations`
 Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the browser.
 
 | Name | Kind | Inside | What it is / does |
@@ -948,12 +1100,12 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `TILE_URL` | constant | module | The map-tile address. |
 | `TILE_ATTRIBUTION` | constant | module | The OpenStreetMap and CARTO credit line. |
 | `GEOCODE_DELAY_MS` | constant | module | 800 ms; how long the pin must be still before its place name is looked up, so a burst of clicks sends one lookup. |
-| `INDIA_CENTER` | constant | module | Where the map starts. |
+| `INDIA_CENTER` | constant | module | Where the map starts unless `initialCenter` says otherwise. |
 | `toCoordsKey({ lat, lng })` | function | module | A text key for a pin position, used to match a place name to its pin. |
 | `formatCoords({ lat, lng })` | function | module | `"19.0760, 72.8777"`. |
 | `createPinIcon()` | function | module | The red pin marker. |
 | `MapClickHandler({ onMapClick })` | component | module | Reports map clicks; it must sit inside `MapContainer`. |
-| `BloodMap({ coords, onCoordsChange })` | component | module | The map with a click-to-pin marker, a "Use My Location" button and the pin's place name. |
+| `BloodMap({ coords, onCoordsChange, initialCenter, initialZoom })` | component | module | The map with a click-to-pin marker, a "Use My Location" button and the pin's place name. It opens at `initialCenter` (`[lat, lng]`, default all of India) and `initialZoom` (default 5). |
 | `mapKey` | state | `BloodMap` | A unique key per mount, which avoids Leaflet's "container reused" error. |
 | `pinIcon` | state | `BloodMap` | The marker icon, created once. |
 | `geocodedPlace` | state | `BloodMap` | `{ coordsKey, label }`: the last place name found for a pin. |
@@ -986,7 +1138,9 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `eta` | variable | `describeDistance` | The estimated-time text for a bank without a road route. |
 | `TravelNote({ travel })` | component | module | What the travel times are based on: road routes or not, whose traffic, the India time, congestion and rain. |
 | `place`, `basis` | variable | `TravelNote` | "Mumbai traffic" or "typical town-area traffic", and "road routes" or "straight-line distance". |
-| `BankItem({ bank })` | component | module | One result: name, address, distance and ETA, stock, call link and directions. |
+| `withMarks(bank, marks)` | function | module | A region result with `/api/forecast-marks`' forecast and event, and "low now" from its own units. |
+| `EventNote({ event })` | component | module | "Flagged by bloodLink's team until …: reason. Call the bank to confirm." |
+| `BankItem({ bank })` | component | module | One result: name, address, distance and ETA, a note when the position comes from a fix (with its error radius over `SHOWN_PRECISION_M`), stock, the forecast's and an admin's marks, call link and directions. |
 | `updatedAgo`, `checkedAgo` | variable | `BankItem` | How long ago the bank updated its stock, and how long ago bloodLink checked it. |
 | `hasCoords` | variable | `BankItem` | Whether the bank has a location, needed for the directions link. |
 | `describeResults(result)` | function | module | The heading above the results, which depends on the kind of search. |
@@ -1010,6 +1164,7 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `buildFilterParams()` | function | `SearchPage` | Query parameters for the chosen component and group. |
 | `startSearch(mode)` | function | `SearchPage` | Clears the old result and error, and marks the search as running. |
 | `handleRegionSearch()` | function | `SearchPage` | Runs a state or district search through `/api/search`. |
+| `addMarks(banks, component, group)` | function | `SearchPage` | Asks `/api/forecast-marks` for a region search's stocked banks and adds the marks once they arrive. |
 | `stockFilters` | variable | `handleRegionSearch` | Component and group names to match. |
 | `fetchedAt` | variable | `handleRegionSearch` | When bloodLink fetched the data, from `X-Data-Fetched-At`. |
 | `banks` | variable | `handleRegionSearch` | Normalized results with `checkedAt` and `isDormant`, best-stocked first. |
@@ -1069,6 +1224,16 @@ Only loaded through `next/dynamic` with `ssr: false`, because Leaflet needs the 
 | `handlePersonalStepSubmit(event)` | function | `SetDetailsPage` | Checks step 1's required fields, gender included, then moves on. |
 | `handleBloodStepSubmit(event)` | function | `SetDetailsPage` | Checks the blood group, then moves on or saves. |
 
+### `src/app/peer-to-peer/DonateNearby.js`
+The "Where your blood may be needed soon" card on "My profile", for donors: `/api/suggestions`' answer, by district at first and by location once shared.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `SuggestionItem({ suggestion })` | component | module | One bank: distance, "Flagged by bloodLink's team" or the forecast's chance, the reason, call link and directions. |
+| `DonateNearby()` | component | module | Loads the suggestions, offers "Use my location", and says why when there are none. |
+| `answer`, `isLocating`, `locationError` | state | `DonateNearby` | The route's answer (`undefined` while loading, `null` on failure), and the location request's state. |
+| `load(params)`, `shareLocation()` | function | `DonateNearby` | Fetches the suggestions; asks the browser for its position, rounded, and loads by it. |
+
 ### `src/app/peer-to-peer/page.js`: "My profile"
 
 | Name | Kind | Inside | What it is / does |
@@ -1127,12 +1292,44 @@ Every signed-in person can reach it, whatever their profile's state, so anyone c
 
 ## Admin pages, `src/app/admin/`
 
+### `src/app/admin/events/page.js`: stock-out events
+The switch for `admin_events`, the form for a new event, and the latest 50 events with their state and "End now".
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `isActive(event, now)` | function | module | Not ended, and its window not yet over. |
+| `AdminEventsPage()` | component | module | Reads the events, the flag and the banks' names. |
+| `events`, `flags`, `banks`, `bankNames`, `isOn`, `now` | variable | `AdminEventsPage` | What the page shows. |
+
+### `src/app/admin/locations/page.js`: bank locations
+The stocked banks location search can't place, and the positions waiting for review, from `bank_location_queue`: waiting for review first, then by units held, then banks with no position at all; 25 a page.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `FILTERS`, `PAGE_SIZE`, `QUEUE_SELECT` | constant | module | All, waiting for review, no position yet, rejected or can't place; 25; the view's columns. |
+| `unitsHeld(components)` | function | module | Every unit a saved row lists, across components and groups. |
+| `filterOf(row)` | function | module | Which filter a queue row belongs to. |
+| `AdminLocationsPage({ searchParams })` | component | module | Reads the queue a page of 1,000 at a time, counts, sorts and shows one page. Before the migration, it says so. |
+| `filter`, `page`, `rows`, `counts`, `banks`, `pages`, `shown`, `hrefFor` | variable | `AdminLocationsPage` | The chosen filter and page, the queue, the counts per filter, the sorted banks, the page count, this page's banks, and a link builder. |
+
+### `src/app/admin/locations/LocationReview.js`
+One bank, client side: what is known, the proposed position and its evidence, links that open OpenStreetMap and a web search in a new tab, a map to move the pin, and the four decisions.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `BloodMap` | component | module | The map, loaded only in the browser. |
+| `formatKm(meters)` | function | module | Kilometres, one decimal under 10 km. |
+| `LocationReview({ bank })` | component | module | Posts the decision to `/api/admin/locations/review` and refreshes the page. "Can't place" asks first. |
+| `isMapOpen`, `pin`, `note`, `isBusy`, `error` | state | `LocationReview` | The map shown or not, the pin, the admin's note, and the request's state. |
+| `searchText`, `hasMovedPin`, `evidence` | variable | `LocationReview` | The name and address for the links, whether the pin moved, and the fix's evidence. |
+| `decide(decision)` | function | `LocationReview` | Sends one decision, with the pin for `moved`. |
+
 ### `src/app/admin/layout.js`
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
 | `metadata` | constant | module | The page title, "Admin · Bloodlink". |
-| `TABS` | constant | module | The admin navigation links. |
+| `TABS` | constant | module | The admin navigation links, "Stock-out events" and "Bank locations" included. |
 | `AdminLayout({ children })` | component | module | Shows admin pages only to admins, with the tab bar. |
 
 ### `src/app/admin/page.js`: Overview
@@ -1147,13 +1344,17 @@ Every signed-in person can reach it, whatever their profile's state, so anyone c
 | `rows`, `totalCalls`, `okCalls`, `stateRows` | variable | `CollectionHealthCard` | The view's rows, call totals, and the states sorted by oldest good fetch. |
 | `LastSweepLine({ lastRun, lastSweep })` | component | module | The last finished stock run, cloud or laptop, and a red warning when none has finished within the sweep interval plus 2 hours. Shows nothing while `collector_runs` doesn't exist. |
 | `run`, `interval`, `isOverdue`, `hoursSince`, `limitHours` | variable | `LastSweepLine` | The run, the latest sweep's interval, and `collectionOverdue`'s answer. |
-| `AdminOverviewPage()` | component | module | Counts, the review queue, the last sweep, collection health and recent activity. |
+| `FORECAST_FLAGS`, `percent(value)`, `decimal(value, digits)` | constant, function | module | The two switchable flags with their labels; a rate or number as text, or "—". |
+| `ForecastCard({ model, scoreRuns, dailyRuns, flags, metrics })` | component | module | The forecast: the live model and its threshold, the last scoring and daily runs, a red warning after 7 hours without a scoring run, the last failure, each flag with its switch and the kill switch's reason, and the latest 48-hour metrics with lift by group. A note while the tables don't exist. |
+| `live`, `lastScore`, `lastFailure`, `lastDaily`, `overdue`, `flagByName`, `latest48` | variable | `ForecastCard` | What the card shows. |
+| `AdminOverviewPage()` | component | module | Counts, the review queue, the last sweep, collection health, the forecast and recent activity. |
 | `userCount`, `completeProfileCount`, `donorCount`, `adminCount` | variable | `AdminOverviewPage` | Account totals. |
 | `pendingCount`, `approvedCount` | variable | `AdminOverviewPage` | Pending and verified organizations. |
 | `pendingApplications` | variable | `AdminOverviewPage` | Up to 20 applications waiting for review. |
 | `recentAuditEntries`, `auditEntries` | variable | `AdminOverviewPage` | The 8 latest audit-log entries: the query result, and its rows. |
 | `collectionStats` | variable | `AdminOverviewPage` | The `upstream_stats` query result. |
 | `lastRun`, `lastSweep` | variable | `AdminOverviewPage` | The latest finished stock run in `collector_runs`, and the latest row of `collector_sweeps`. |
+| `forecastModel`, `forecastScoreRuns`, `forecastDailyRuns`, `forecastFlags`, `forecastMetrics` | variable | `AdminOverviewPage` | The forecast card's queries: the live model, the last 10 scoring runs, the last daily run, the flags, and the latest metrics rows. |
 
 ### `src/app/admin/AdminActions.js`: buttons used on admin pages
 
@@ -1166,6 +1367,11 @@ Every signed-in person can reach it, whatever their profile's state, so anyone c
 | `OrganizationActions({ organizationId, status })` | component | module | Note box plus Approve, Reject or Suspend buttons. |
 | `note` | state | `OrganizationActions` | The note to the applicant. |
 | `submitDecision(decision)` | function | `OrganizationActions` | Sends the chosen decision. |
+| `FlagToggle({ name, label, isEnabled })` | component | module | "Turn on" or "Turn off" for one forecast flag, with a confirmation. |
+| `StockEventForm({ components, groups })` | component | module | The bank code, component, group, window and reason of a new stock-out event, with a confirmation. |
+| `form`, `update(name)`, `handleSubmit(event)` | state, function | `StockEventForm` | The fields, a field's change handler, and the confirmed request. |
+| `EndEventButton({ id })` | component | module | "End now" for an active event, with a confirmation. |
+| `action`, `handleClick()` | variable, function | `FlagToggle` | The button text, and the confirmed request. |
 | `RoleActions({ userId, role, isSelf })` | component | module | "Make admin" or "Remove admin", with a confirmation. |
 | `nextRole`, `label` | variable | `RoleActions` | The role to switch to, and the button text. |
 | `handleClick()` | function | `RoleActions` | Asks for confirmation, then changes the role. |
@@ -1315,15 +1521,24 @@ Every signed-in person can reach it, whatever their profile's state, so anyone c
 |---|---|---|---|
 | `NOW` | constant | module | Fixed test clock: 3 Nov 2026, 12:00 India time. |
 | `stockRow(hospitalCode, entrydate, quantities)` | function | module | A test eRaktKosh row with red-cell stock. |
-| `fakeDb({ previous, directory, recentRun, failOn })` | function | module | A stand-in for the pg session: records every statement, answers the collector's reads, and throws on statements matching `failOn`. |
+| `fakeDb({ previous, directory, recentRun, failOn, fixesTable, fixRows })` | function | module | A stand-in for the pg session: records every statement, answers the collector's reads, and throws on statements matching `failOn`. `fixesTable` says whether `bank_location_fixes` exists, and `fixRows` answers the weekly run's read of its machine fixes. |
+| `fix`, `answers`, `before`, `failing` | variable | location-fix tests | A fix's position; the directory and auto-refresh answers; a run before the table exists; a run whose read of the fixes fails. |
 | `queries`, `statements(pattern)` | variable | `fakeDb` | Every statement sent, and those matching a pattern. |
 | `fakeFetch(answers)` | function | module | A stand-in for `fetch`, answering by `stateCode` (or `nearest` for the directory, `refresh` for the auto-refresh list) with rows, an HTTP status or a network error. |
 | `makeCollector(options)` | function | module | A collector over the fakes, with the archive, errors and called URLs captured. |
 | `archived`, `errors`, `urls` | variable | `makeCollector` | What it archived, logged as errors, and fetched. |
 | `SECRET` | constant | request-checks tests | A 40-character test secret. |
 
+### `tests/bank-locations.test.js`
+`applyLocationFixes` (moving a wrong-state bank, adding a missing one, the radius, eRaktKosh's usable point against a machine fix and a confirmed one, unusable rows), the switch, `locationVisibility`, and `bankPlacement.js`: search names, distinctive words, PIN codes, address cleaning and parts, result tests, the viewbox, centroid traps, the accuracy statistics and the acceptance rule, and the seeded shuffle.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `stateChecker`, `ORIGIN`, `RADIUS_M`, `context` | constant | module | The state checker, a pin in Mumbai, a 25 km radius, and the merge's context. |
+| `fix(overrides)`, `nearest(overrides)` | function | module | A fix row through `toLocationFix`, and a `nearest` row, near the pin. |
+
 ### `tests/stockout-features.test.js`
-The grid, the series rebuild, the cleared-page rule, the 19 inputs on a hand-worked series, the label rules (horizons, quick refills, cleared pages, the end of the data and gaps) and `findGaps`.
+The grid, the series rebuild, the cleared-page rule, the 19 inputs on a hand-worked series, the Bombay groups in the bank's totals, the label rules (horizons, quick refills, cleared pages, the end of the data and gaps) and `findGaps`. `ml/tests/test_dataset.py` repeats these cases in Python.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
@@ -1342,6 +1557,41 @@ The artifact's checks and scoring, the reasons, parity with scikit-learn (`tests
 | `sklearn` | constant | module | The fixture: seeded scores and labels, scikit-learn's Platt parameters and calibrated values, and its average precision. |
 | `cases` | constant | the cut-off tests | 14 banks on one day, two of them stock-outs, and a second negative case for one key. |
 | `day(falseAlertsPerBankWeek, calibrationRatio)`, `run(hoursAgo, error, finished)` | function | the kill-switch tests | A daily metrics row, and a `forecast_runs` row. |
+
+### `tests/stockout-parity.test.js`
+The forecast's parity test (`docs/PLANS/ML_system.md`, A2) on `tests/fixtures/stockout_week.json`, a real week that `ml/train.py` writes. It checks:
+- that the fixture names the artifact it was made with, which must be valid;
+- that `buildCases` gives the same cases at each of the 28 grid times;
+- that every input is exactly the same as `ml/dataset.py`'s, and every label the same as its labeller's;
+- that `scoreCase` gives scikit-learn's raw and calibrated probabilities to 6 decimal places, with the artifact's threshold deciding the cases and labels;
+- that the fixture covers stock-outs, left-out labels, every kind of owner and an auto-refresh bank.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `week` | constant | module | The fixture: the banks, their updates, the grid times and the expected cases. |
+| `artifact` | constant | module | The artifact the fixture names, read from `ml/models/`. |
+| `series`, `banks` | constant | module | The fixture's updates as `seriesFromHistory` builds them, and the bank attributes as a Map. |
+| `key(code, group, gridIndex)`, `expected` | function, constant | module | A case's key, and the fixture's cases by key. |
+| `built` | constant | module | Every case `buildCases` gives at each grid time, with its grid index. |
+
+### `tests/forecast-jobs.test.js`
+The forecast's jobs against a stand-in for the pg session that serves the parity week, with the history query's window applied as the SQL does. Scoring gives the fixture's cases and scikit-learn's probabilities; the daily calibration is used once there is one; an already scored grid time is skipped; a missing or mismatched model is refused; a failed insert rolls back and is recorded; the daily job labels as the fixture does, calibrates a labelled day and runs the kill switch; and it fails before the first complete sweep.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `artifact`, `MODEL`, `HOUR` | constant | module | The fixture's artifact, its `model_versions` row, and an hour in ms. |
+| `historyRows`, `bankRows`, `groupByCode` | constant | module | The fixture's updates and banks as the tables return them, and group names by code. |
+| `historyWindow(from, to)` | function | module | `HISTORY_SQL`'s rows, computed in JS. |
+| `fakeDb(answers)` | function | module | Records every statement and answers the jobs' reads; `overrides` are `[pattern, rows or function]` pairs checked first. |
+| `jobsWith(db, clock)`, `expectedAt(gridIndex)` | function | module | The jobs over a stand-in, and the fixture's cases at one grid time by bank and group. |
+
+### `tests/forecast-marks.test.js`
+What is forecast, reading `forecast_marks()`'s answer, the "may run low" and "low now" marks, the ranking's horizon and risk, the (1 − risk) factor in `rankSources`, admins' events, who may see suggestions, and their order.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `answer` | constant | module | A `forecast_marks()` answer with three banks, one of them malformed. |
+| `withEvents`, `bank(code, distanceKm)` | constant, function | the events tests | The answer with an active event and the suggestions' flag on, and one nearby bank. |
 
 ### `tests/compatibility.test.js`
 
@@ -1443,6 +1693,68 @@ Runs on the project in `SUPABASE_DB_URL` inside one transaction that is always r
 | `moveLastSweep(ago)` | function | module | Moves the newest sweep's start into the past, since `now()` is fixed inside the transaction. |
 | `first`, `second`, `jobs`, `tick`, `pruned`, `left`, `bucket` | variable | module | The values each check reads. |
 
+### `scripts/place-banks.mjs`: positions for the banks search can't place
+`--control`, `--targets` or `--apply <file>`, with `--sample N`, `--limit N` and `--offline` (#33, #34; `docs/PLANS/plan_bank_locations.md`, Part A). Reads run in a read-only transaction; `--apply` writes as `bloodlink_ingest`. Every Nominatim answer is cached in `../blood_data/geocoding/nominatim_cache.ndjson`, one thread, 1.1 s apart, stopping on HTTP 429 or 403.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `APP_DIR`, `DATA_DIR`, `OUT_DIR`, `CACHE_FILE`, `DISTRICTS_FILE`, `GEOBOUNDARIES_FILE` | constant | module | The app, `../blood_data`, `../blood_data/geocoding`, the cache, the matched district outlines, and geoBoundaries' ADM2 file. |
+| `NOMINATIM_URL`, `USER_AGENT`, `REQUEST_GAP_MS`, `TIMEOUT_MS` | constant | module | Nominatim's search address, the identifying User-Agent, 1.1 s and 20 s. |
+| `DISTRICT_MARGIN_KM`, `DATAGOV_PRECISION_M`, `TRUTH_AGREEMENT_M`, `MIN_CELL_PLACED` | constant | module | 5 km round a district outline; 300 m for the data.gov.in placements; agreement within 300 m for the truth set; 20 positions before a cell is judged on its own. |
+| `DENSITY_RADIUS_M`, `DENSE_AREA_MIN_BANKS` | constant | module | As `/api/blood-search`: more than 10 visible banks within 15 km is urban. |
+| `STEPS`, `JUDGED_STEPS`, `NAME_TOWN_STEP` | constant | module | The Nominatim steps in ladder order; the same with town-only name matches apart (`nominatim_name_town`). |
+| `districtData`, `stateBoundaries`, `stateChecker`, `statesByCode`, `today` | constant | module | The two asset files, the state checker, states by code, and the date for file names. |
+| `mode`, `isOffline`, `flag(name)`, `option(name, fallback)` | variable, function | module | The command line. |
+| `parseCsv(text)` | function | module | RFC 4180 rows with quoted fields, as objects by header. |
+| `districtName(stateCode, districtId)` | function | module | A district's name from `district_data.json`. |
+| `spellingKey(name)`, `bigrams(text)`, `dice(a, b)` | function | module | A crude spelling key ("Ahmadnagar" and "Ahmednagar" meet), and bigram similarity. |
+| `ringCentroid(ring)` | function | module | The area-weighted centre of a ring. |
+| `buildDistrictOutlines()` | function | module | Gives each geoBoundaries outline a state by voting its points against the state outlines, then matches it by name to eRaktKosh's districts of that state: the same key, or similarity 0.75 or more with the same first two letters, each the other's best. Writes `district_outlines.json`. |
+| `loadDistrictChecker()` | function | module | `{ has(districtId), isInside(position, districtId) }`, the second `null` when the district has no outline. |
+| `StopError`, `cache`, `counters`, `nextSlotAt` | class, variable | module | A 429 or 403; the cached answers by query; requests sent, cached, failed and not cached; the next request's time. |
+| `nominatim(params)` | function | module | One cached search with `format=jsonv2`, `addressdetails`, `limit=5`, `countrycodes=in` and English names. |
+| `bankContext(bank)` | function | module | The bank's state, district, place words, town words and state viewbox. |
+| `toPosition(result)`, `evidenceOf(result, query)` | function | module | A result's point, and what is kept of it: the query, OSM id, name, display name, category, type and rank. |
+| `passesChecks(bank, result, step, context, districts)` | function | module | Own state, own district when outlined, and the step's own test: a health facility sharing a distinctive word (name), street or building level (address), the PIN code (pincode). Returns `{ reason }` or `{ reason: null, townOnly }`. |
+| `tryQuery(bank, step, params, context, districts)` | function | module | The first result of a query, bounded to the state, that passes the checks, with every rejection. |
+| `runStep(bank, step, context, districts)` | function | module | One step for one bank. The address step needs a street that isn't only the town or district. |
+| `connect({ write })` | function | module | A pg session: read-only, or as `bloodlink_ingest`. |
+| `loadVisiblePoints(client)`, `areaOf(position, points)` | function | module | Banks with a usable point, and urban or rural around a position. |
+| `toBank(row)` | function | module | A bank's name and address from its stock row (else the directory), district (else from the address), PIN and type. |
+| `loadTargets(client)` | function | module | Stocked banks with no directory row or coordinates (`missing`), or flagged `wrong_state` or `outside_india`. |
+| `loadControl(client, sampleSize, points)` | function | module | Banks where the crosswalk says `match` within 300 m and the point is `ok`, sampled by type and area from a fixed shuffle. |
+| `pct(value)`, `km(meters)` | function | module | Report formatting. |
+| `runControl()` | function | module | Runs every step on every control bank, applies the centroid trap, measures each judged step overall and per area, and the ladder; writes `control_<date>.json` and `.md`. |
+| `acceptanceFrom(accuracy)` | function | module | `(judged, area) => { accepted, precisionM }`: a cell with fewer than 20 positions falls back to the step's row; fewer than 20 overall, or a town-only match, is never accepted. `precisionM` is the step's 90th percentile, rounded up to 50 m, at least 300 m. |
+| `loadAcceptance()` | function | module | The latest control run's verdicts. |
+| `runTargets()` | function | module | The ladder on every target: the data.gov.in placement, then each step until one is accepted, keeping the first position found for review; the centroid trap; writes `targets_<date>.json` and `.md`. |
+| `runApply()` | function | module | Writes a targets file's placements to `bank_location_fixes` in one transaction, leaving out banks whose fix a person confirmed or reviewed. |
+
+### `scripts/location-coverage.mjs`: what location search can see
+Without options, saves a snapshot of the stock store (read-only) to `../blood_data/measurements/locations/snapshot_<date>.json` and measures it into `before/`, or into `current_<date>/` once the snapshot has fixes, so the baseline is never overwritten. With `--snapshot <file> --placements <targets file>`, replays that snapshot with and without the placements into `after_<date>/`; `--include-proposed` counts the review queue's too, and `--placements db` takes the fixes accepted in `bank_location_fixes` now (Part D).
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `SEARCH_RADIUS_M`, `DENSITY_RADIUS_M`, `DENSE_AREA_MIN_BANKS`, `RINGS_M` | constant | module | As `/api/blood-search`. |
+| `RED_CELLS`, `PROBES`, `CONNAUGHT_PLACE`, `SEARCHES` | constant | module | "Packed Red Blood Cells"; the 13 places of `ranking-sensitivity.mjs` plus Saifai, Panaji and Satara; central Delhi; a nearest-mode red-cell search, O+ x 2 and O- x 3. |
+| `takeSnapshot()` | function | module | Every bank in `bank_stock_latest` or `blood_banks`, with its red-cell quantities, update time, point, flag and any accepted fix. |
+| `redCellUnits(bank, group)` | function | module | A bank's packed red cells, of one group or all. |
+| `visibleBanks(snapshot, fixes)` | function | module | The banks search can see and their positions, and the stocked banks' visibility counts, applying fixes by the rule in `bankLocations.js`. |
+| `replaySearch(visible, probe, search, now)` | function | module | One search at a probe: area, ring, and for ranked searches the active units in the ring and whether it falls short. |
+| `measure(snapshot, fixes, probes)` | function | module | Visibility, red cells and O- red cells visible, misplaced banks near central Delhi, and every probe search. |
+| `tableRows(before, after)`, `plain(measurement)` | function | module | The report's table, and a measurement without its bank lists. |
+| `readAcceptedFixes()` | function | module | The accepted rows of `bank_location_fixes`, read-only, for `--placements db`. |
+| `main()` | function | module | Snapshot or replay, the "gap closed" distances for newly visible banks, and `summary.json` and `.md`. |
+
+### `scripts/check-location-schema.mjs`: checks the bank-location schema
+Runs on the project in `SUPABASE_DB_URL` inside one transaction that is always rolled back. Applies `20261105000100_bank_location_fixes.sql` first if the project lacks it. Checks what `bloodlink_ingest`, `anon` and a signed-in non-admin may and may not do, and `review_bank_location()` as an existing admin (skipped when there is none).
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `check(label, text, params, expectError)` | function | module | Runs a statement in a savepoint and records whether it succeeded, or failed as expected. |
+| `actAs(id)` | function | module | Sets the JWT claims and role for the transaction, to act as a user. |
+| `missingCode`, `wrongCode`, `admin`, `user`, `results` | variable | module | A stocked bank with no directory row, a wrong-state bank, the borrowed ids, and the results. |
+
 ### `scripts/check-forecast-schema.mjs`: checks the forecast's schema
 Runs on the project in `SUPABASE_DB_URL` inside one transaction that is always rolled back. Applies the `*_stockout_forecast.sql` migration first if the project lacks it. Writes nothing to the auth schema: the admin checks borrow an existing admin's id, and are skipped when there is none.
 
@@ -1462,6 +1774,160 @@ Writes `tests/fixtures/stockout_sklearn.json`: four seeded cases (over-confident
 | `OUT` | constant | module | The fixture's path. |
 | `case(name, scores, labels, probe)` | function | module | One fixture case. |
 | `main()` | function | module | Draws the four cases with seed 20261104 and writes the file with the library versions. |
+
+### `ml/dataset.py`: phase 5.1's dataset builder
+The Python twin of `src/lib/stockoutFeatures.js`: the 19 inputs and the labels, with every definition matching a line there. It reads the laptop's copy of the archive (`../blood_data/eraktkosh/`): history, complete sweeps, the auto-refresh list and the newest directory. It uses numpy only, makes no network calls, and runs in about 3 seconds. `python -I ml/dataset.py [archive] [--until ISO]` prints the counts.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `HOUR_MS`, `DAY_MS`, `INDIA_OFFSET_MS`, `GRID_STEP_MS`, `HORIZONS_H` | constant | module | As in `stockoutFeatures.js`. |
+| `LOOKBACK_DAYS`, `MIN_DAYS_SEEN`, `DAYS_OF_SUPPLY_CAP`, `CLEARED_PAGE_MIN_UNITS`, `DORMANT_DAYS`, `DEFAULT_GAP_HOURS`, `DEFAULT_THRESHOLD_UNITS` | constant | module | 7, 1, 30, 10, 30, 6.5 and 2, as in `stockoutFeatures.js` and `stock.js`. |
+| `COMPONENT`, `GROUPS`, `ALL_STATES` | constant | module | `PRBC`; the 8 forecast groups; 36, the states in a complete sweep. |
+| `INPUT_NAMES`, `CATEGORICAL_INPUTS`, `NUMERIC_INPUTS` | constant | module | The 19 inputs in the artifact's order, the three categories, and the rest. |
+| `TRANSFORMS` | constant | module | Each input's transform in logistic regression: `log1p`, `slog`, `identity` or `dummy`. |
+| `OWNERSHIP_LEVELS` | constant | module | `govt`, `private`, `charitable`, `red_cross`, `other`. |
+| `to_ms(stamp)`, `iso(ms)` | function | module | An ISO time as exact ms, and back, as JS's `toISOString`. |
+| `india_day(ms)`, `india_day_number(ms)` | function | module | India's date as `YYYY-MM-DD`, and as days since 1970 (vectorized). |
+| `latest_grid_time(ms)`, `grid_times_between(start, end)` | function | module | As `latestGridTime` and `gridTimesBetween`. |
+| `find_gaps(sweep_times, max_gap_hours)` | function | module | As `findGaps`. |
+| `ownership_of(hospital_type)`, `is_rh_negative(group)` | function | module | As `ownershipOf` and `isRhNegative`. |
+| `_units(value)` | function | module | As `groupUnits` on one value: a finite number above zero, else 0. |
+| `Series` | class | module | One bank's updates: `at` (ms), `units` (the 8 groups), `total`, `stocked` and `bank_drop` (the component's use at each step, over every group), and `stocks` (the raw `{group: units}`, for the fixture). `Series.from_events(code, events)` builds one. |
+| `_running(values)` | function | module | Running totals with a leading zero, so a window's sum is a difference. |
+| `Bank` | class | module | `state_code`, `hospital_type`, `auto_refresh`: what the app reads from `blood_banks`. |
+| `bank_cases(series, bank, times, horizons, data_end, gaps, threshold)` | function | module | Every scored case of one bank at the grid times, above the threshold: the inputs as `buildInputs` makes them, and labels 1, 0 or −1 (left out) as `labelCase` makes them. `None` when there are none. |
+| `current`, `hours_since`, `active` | variable | `bank_cases` | The latest update at each time, its age, and whether the bank is dormant. |
+| `clear`, `restore`, `counted` | variable | `bank_cases` | A cleared page's step, the step that ends one, and the steps that count as use, refills and drops. |
+| `decreases`, `increases`, `zero_drops`, `bank_used`, `start`, `day_back`, `three_days_back`, `days_seen`, `window` | variable | `bank_cases` | Running totals per step; the last update at or before t − 7 days, t − 24 h and t − 72 h; the days the rates divide by; a lookback's sum. |
+| `ti`, `gi`, `cases` | variable | `bank_cases` | The time and group of each case in stock, and the columns returned. |
+| `cleared_zero`, `zero_at`, `zero_is_cleared` | variable | `bank_cases` | Whether each update is a cleared page; each case's first zero after t, and whether it was one. |
+| `read_ndjson(path)` | function | module | Every complete line of an NDJSON file. |
+| `Archive` | class | module | `series` and `banks` by code, the complete sweeps and the cut; `gaps` lists the collection gaps. |
+| `load_archive(data_dir, until, codes)` | function | module | Reads the archive up to the last complete sweep at or before `until`, keeping the last line read for each bank and update time. |
+| `Dataset` | class | module | Every case column by column, the bank codes, the cut, the grid and the threshold; `inputs(rows)` gives `buildInputs`-shaped dicts. |
+| `build_dataset(archive, times, gaps, horizons, threshold)` | function | module | Cases for every bank at every grid time from the first complete sweep to the cut, labelled by a fall to the threshold. Labels end at the cut; gaps are censored only if given. |
+| `summary(dataset)` | function | module | Cases, banks, grid times and stock-outs per horizon. |
+
+### `ml/export.py`: the model artifact
+Writes the JSON artifact `stockoutModel.js` scores (`bloodlink-stockout/1`). Training standardizes the dummies too; a dummy's term keeps `coef / scale`, and `−coef × mean / scale` moves into the intercept, so the scores are unchanged.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `ARTIFACT_FORMAT` | constant | module | `bloodlink-stockout/1`. |
+| `horizon_block(spec, scaler, model, platt)` | function | module | One horizon's intercept, terms and Platt parameters, from a fitted `StandardScaler` and `LogisticRegression`. |
+| `build_artifact(model_id, horizons, trained_from, trained_to, evaluation, extra)` | function | module | The artifact as a dict. |
+| `write_artifact(artifact, folder)` | function | module | Writes `<id>.json` and `<id>.sha256`; returns the path and the hash. |
+| `_transform(kind, values)`, `_column(columns, name)` | function | module | A transform as `termValue` applies it; an input's values from a dataset (the blood group is stored as an index). |
+| `horizon_logits(block, columns, rows)`, `sigmoid(x)`, `score_artifact(artifact, columns, rows)` | function | module | A second scorer that reads only the artifact, vectorized: the logits, and the raw and calibrated P per horizon. |
+| `check_transforms(spec)` | function | module | Refuses a column whose transform isn't its input's in `TRANSFORMS`. |
+
+### `ml/metrics.py`: the backtest's scores
+The scores as `stockoutModel.js` defines them, so the backtest and the daily metrics measure the same thing.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `_keys(bank, group, day)` | function | module | One key per bank, group and India day. |
+| `alert_metrics(p, y, bank, group, day, cut_off)` | function | module | As `alertMetrics`: false alerts (p above the cut-off, one per key), per bank per week, and recall. |
+| `choose_cut_off(p, y, bank, group, day, budget)` | function | module | As `chooseCutOff`: the lowest cut-off within the budget. |
+| `pr_auc(p, y)`, `calibration_ratio(p, y)`, `brier(p, y)` | function | module | Average precision (`None` without both outcomes), mean prediction ÷ observed rate, and the Brier score. |
+| `fit_platt(logits, y)` | function | module | scikit-learn's sigmoid calibration, returned as the app's `(a, b)`. |
+| `lift_by_group(p, y, group)` | function | module | Each group's cases, base rate, PR-AUC and lift. |
+
+### `ml/train.py`: backtest, fit and export
+`python -I ml/train.py [archive] [--until ISO] [--threshold 2] [--out ml/models] [--fixture tests/fixtures/stockout_week.json] [--quick]`, from `bloodlink/`, in under a minute. It:
+1. builds the dataset;
+2. walks forward by India day with an expanding window and a purge of one horizon, as `../rough_work/ML-comparison/walk_forward_check.py` does;
+3. fits each horizon on every case whose outcome is known, with Platt parameters and an alert cut-off from the latest complete test day;
+4. checks that the artifact's own scorer matches scikit-learn on every training row (to 1e-9, or it stops);
+5. writes the artifact, named `stockout-logit-t<threshold>-<date>`, and the parity fixture.
+
+The same `--until` and `--threshold` give the same file.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `ROOT`, `DECISION_H`, `MIN_TRAIN_TIMES`, `UNIT_BUCKETS`, `C`, `MAX_ITER` | constant | module | `bloodlink/`; 48; 12 grid times before the first test day; the baseline's unit bands; the dry run's L2 strength and iteration cap. |
+| `DRY_RUN` | constant | module | The dry run's numbers at 48 h for the same encoding, recorded in the artifact for comparison. |
+| `started`, `log(text)` | constant, function | module | The start time, and a timed log line. |
+| `design_spec(state_levels)`, `design_matrix(columns, spec, rows)` | function | module | The columns (each numeric input with its transform, then a dummy per level) and the float64 matrix. |
+| `fit(X, y)`, `logits_of(scaler, model, X)` | function | module | `StandardScaler` in place, then logistic regression; the logits of new rows. |
+| `folds(grid, cutoff, hours)` | function | module | Each India day with its training and test grid times. |
+| `unit_bucket_rates(data, y, train, test)` | function | module | The best baseline: the training stock-out rate at that many units of that group. |
+| `walk_forward(data, X_all, hours, quick)` | function | module | One horizon's folds: each test day's rows, logits, P, labels and baseline. |
+| `evaluate(data, results, hours)` | function | module | The pooled scores, by day and by group, and the "carried" ones: Platt and the cut-off set H/24 + 1 days back. |
+| `by_day`, `carried`, `alerted` | variable | `evaluate` | Folds by day; each test day with its carried calibration and cut-off; the alerts each raised. |
+| `gap_effect(data, gaps)` | function | module | What the label rules' gap clause would leave, per horizon: cases and their stock-out rate. |
+| `main()` | function | module | The run. |
+| `evaluation`, `blocks`, `pipelines`, `last`, `platt`, `gap` | variable | `main` | The scores per horizon, the artifact's horizons, the fitted pipelines for the fixture, the Platt day and its fit, and the largest gap between the two scorers. |
+
+### `ml/week_fixture.py`: the parity fixture
+Writes `tests/fixtures/stockout_week.json` from `train.py`'s fitted pipelines, with the model's threshold. It covers 12 banks chosen the same way every run: 3 auto-refresh banks with the most drops to zero, 2 with a cleared page, 2 first seen late, one of each kind of owner, and the rest with drops. For each bank it holds every update, its attributes, and every case at the week's 28 grid times: inputs, labels, and scikit-learn's raw and calibrated probabilities to 10 decimals.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `FIXTURE_BANKS`, `PROBABILITY_DECIMALS`, `SEED`, `WEEK_GRID_TIMES` | constant | module | 12, 10, the selection's seed, and 28. |
+| `_bank_traits(archive)` | function | module | Each bank's auto-refresh, cleared pages, drops to zero, late start and owner. |
+| `select_banks(archive, candidates, count, seed)`, `take(pool, k, by)` | function | module, `select_banks` | The fixed mix of banks, and one pick of it. |
+| `_compact(value)`, `_label(value)` | function | module | Whole numbers as integers; a label as `true`, `false` or `null`. |
+| `write(archive, data, spec, pipelines, artifact, artifact_path, out_path, design_matrix)` | function | module | Builds the week's cases for the chosen banks, scores them with scikit-learn and writes the fixture. |
+
+### `ml/tests/`: the Python side's 16 tests
+`python -I -m pytest ml/tests` from `bloodlink/`. `conftest.py` puts `ml/` on the path. `test_dataset.py` repeats `tests/stockout-features.test.js`'s cases on `dataset.py`, the threshold's included, with the same numbers. `test_model.py` checks the cut-off on `tests/stockout-model.test.js`'s case, Platt's `(a, b)`, and that an exported artifact scores as scikit-learn does to 1e-12.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `HOUR`, `DAY`, `T` | constant | `test_dataset.py` | An hour and a day in ms, and 12:00 India time on 4 November 2026. |
+| `series(*events, code)`, `inputs_for(s, group, as_of, bank, threshold)`, `labels_for(s, group, data_end, gaps, threshold)` | function | `test_dataset.py` | A bank's series from offsets, and one case's inputs or labels. |
+| `EVENTS`, `BEFORE` | constant | `test_dataset.py` | The JS tests' 10-day series, and the update before `T`. |
+
+### `scripts/setup-forecast.mjs`: the forecast in the cloud
+With no flag: a new random secret, stored as the function secret `FORECAST_SECRET` and in Vault as `forecast_secret`, with the function's URL as `forecast_url`; then deploys `score-stock` with JWT verification off. Re-running rotates the secret. The other modes:
+- `--deploy-only` redeploys;
+- `--publish <artifact> [--live]` checks the artifact against its `.sha256` file and the validator, uploads it to `ml-models` and registers it in `model_versions`, in `shadow` or as the live model;
+- `--schedule` and `--unschedule` run the scheduling functions;
+- `--run score|daily` posts one job now and waits for its run;
+- `--flags on|off` switches the badge and ranking flags, with an audit entry.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `SUPABASE_CLI`, `BUCKET`, `FLAGS`, `RUN_WAIT_MS` | constant | module | The pinned CLI, `ml-models`, the two switchable flags, and how long `--run` waits (170 s). |
+| `args`, `argValue(name)`, `databaseUrl`, `ref`, `publicUrl`, `functionUrl` | constant, function | module | The arguments, the value after a flag, the connection string, the project ref, its public URL and the function's. |
+| `supabase(cliArgs)`, `deploy()` | function | module | Runs the CLI against the project; deploys `score-stock`. |
+| `readArtifact(file)` | function | module | The artifact, its bytes and hash, checked against the `.sha256` file, the validator and its file name. |
+| `publish(client, file, isLive)` | function | module | Uploads the artifact (or checks the stored copy is the same file) and registers it, retiring the live one with `--live`. |
+| `runNow(client, job)` | function | module | Posts a job through `forecast_post()` and prints its `forecast_runs` row once finished. |
+| `setFlags(client, isEnabled)` | function | module | Switches both flags and writes the audit log, in one transaction. |
+| `client` | constant | module | The Postgres connection, as `postgres`. |
+
+### `scripts/check-admin-events.mjs`: checks admins' events
+Inside one transaction that is always rolled back, applying `*_admin_events.sql` if missing:
+- non-admins can't create, end or see events, and anon can't read the table;
+- an admin creates one, and duplicates, bad windows, short reasons and unknown banks are refused;
+- the event is audited;
+- `forecast_marks()` shows it to anon only while `admin_events` is on, for that group only, and the suggestions' flag alone turns the forecast's scores on;
+- ending it works once, removes it from search and is audited.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `migrationFile` | constant | module | The events migration's file name. |
+| `check`, `one`, `errorCode`, `asUser(userId)` | function | module | As in `check-forecast-schema.mjs`. |
+| `asAnon()`, `marks(codes, group)`, `create(code, hours, reason)` | function | module | Switches to `anon`; `forecast_marks()` for red cells; a `create_admin_event()` call. |
+| `bank`, `code`, `admin`, `id`, `event`, `audit`, `answer`, `ended` | variable | module | The values each check reads. |
+
+### `scripts/check-forecast-live.mjs`: a dry run of the forecast on the live project
+Inside one transaction that is always rolled back:
+- applies the forecast's migrations if missing, and registers the artifact as the live model;
+- as `bloodlink_ml`, scores the latest grid time and the four grid times of a day 4 days back;
+- runs the daily job, which labels and calibrates that day and runs the kill switch;
+- as `anon`, checks what `forecast_marks()` returns with the flags off and on, and that anon can't post, schedule or read the tables.
+
+The jobs' own transactions become savepoints.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `artifactFile`, `bytes`, `digest`, `artifact` | constant | module | The artifact (the newest in `ml/models/` by default), its bytes, hash and validated content. |
+| `check`, `one`, `errorCode` | function | module | As in `check-forecast-schema.mjs`. |
+| `savepointDb` | constant | module | The connection, with `begin`, `commit` and `rollback` turned into a savepoint. |
+| `jobs`, `latest`, `spread`, `again`, `dayStart`, `pastRows`, `end`, `daily`, `labels`, `metrics`, `rescored`, `codes`, `off`, `on`, `flagged` | variable | module | The values each check reads. |
 
 ### `scripts/setup-cloud-collector.mjs`: sets up, deploys, schedules
 With no flag: a new random secret, stored as the function secret `COLLECTOR_SECRET` and in Vault as `collector_secret`, with the function's URL as `collector_url`; then deploys `collect-stock` with JWT verification off. Re-running rotates the secret. `--deploy-only` redeploys; `--schedule [interval] [--region r | --no-region]` and `--unschedule` run the scheduling functions.
@@ -1543,15 +2009,17 @@ Compares radius searches in memory and in PostGIS at growing dataset sizes, chec
 | `explainTime(table, query, radius)` | function | PostGIS block | Server execution time of one `ST_DWithin` query from `EXPLAIN ANALYZE`. |
 
 ### `scripts/ranking-sensitivity.mjs`: weight sensitivity
+When the saved sets carry the forecast (each result's `forecast.p24` and `p48`), it also measures the forecast's factor at full and half strength against the ranking without it.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
 | `args` | constant | main block | The command-line arguments: `--capture <url> <dir>`, or a folder to analyse. The block runs only when the script is called directly, not when the ETA bench imports `PLACES`. |
-| `PLACES`, `GROUPS`, `FACTORS` | constant | module | 13 places (exported), 4 blood groups, and the ±20% factors. |
+| `PLACES`, `GROUPS`, `FACTORS`, `RISK_SCALES` | constant | module | 13 places (exported), 4 blood groups, the ±20% factors, and the forecast factor's strengths (1 and 0.5). |
 | `capture(baseUrl, outDir)` | function | module | Saves one ranked search per place and group, with the place's `origin`, from a running server, which needs `TRUSTED_PROXY_HOPS=1`. |
 | `perturbed(weights, name, factor)` | function | module | One weight scaled, with all of them rescaled to add up to 1. |
 | `kendallTau(orderA, orderB)` | function | module | Kendall's τ between two orders of the same banks: 1 for the same order, 0 for unrelated. The ETA bench has its own copy in `etaMetrics.js`. |
 | `analyse(dir)` | function | module | Re-ranks every saved set with each change (Kendall's τ) and writes `sensitivity_report.json`. |
+| `analyseForecastFactor(sets)` | function | module | For each urgency and strength: how often the first choice stays, and Kendall's τ, with the factor against without it (P24, or P48 for routine), and the sets whose first choice moves. `null` when no set carries the forecast. |
 | `sets`, `summary`, `urgencyFlips`, `report` | variable | `analyse` | The candidate sets, results per urgency, how often critical and routine disagree, and the output. |
 
 ### `scripts/build-traffic-profiles.mjs`: rebuilds the traffic profiles
@@ -1633,11 +2101,23 @@ Called by the cron jobs with `x-collector-secret`. Deployed with JWT verificatio
 | `collector`, `results`, `status`, `refuse(name)` | variable | handler | The shared collector with runner `edge`, the answer, its HTTP status, and a helper for a refused job. |
 | `run`, `outcome`, `name`, `archived`, `errors`, `summary` | variable | handler | One job's row and outcome, the file name, the archive fields for `finishRun`, upload errors, and the batch summary. |
 
+### `supabase/functions/score-stock/index.ts`: the forecast's jobs
+Called by the cron jobs with `x-forecast-secret` and `{ job: "score" }` or `{ job: "daily" }`. Deployed with JWT verification off, so the secret is the only way in.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `BUCKET` | constant | module | `ml-models`. |
+| `respond(status, body)` | function | module | A JSON response. |
+| `sha256Hex(buffer)` | function | module | The hex SHA-256 of the downloaded artifact. |
+| `loadArtifact(model)` | function | module | Downloads `artifact_path` with the `default` key from `SUPABASE_SECRET_KEYS`, checks its SHA-256 against `model_versions`, and parses it. |
+| (handler) | handler | module | Checks the method and the secret, parses the body, connects with `SUPABASE_DB_URL`, runs `set role bloodlink_ml`, and runs the job with `createForecastJobs`. |
+| `job`, `client`, `jobs`, `result` | variable | handler | The parsed request, the Postgres connection, the jobs, and the answer. |
+
 ---
 
 ## Database
 
-Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stock_store.sql`, `20261023000300_blood_bank_locations.sql`, `20261024000100_wrong_state_locations.sql`, `20261026000100_ingest_prune_grant.sql`, `20261026000200_review_and_india_dates.sql`, `20261026000300_privacy_consent_and_account_deletion.sql`, `20261103000100_cloud_collector.sql` and `20261104000100_stockout_forecast.sql`. All but the last are applied to the live project (Mumbai, since 2026-11-03), so changes go in a new migration file, never into an applied one. The last is not applied yet; until it is, it may still be edited. SQL uses `snake_case`. Function parameters start with `p_` and local variables with `v_`.
+Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stock_store.sql`, `20261023000300_blood_bank_locations.sql`, `20261024000100_wrong_state_locations.sql`, `20261026000100_ingest_prune_grant.sql`, `20261026000200_review_and_india_dates.sql`, `20261026000300_privacy_consent_and_account_deletion.sql`, `20261103000100_cloud_collector.sql`, `20261104000100_stockout_forecast.sql`, `20261104000200_forecast_live.sql` and `20261105000200_admin_events.sql`, with others added since. All but `20261105000200_admin_events.sql` and any newer ones are applied to the live project (Mumbai, since 2026-11-03), so changes go in a new migration file, never into an applied one. A migration not yet applied may still be edited. SQL uses `snake_case`. Function parameters start with `p_` and local variables with `v_`.
 
 ### Tables and columns
 
@@ -1678,6 +2158,15 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | | `location` | A PostGIS `geography(Point, 4326)` generated from latitude and longitude. Null for missing, wrong-state or outside-India positions. |
 | | `bank_type`, `hospital_type`, `stock_source`, `camp_source` | eRaktKosh's own fields. |
 | | `auto_refresh` | Whether eRaktKosh refreshes the bank's stock automatically, from the weekly directory run; null until the first one. A forecast input. |
+| `bank_location_fixes` | `hospital_code`, `state_code` | The bank, one fix each, and its state (migration `20261105000100`). |
+| | `latitude`, `longitude`, `location` | The corrected position, inside India, and its generated PostGIS point (GiST index). |
+| | `reason` | Why eRaktKosh's point couldn't be used: `missing`, `wrong_state`, `outside_india`, `shared`, or `corrected` (an admin moved a usable one). |
+| | `method` | `eraktkosh_other`, `datagov`, `nominatim_name`, `nominatim_address`, `pincode`, `manual` or `bank_confirmed`. |
+| | `precision_m` | The method's 90th-percentile error from the control run (50 m for a manual pin). |
+| | `evidence` | The query, the matched name, the OSM id or data.gov.in row, and any review note. |
+| | `status` | `proposed`, `accepted`, `rejected` or `superseded`. Only `accepted` reaches search. |
+| | `created_at`, `reviewed_by`, `reviewed_at` | When it was made, and the admin who reviewed it. |
+| `bank_location_queue` (view) | | Every stocked bank search can't place, and every proposed fix, with its name, address, components, eRaktKosh point and fix. `security_invoker`, so only admins see proposed and rejected fixes. Read by `/admin/locations`. |
 | | `first_seen_at`, `last_seen_at` | When the directory first and last listed the bank. |
 | `bank_stock_latest` | `hospital_code`, `state_code`, `district_id` | The bank, its state, and its district from `blood_banks`. |
 | | `row` | The validated eRaktKosh row, the same shape as a live one. |
@@ -1726,6 +2215,7 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | `handle_user_email_change()` | trigger function | Copies an email change into `profiles`. |
 | `is_admin()` | function | Whether the caller is an admin. Used by the security policies. |
 | `review_organization(p_organization_id, p_decision, p_note)` | function | Admin only. Approves, rejects or suspends an application, links or unlinks the applicant's `organization_id` and sets or removes their role (an admin keeps the admin role), and writes the audit log. |
+| `review_bank_location(p_hospital_code, p_decision, p_latitude, p_longitude, p_note)` | function | Admin only. `accepted` accepts a proposed fix; `moved` saves the admin's pin as an accepted `manual` fix, for a bank with or without one, keeping the previous position in the evidence; `rejected` and `cant_place` take a fix out of search. Writes `bank_location.<decision>` to the audit log. |
 | `v_org` | variable | Inside `review_organization`: the application being reviewed. |
 | `set_user_role(p_user_id, p_role)` | function | Admin only. Grants or removes admin, refuses to remove the last admin, and writes the audit log. |
 | `v_old_role` | variable | Inside `set_user_role`: the user's role before the change. |
@@ -1752,7 +2242,15 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | `v_names` | variable | Inside `stop_forecast_flags`: the flags it turned off. |
 | `prune_forecasts(p_days)` | function | `bloodlink_ml` only, with its rights. Deletes forecasts and outcomes older than 60 days; returns `forecasts_deleted` and `outcomes_deleted`. |
 | `v_forecasts`, `v_outcomes` | variable | Inside `prune_forecasts`. |
-| `bloodlink_ml` | role | No login. The forecast's scoring job (phase 2). Reads the stock store and `collector_runs`; writes only `stock_forecasts`, `forecast_outcomes`, `forecast_runs` and `forecast_daily_metrics`; reads `feature_flags` and `model_versions`; runs `stop_forecast_flags` and `prune_forecasts`. |
+| `forecast_post(p_body)` | function | `postgres` only (security definer). Posts a job to `score-stock` with `forecast_url` and `forecast_secret` from Vault; returns pg_net's request id. |
+| `schedule_stock_forecast()`, `unschedule_stock_forecast()` | function | `postgres` only. Create or replace the cron jobs `forecast-score` (:35 past 00, 06, 12 and 18 UTC) and `forecast-daily` (21:45 UTC), or remove them. |
+| `forecast_marks(p_codes, p_component_id, p_group_code)` | function | `anon` and `authenticated` (security definer). For at most 500 banks, one component and group: the live model's latest scores from the last 12 hours while one of its flags is on (`forecast_badge`, `forecast_ranking`, or `forecast_appeals` for the suggestions), the newest 48-hour cut-off (or the model's starting one), the threshold, and the active admins' events while `admin_events` is on, as JSON. |
+| `v_badge`, `v_ranking`, `v_appeals`, `v_events_on`, `v_model`, `v_evaluation`, `v_as_of`, `v_cut_off`, `v_marks`, `v_events` | variable | Inside `forecast_marks`. |
+| `admin_stock_events` | table | A bank's component and group marked at risk by an admin: window (24, 48 or 72 h), reason (10 to 200 characters), creator, `ends_at`, and `ended_at` and `ended_by` when ended early. Admins read it; writes only through the functions below. |
+| `create_admin_event(p_hospital_code, p_component_id, p_group_code, p_window_hours, p_reason)` | function | Admins only (security definer). Checks the window, the reason, that the bank exists and that no event is active for it, inserts with `ends_at` = now + the window, and writes `stock_event.created` to the audit log. Returns the id. |
+| `v_id`, `v_reason` | variable | Inside `create_admin_event`. |
+| `end_admin_event(p_id)` | function | Admins only (security definer). Ends an active event now and writes `stock_event.ended`. |
+| `bloodlink_ml` | role | No login. The forecast's `score-stock` jobs. Reads the stock store and `collector_runs`; writes only `stock_forecasts`, `forecast_outcomes`, `forecast_runs` and `forecast_daily_metrics`; reads `feature_flags` and `model_versions`; runs `stop_forecast_flags` and `prune_forecasts`. |
 | `ml-models` | Storage bucket | Private, with no policies: `<model id>.json`, the exported artifacts. |
 | `stock-archive` | Storage bucket | Private, with no policies, so only a secret key reaches it. `history/D/HHMM-bN.ndjson.gz` (a cloud batch's changes), `history/D.ndjson.gz` (a laptop day), `sweeps/D/HHMM-bN.json`, `sweeps.ndjson.gz`, `directory/D.json.gz`; D is a UTC date. |
 | `profiles_before_write`, `donor_screening_before_write`, `organizations_set_updated_at` | trigger | Run those functions before each write. |
@@ -1786,3 +2284,6 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | `stock_forecasts_as_of`, `forecast_outcomes_as_of`, `forecast_runs_started_at` | Indexes for the latest scores, the daily job and the admin overview. |
 | `*_select_admin` on `feature_flags`, `model_versions`, `stock_forecasts`, `forecast_outcomes`, `forecast_runs`, `forecast_daily_metrics` | Only admins can read them. |
 | `*_ml` and `*_ml_read` | `bloodlink_ml` may write the four forecast tables and read the flags, the models, `blood_banks`, `bank_stock_latest`, `stock_history` and `collector_runs`. |
+| `bank_location_fixes_location_gist`, `bank_location_fixes_status` | GiST index on the fix's point, and an index for the status filters. |
+| `bank_location_fixes_read_accepted`, `bank_location_fixes_read_admin` | Anyone may read accepted fixes; admins read all of them. |
+| `bank_location_fixes_ingest_read`, `_ingest_insert`, `_ingest_update` | `bloodlink_ingest` reads every fix, but inserts and updates only machine fixes no person reviewed: never `manual` or `bank_confirmed`, and only to `proposed`, `accepted` or `superseded`. |

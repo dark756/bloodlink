@@ -16,13 +16,24 @@ import { fetchRoadLegs } from "@/lib/routing";
 import { createStateChecker } from "@/lib/stateBounds";
 import { estimateTravel, trafficConditions, trafficZone } from "@/lib/traffic";
 import { fetchRainMmPerHour } from "@/lib/weather";
+import { fetchForecastStatus } from "@/lib/forecastStore";
+import { applyLocationFixes, locationFixesEnabled } from "@/lib/bankLocations";
+import { loadLocationFixes } from "@/lib/stockStore";
+import {
+  eventForBank,
+  forecastForBank,
+  parseForecastStatus,
+  rankingRiskFor,
+} from "@/lib/forecastMarks";
 import stateBoundaries from "../../../../assets/state_boundaries.json";
 
 // Location search: density-aware expanding rings (spec at the bottom of
 // ../rough_work/blood links.txt).
 // 1. One nearest call at the widest radius gives every bank around the user.
-//    Banks that eRaktKosh places outside their own state are left out, because
-//    their distance is meaningless (src/lib/stateBounds.js).
+//    Corrected positions from bank_location_fixes are merged in first, for banks
+//    eRaktKosh gives no position or a wrong one (src/lib/bankLocations.js).
+//    Banks still placed outside their own state are left out, because their
+//    distance is meaningless (src/lib/stateBounds.js).
 // 2. More than 10 banks within 15 km means a dense (urban) area, so small rings;
 //    otherwise wide (rural) rings.
 // 3. Live stock is fetched once per state involved, in parallel. At the same
@@ -38,6 +49,10 @@ import stateBoundaries from "../../../../assets/state_boundaries.json";
 //   are ranked by src/lib/ranking.js, and a response plan splits the request
 //   across banks.
 // Ring choice is in src/lib/rings.js; dormant banks are listed but never decide it.
+// In ranked mode, the stock-out forecast (src/lib/forecastMarks.js) marks red-cell
+// banks that may run low soon and, behind its own flag, lowers their stock scores, and
+// admins' stock-out events mark banks "flagged by bloodLink's team". Both are read
+// alongside the stock lookups and never hold the search up.
 
 const DENSITY_RADIUS_M = 15_000;
 const DENSE_AREA_MIN_BANKS = 10;
@@ -119,6 +134,9 @@ function toBankResult(nearbyBank, { stockRow, checkedAt }, stock, now) {
     entryDate: stockRow.entrydate ?? null,
     latitude: nearbyBank.latitude,
     longitude: nearbyBank.longitude,
+    // "fixed" when the position is from bank_location_fixes, with its error radius.
+    locationSource: nearbyBank.locationSource ?? "eraktkosh",
+    locationPrecisionM: nearbyBank.locationPrecisionM ?? null,
     distanceM: Math.round(nearbyBank.dist),
     checkedAt: new Date(checkedAt).toISOString(),
     isDormant: isDormant(stockRow.entrydate, now),
@@ -153,9 +171,16 @@ export async function GET(request) {
   const rainPromise = fetchRainMmPerHour(coords);
 
   try {
-    const nearestResponse = await fetchNearest({ ...coords, radius: SEARCH_RADIUS_M });
-    const reachableBanks = nearestResponse.data.filter((bank) =>
-      Number.isFinite(Number(bank.dist)),
+    // The fixes are read alongside the nearest call, cached for an hour, and never
+    // fail the search. BANK_LOCATION_FIXES=off skips them.
+    const [nearestResponse, locationFixes] = await Promise.all([
+      fetchNearest({ ...coords, radius: SEARCH_RADIUS_M }),
+      locationFixesEnabled() ? loadLocationFixes() : Promise.resolve([]),
+    ]);
+    const { banks: reachableBanks } = applyLocationFixes(
+      nearestResponse.data.filter((bank) => Number.isFinite(Number(bank.dist))),
+      locationFixes,
+      { origin: coords, radiusM: SEARCH_RADIUS_M, stateChecker },
     );
     const misplacedBanks = reachableBanks.filter(
       (bank) => stateChecker.locationProblem(bank) !== null,
@@ -207,8 +232,11 @@ export async function GET(request) {
       density: banksWithinDensityRadius,
       rings,
       maxRadiusM,
-      // Banks within the widest ring that eRaktKosh places outside their own state.
+      // Banks within the widest ring that eRaktKosh places outside their own state,
+      // and have no corrected position.
       misplacedBanks: misplacedBanks.filter((bank) => bank.dist <= maxRadiusM).length,
+      // Banks within the widest ring placed from bank_location_fixes.
+      relocatedBanks: candidateBanks.filter((bank) => bank.locationSource === "fixed").length,
     };
 
     const inventoryOptions =
@@ -258,9 +286,19 @@ export async function GET(request) {
     }
 
     // Ranked mode: only the exact blood group counts.
-    const [inventoryResult, travel] = await Promise.all([
+    // Admins' events can be on any component, so this runs for every ranked search;
+    // the forecast's own scores exist only for red cells.
+    const forecastPromise = filters.componentId
+      ? fetchForecastStatus({
+          hospitalCodes: candidateBanks.map((bank) => String(bank.hospitalCode)),
+          componentId: filters.componentId,
+          bloodGroupId: filters.bloodGroupId,
+        })
+      : Promise.resolve(parseForecastStatus(null));
+    const [inventoryResult, travel, forecastStatus] = await Promise.all([
       loadInventory(candidateBanks, filters, inventoryOptions),
       loadTravel(),
+      forecastPromise,
     ]);
 
     const usableBanks = [];
@@ -279,11 +317,16 @@ export async function GET(request) {
         ],
         totalUnits: units,
       };
+      const hospitalCode = String(nearbyBank.hospitalCode);
+      const stockoutRisk = rankingRiskFor(forecastStatus, hospitalCode, rankingOptions.urgency);
       usableBanks.push(
         travel.withTravel({
           ...toBankResult(nearbyBank, inventoryEntry, stock, now),
           units,
           groupName: bloodGroupName,
+          forecast: forecastForBank(forecastStatus, hospitalCode, units),
+          event: eventForBank(forecastStatus, hospitalCode),
+          ...(stockoutRisk === null ? {} : { stockoutRisk }),
         }),
       );
     }
@@ -311,6 +354,16 @@ export async function GET(request) {
       results: rankedBanks.map((bank, index) => ({ ...bank, rank: index + 1 })),
       plan,
       travel: describeTravel(travel.conditions, rankedBanks, travel.isRoutingDegraded),
+      forecast:
+        forecastStatus.showBadge || forecastStatus.useInRanking
+          ? {
+              showBadge: forecastStatus.showBadge,
+              useInRanking: forecastStatus.useInRanking,
+              thresholdUnits: forecastStatus.thresholdUnits,
+              asOf: forecastStatus.asOf,
+              modelVersion: forecastStatus.modelVersion,
+            }
+          : null,
       ...freshnessFields(inventoryResult),
     });
   } catch (err) {

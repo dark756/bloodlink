@@ -11,7 +11,7 @@ bloodLink is a final-year B.Tech project. It is a Next.js web app on Supabase th
   - `docs/data_integrity.md` checks reviewer point 3 (data quality, freshness and failures) and records the faults found and fixed.
   - `docs/CODE_REFERENCE.md` describes every function and variable, file by file. Update it when you add, rename or remove one.
   - **`docs/plans.md` lists all planned work in order of priority:** each item's details, status, size and next step, and its plan file in `docs/PLANS/` where one exists. Begin a plan only when asked.
-    - `docs/PLANS/plan_bank_locations.md`: place the banks location search can't see (#33, #34).
+    - `docs/PLANS/plan_bank_locations.md`: place the banks location search can't see (#33, #34). In progress since 4 November: 140 corrected positions are in search, and 81 wait for review on `/admin/locations`; its "Progress" section lists what is left.
     - `docs/PLANS/plan_panels.md`: the admin, blood-bank, hospital and donor panels.
     - `docs/PLANS/plan_donor_network.md`: the peer-to-peer donor network.
     - `docs/PLANS/ML_system.md`: the ML system: the stock-out forecast in the app, suggesting active, eligible donors nearby, ranked by the donor network's score, and stock-out events an admin makes (drills for test accounts, and manual appeals a partner centre approves).
@@ -34,15 +34,15 @@ Edit only `bloodlink/`. Older copies of the app exist elsewhere in the workspace
 |---|---|
 | `bloodlink/` | **The active app.** Git repo, remote `github.com/dark756/bloodlink`. The default branch, `supabase-migration`, holds the Supabase app. `master` holds the last MongoDB version, which tag `mongodb-final` also marks. |
 | `supabase/migrations/` | Database schema, applied with `npm run db:migrate`. The only place schema changes go. |
-| `supabase/functions/` | Edge Functions: `collect-stock`, the cloud collector (#35). It imports `src/lib/` and `assets/` directly. |
-| `scripts/` | `migrate.mjs`, `make-admin.mjs` and `snapshot.mjs` run with Node against `SUPABASE_DB_URL`. `copy-project.mjs` copies every table into the new Mumbai project (#28); delete it once Tokyo is deleted. The cloud collector's scripts (#35): `check-cloud-collector.mjs` (its SQL, rolled back), and `check-forecast-schema.mjs` the forecast's tables the same way, `setup-cloud-collector.mjs` (secret, Vault, deploy, schedule), `upload-archive.mjs` and `sync-archive.mjs` (the archive bucket). `measure-search.mjs` times a running server. `benchmark-geo.mjs` compares spatial search methods, and `ranking-sensitivity.mjs` tests the weights. `build-traffic-profiles.mjs` and `build-state-boundaries.mjs` rebuild the traffic and state-outline assets. |
+| `supabase/functions/` | Edge Functions: `collect-stock`, the cloud collector (#35), and `score-stock`, the stock-out forecast's scoring and daily jobs (`docs/PLANS/ML_system.md`, A3 and A4). They import `src/lib/` and `assets/` directly. |
+| `scripts/` | `migrate.mjs`, `make-admin.mjs` and `snapshot.mjs` run with Node against `SUPABASE_DB_URL`. `copy-project.mjs` copies every table into the new Mumbai project (#28); delete it once Tokyo is deleted. The cloud collector's scripts (#35): `check-cloud-collector.mjs` (its SQL, rolled back), and `check-forecast-schema.mjs` the forecast's tables the same way, `setup-cloud-collector.mjs` (secret, Vault, deploy, schedule), `setup-forecast.mjs` (the forecast's secret, Vault, deploy, model publishing, schedule, flags) and `check-forecast-live.mjs` (a rolled-back dry run of the forecast's jobs on the live project), `upload-archive.mjs` and `sync-archive.mjs` (the archive bucket). `measure-search.mjs` times a running server. `benchmark-geo.mjs` compares spatial search methods, and `ranking-sensitivity.mjs` tests the weights. For the banks search can't place (#33, #34): `place-banks.mjs` finds positions (the control run, the target run, and `--apply` into `bank_location_fixes`), `location-coverage.mjs` measures what search can see before and after, and `check-location-schema.mjs` checks the fixes table's rights, rolled back. `build-traffic-profiles.mjs` and `build-state-boundaries.mjs` rebuild the traffic and state-outline assets. |
 | `tests/` | Vitest unit tests for the pure modules in `src/lib/` and the eRaktKosh client. `tests/fixtures/stockout_sklearn.json` holds scikit-learn's reference values, written by `ml/make_parity_fixtures.py`. |
-| `ml/` | The forecast's Python side (`docs/PLANS/ML_system.md`, A2), with pinned `requirements.txt`. So far only `make_parity_fixtures.py`; the dataset builder and training move here from `../rough_work/ML/` in phase 5.1. |
+| `ml/` | The forecast's Python side (`docs/PLANS/ML_system.md`, A2), with pinned `requirements.txt`. It holds: <ul><li>`dataset.py`, the dataset builder, the twin of `src/lib/stockoutFeatures.js`;</li><li>`train.py`, the walk forward, final fit and export of logistic regression, with `export.py`, `metrics.py` and `week_fixture.py`;</li><li>`make_parity_fixtures.py`, and the tests in `ml/tests/`;</li><li>`models/`, each exported artifact with its `.sha256`;</li><li>`MODEL_CARDS.md`, one card per version.</li></ul>The current artifact is `stockout-logit-t2-2026-11-04`: logistic regression, predicting 2 units or fewer, ready to publish live. The full harness for all seven models stays in `../rough_work/ML-comparison/`. |
 | `../redundant_bloodlink/bloodlink/` | April 2026 prototype: Next + TypeScript, Supabase, Expo, FastAPI. Abandoned. |
 | `../redundant_bloodlink/bloodlink-borade/` | A teammate's Sept 2026 Supabase fork with dashboard scaffolds, request flows and notification adapters. Reference only; much of it falls back to mock data. |
 | `../redundant_bloodlink/` top-level files | data.gov.in download scripts and dumps. `all_gov_data.json` holds about 2,800 blood banks. |
 | `../blood_data/` | Collected data, outside the repo. `eraktkosh/` holds the laptop's copy of the collector's archive: changed stock (`history/*.ndjson`), weekly directory copies, `sweeps.ndjson`, `collector.log` (the laptop collector) and `sync.log` (the weekly sync). `scripts/` holds the Python checks, the Task Scheduler wrappers and the saved task definitions; `measurements/` the measured results. Point 3.2 adds other datasets. |
-| `../rough_work/` | eRaktKosh endpoint notes and the density-aware ring-search spec at the bottom of `blood links.txt`. `ML/` holds the forecasting checks, with a `README.md` and the latest results in `SUMMARY.md`. `eta_benchmarks/` holds the ETA benchmark: its scripts, metrics, rubric and 46 tests, its data and runs in `data/`, and its documents, `README.md` (files, how to run it, code reference), `BENCHMARK.md` (the design and results) and `PLAN.md` (the steps left). Its `node_modules` is a junction to `bloodlink/node_modules`. It imports the app's `src/lib/trafficModel.js`, so it tests the code the app runs. |
+| `../rough_work/` | eRaktKosh endpoint notes and the density-aware ring-search spec at the bottom of `blood links.txt`. `ML-comparison/` holds the forecasting checks, with a `README.md` and the latest results in `SUMMARY.md`. `eta_benchmarks/` holds the ETA benchmark: its scripts, metrics, rubric and 46 tests, its data and runs in `data/`, and its `README.md` (files, how to run it, code reference). Its design, results and remaining steps are in `docs/SUMMARIES/eta_benchmark.md`. Its `node_modules` is a junction to `bloodlink/node_modules`. It imports the app's `src/lib/trafficModel.js`, so it tests the code the app runs. |
 | `../documentation/` | Sem 6 ESE report and slides, Sem 7 progress report 1 and slides, and the reviewer's feedback file `suggested changes after sem 7 report 1.txt`. |
 | `../Research Papers/` | Literature-survey PDFs. |
 
@@ -59,7 +59,7 @@ npm start                            # serve the build
 npm run lint                         # ESLint 9; passes with zero errors and warnings
 npm run format                       # Prettier 3: rewrite files in the house style
 npm run format:check                 # Prettier: list files that need formatting
-npm test                             # Vitest; 200 tests in tests/ (the ETA bench's 46: npx vitest run in ../rough_work/eta_benchmarks/)
+npm test                             # Vitest; 248 tests in tests/ (the ETA bench's 46: npx vitest run in ../rough_work/eta_benchmarks/)
 npm run db:migrate                   # apply pending supabase/migrations/*.sql
 node scripts/migrate.mjs --status    # list applied and pending migrations
 npm run db:make-admin -- a@b.com     # make an existing account the first admin
@@ -67,7 +67,12 @@ npm run snapshot -- --all --archive ../blood_data/eraktkosh   # a sweep from the
 npm run snapshot -- --directory --prune                       # the directory and the prune, from the laptop
 node scripts/check-cloud-collector.mjs   # check the cloud collector's SQL in a rolled-back transaction
 node scripts/check-forecast-schema.mjs   # check the forecast's tables, role and flags the same way
+node scripts/check-forecast-live.mjs     # dry-run the forecast's jobs and search read on the live project, rolled back
+node scripts/check-admin-events.mjs      # check admins' stock-out events and forecast_marks() the same way
+node scripts/setup-forecast.mjs [--deploy-only | --publish <artifact> [--live] | --schedule | --unschedule | --run score|daily | --flags on|off]   # the forecast in the cloud
 python -I ml/make_parity_fixtures.py     # rewrite scikit-learn's reference values (pip install -r ml/requirements.txt)
+python -I ml/train.py ../blood_data/eraktkosh --until <ISO time> [--threshold 2]   # backtest, fit and export the model, and write the parity fixture (~1 min)
+python -I -m pytest ml/tests             # the Python side's 16 tests
 node scripts/setup-cloud-collector.mjs [--deploy-only | --schedule | --unschedule]   # cloud collector setup
 npm run archive:upload [-- --check | --from-db YYYY-MM-DD]   # laptop archive into the bucket; compare per day
 npm run archive:sync                 # download the cloud archive into ../blood_data/eraktkosh/
@@ -81,6 +86,11 @@ node ../rough_work/eta_benchmarks/eta-bench.mjs <trips.ndjson> --sets ../blood_d
 node ../rough_work/eta_benchmarks/eta-bench.mjs --ops   # OSRM latency and reliability, 200 uncached calls
 node scripts/build-traffic-profiles.mjs  # rebuild assets/traffic_profiles.json from TomTom (yearly)
 node scripts/build-state-boundaries.mjs  # rebuild assets/state_boundaries.json from geoBoundaries (if boundaries change)
+node scripts/place-banks.mjs --control   # each placement step on 200 banks of known position (~10 min of Nominatim; cached)
+node scripts/place-banks.mjs --targets   # the ladder on every bank search can't place, into ../blood_data/geocoding/ (~40 min; cached)
+node scripts/place-banks.mjs --apply ../blood_data/geocoding/targets_<date>.json   # load them into bank_location_fixes
+node scripts/location-coverage.mjs [--snapshot <file> --placements <targets file>]   # what location search can see, before and after
+node scripts/check-location-schema.mjs   # check bank_location_fixes' rights and review function, rolled back
 ```
 
 ## Environment
@@ -98,6 +108,7 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.examp
 | `NEXT_PUBLIC_CONTACT_EMAIL` | `src/lib/privacy.js` | The address `/privacy` gives for privacy questions and requests. Unset, the page points to the GitHub repository instead. Inlined at build time. |
 | `ERAKTKOSH_SIMULATE`, `ERAKTKOSH_SIMULATE_STATES` | `src/lib/eraktkosh.js` | Failure drill: `down`, `slow` or `flaky`, and state codes that always fail. Only outside production, or with `ERAKTKOSH_SIMULATE_ALLOW_PRODUCTION=1` on a local build. Never set on a deployed server. |
 | `GOOGLE_ROUTES_API_KEY` | `../rough_work/eta_benchmarks/eta-google.mjs` only | A Google Cloud key restricted to the Routes API, for the ETA bench's reference. The project needs billing enabled; the script stays within the free cap (5,000 elements a month, 35,000 when billed in India). Never use it in app code: Google's terms bar its results on the app's map. |
+| `BANK_LOCATION_FIXES` | `src/lib/bankLocations.js` | `off` stops location search merging corrected bank positions from `bank_location_fixes`: for the paired before-and-after measurement, and as a one-line rollback. Unset, the merge is on. Server-only, read at runtime. |
 | `OSRM_URL` | `src/lib/routing.js` | Optional OSRM server ending in `/`. Defaults to the public demo server (one request a second, no heavy use). Server-only, read at runtime. |
 | `TRUSTED_PROXY_HOPS` | `src/lib/rateLimit.js` | How many trusted proxies in front of the app add to `X-Forwarded-For`; the client's IP is that many entries from the right. Defaults to 1 on Vercel (`VERCEL` is set) and 0 elsewhere. At 0 the header is ignored and all callers share one rate limit, because on a bare `next start` the client writes it. Set it to 1 for `npm run measure` and the sensitivity capture, which simulate many users. |
 
@@ -121,11 +132,11 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.examp
 | `/login` | `src/app/login/page.js`, `LoginForm.js` | signed out | Google or email/password sign-in and sign-up. |
 | `/auth/callback` | `src/app/auth/callback/route.js` | anyone | Completes Google sign-in and email confirmation links. |
 | `/set-details` | `src/app/set-details/page.js` | signed in | Profile form: personal and blood details, plus donor screening for donors. Prefills when editing. Saving needs agreement to the current privacy note. |
-| `/peer-to-peer` | `src/app/peer-to-peer/page.js` | complete profile | Profile, role badge and live donor eligibility. |
+| `/peer-to-peer` | `src/app/peer-to-peer/page.js` | complete profile | Profile, role badge and live donor eligibility; for an eligible donor, the banks nearby where their group may run low (`DonateNearby.js`). |
 | `/organization` | `src/app/organization/page.js` | signed in | Apply to register a hospital or blood bank; see review status and notes. |
 | `/account` | `src/app/account/page.js`, `DeleteAccountCard.js` | signed in | Whether you agreed to the current privacy note, and deleting your account. Reached from your name in the header. |
 | `/privacy` | `src/app/privacy/page.js` | anyone | The privacy note: what is stored and why, which outside services receive what, how long, and your rights. Linked from the footer. |
-| `/admin`, `/admin/organizations`, `/admin/users`, `/admin/audit` | `src/app/admin/` | admin | Overview and review queue, all applications, user roles, audit log. |
+| `/admin`, `/admin/organizations`, `/admin/users`, `/admin/events`, `/admin/locations`, `/admin/audit` | `src/app/admin/` | admin | Overview (with the forecast's card and flags) and review queue, all applications, user roles, stock-out events, bank locations (positions found for banks search can't place: accept, move the pin, reject or "can't place"), audit log. |
 | `GET /api/search` | `src/app/api/search/route.js` | anyone | Region search. Validated, cached eRaktKosh proxy. `X-Data-Source`, `X-Data-Fetched-At` and `X-Data-Upstream` headers say how fresh it is. |
 | `GET /api/blood-search` | `src/app/api/blood-search/route.js` | anyone | Location search: nearest mode or ranked mode. |
 | `GET /api/nearest` | `src/app/api/nearest/route.js` | anyone | Validated eRaktKosh `nearest` proxy. Unused by pages. |
@@ -135,6 +146,11 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.examp
 | `GET`/`POST /api/organization` | `src/app/api/organization/route.js` | signed in | Your applications; submit a new one. |
 | `POST /api/admin/organizations/review` | `src/app/api/admin/organizations/review/route.js` | admin | Approve, reject or suspend. |
 | `POST /api/admin/users/role` | `src/app/api/admin/users/role/route.js` | admin | Grant or remove the admin role. |
+| `POST /api/admin/flags` | `src/app/api/admin/flags/route.js` | admin | Turn the forecast's flags or `admin_events` on or off, through `set_feature_flag()`. |
+| `POST /api/admin/locations/review` | `src/app/api/admin/locations/review/route.js` | admin | A decision on a bank's position through `review_bank_location()`. A moved pin must lie in the bank's own state. |
+| `POST /api/admin/events` | `src/app/api/admin/events/route.js` | admin | Create a stock-out event for 24, 48 or 72 hours, or end one, through `create_admin_event()` and `end_admin_event()`. |
+| `GET /api/suggestions` | `src/app/api/suggestions/route.js` | signed in | For a complete donor profile eligible today: banks within 15 km of `lat`/`lng`, or in the profile's district, where their group may run low (an admin's event, or the forecast behind `forecast_appeals`). |
+| `GET /api/forecast-marks` | `src/app/api/forecast-marks/route.js` | public | The forecast's marks and admins' events for up to 500 bank codes, one component and group, for region search. |
 
 `src/proxy.js` runs before every page request. It refreshes the Supabase session cookie with `getClaims()` and sends signed-out users from protected pages to `/login?next=`, and signed-in users from `/login` to the page `next` names (checked by `safeNextPath`). It also sends incomplete profiles from `/peer-to-peer` to `/set-details` and non-admins away from `/admin`. Admin pages check the role again in `src/app/admin/layout.js`, and the database checks it a third time.
 
@@ -149,7 +165,9 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.examp
 | `stock.js` | Parses `available_WithQty` with canonical group names, units per component (matched by name only), `exactGroupUnits`, `keepOnlyComponent`, `isDormant` (30 days), phone extraction, "updated N ago", `cleanText`, and `districtFromAddress` (the district an eRaktKosh address ends with). No imports, so scripts can use it. |
 | `stockQuality.js` | Pure validator for eRaktKosh rows: unit range, group names, future dates, duplicates. Returns `{ rows, report }`. Used by the app and the collector. |
 | `collector.js` | The eRaktKosh collector, shared by `scripts/snapshot.mjs` and the `collect-stock` Edge Function: fetch a state, validate, upload changed rows, refresh fetch times, add history, log the call, and record the run in `collector_runs`. The caller passes in the database session, `fetch` and the archive. Also the four cloud batches, the function's secret and request checks, and the admin overview's overdue rule. |
-| `stockStore.js` | Server-only reads of the saved copy (`bank_stock_latest`, `blood_banks`) with the publishable key, in eRaktKosh's own shapes. Each state's rows are downloaded once per 10 minutes and cut to the district and component in memory, as a live filtered answer is. A bank without a directory row gets its district from its address. The saved directory keeps misplaced banks, as eRaktKosh's answer does, so the route counts them in both cases. |
+| `stockStore.js` | Server-only reads of the saved copy (`bank_stock_latest`, `blood_banks`) with the publishable key, in eRaktKosh's own shapes. Each state's rows are downloaded once per 10 minutes and cut to the district and component in memory, as a live filtered answer is. A bank without a directory row gets its district from its address. The saved directory keeps misplaced banks, as eRaktKosh's answer does, so the route counts them in both cases. `loadLocationFixes` reads the accepted `bank_location_fixes`, cached for an hour; it never throws, and before the migration it finds none. |
+| `bankLocations.js` | Corrected bank positions (#33, #34): `applyLocationFixes` merges accepted fixes into a `nearest` answer, moving banks eRaktKosh misplaces and adding those it leaves out within the radius. A fix a person confirmed always wins; a machine fix only while eRaktKosh's own point is unusable. Also `toLocationFix`, `locationFixesEnabled` (`BANK_LOCATION_FIXES`), `locationVisibility` and the page labels. Pure. |
+| `bankPlacement.js` | Pure helpers for `scripts/place-banks.mjs`: search names, distinctive words (report 3's generic-word list), PIN codes, address parts, Nominatim result tests, centroid traps, and the accuracy statistics and acceptance rule (90% within 2 km, at most 2% more than 10 km off). |
 | `geo.js` | `haversineMeters`, `isInIndia`, and `roundPinCoordinate`, which rounds a user's pin to 3 decimals (about 110 m). |
 | `geocoding.js` | Server-only Nominatim client: the place name for a rounded pin, one request a second, cached for a week. |
 | `privacy.js` | `PRIVACY_VERSION`, the privacy note's date that people agree to; `CONTACT_EMAIL`; `hasAgreedToPrivacy`. |
@@ -166,14 +184,18 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.examp
 | `format.js` | Display helpers: `formatDate`, `formatDateTime`, `hoursSince`, `formatTimeAgo`, `capitalize`, `getInitials`. |
 | `profileStore.js` | Maps the page's `details` object to and from the `profiles` and `donor_screening` rows. |
 | `rateLimit.js` | Per-IP in-memory rate limits for the search routes. The IP comes from `X-Forwarded-For` only behind trusted proxies (`TRUSTED_PROXY_HOPS`); otherwise all callers share one limit. |
-| `stockoutFeatures.js` | The forecast's 19 inputs and its labels (`docs/PLANS/ML_system.md`, A2 and A4), from `stock_history` rebuilt at the banks' own update times on the 6-hourly India-time grid. Pure; the Python dataset builder must match it. |
+| `stockoutFeatures.js` | The forecast's 19 inputs and its labels (`docs/PLANS/ML_system.md`, A2 and A4), from `stock_history` rebuilt at the banks' own update times on the 6-hourly India-time grid. Pure. The low-stock threshold (the model's `thresholdUnits`) decides which cases are scored and what the label is. `ml/dataset.py` builds the same inputs in Python, and `tests/stockout-parity.test.js` checks the two on a real week. Change both together. |
+| `forecastJobs.js` | The forecast's two scheduled jobs, run by the `score-stock` Edge Function as `bloodlink_ml`: scoring each grid time with the live model and the latest calibration, and the daily labels, Platt scaling, cut-off, metrics, kill switch and prune. The database is passed in, as for `collector.js`. |
+| `forecastMarks.js` | What search and the suggestions do with the forecast and admins' events: the "may run low within 48 h" mark, "low now" at the threshold or below, the ranking risk (P24, or P48 for a routine request), the "flagged by bloodLink's team" mark, and the suggestions to eligible donors within 15 km. Pure. |
+| `forecastStore.js` | Reads `forecast_marks()` with the publishable key for a search. It never throws, and gives up after 1.5 s, so the forecast never holds a search up. |
 | `stockoutModel.js` | Applies the exported JSON artifact (a dot product, then Platt scaling), with plain-language reasons; fits Platt scaling, sets the alert cut-off at 1 false alert per bank per week, computes the daily metrics, and decides the kill switch and the shadow exit. Platt and PR-AUC match scikit-learn (the fixture). Pure. |
 
 ### Location search and ranking
 
 `GET /api/blood-search` takes `lat` and `lng`, rounded to 3 decimals by the page and again by `parseCoordinates`, optional `componentId` and `bloodGroupId`, and in ranked mode `units` (1 to 50) and `urgency` (`critical`, `urgent` or `routine`). The old `compatible` parameter is ignored.
-1. One eRaktKosh `nearest` call with a 150 km radius returns the nearby banks. At the same time, Open-Meteo is asked for rain at the pin.
-   - Banks whose point lies outside their own state (or India) are left out, because their distance is meaningless (`stateBounds.js`). The response's `misplacedBanks` says how many within the widest ring, from live or saved data alike, and the page says so. Region search still lists them.
+1. One eRaktKosh `nearest` call with a 150 km radius returns the nearby banks. At the same time, Open-Meteo is asked for rain at the pin, and the accepted `bank_location_fixes` are read (cached for an hour).
+   - The fixes are merged first (`bankLocations.js`): a bank eRaktKosh misplaces takes its fix's position, and a fixed bank it leaves out is added when within the radius. They carry `locationSource: "fixed"` and `locationPrecisionM`, the response's `relocatedBanks` counts them within the widest ring, and the page notes it on each. `BANK_LOCATION_FIXES=off` skips this.
+   - Banks whose point still lies outside their own state (or India) are left out, because their distance is meaningless (`stateBounds.js`). The response's `misplacedBanks` says how many within the widest ring, from live or saved data alike, and the page says so. Region search still lists them.
 2. More than 10 banks within 15 km means an urban area, with rings of 5, 10, 15 and 25 km. Otherwise the area is rural, with rings of 20, 50, 100 and 150 km.
 3. Stock is fetched once per state involved, in parallel, and joined on `String(hospitalCode)`. Alongside it, one OSRM table call routes every candidate bank.
 4. **Nearest mode**, when the component or the group is missing, returns the smallest ring with an active (not dormant) bank holding matching stock, or, if every such bank is dormant, the smallest ring with any. Results are sorted by straight-line distance, and each bank has a road ETA.
@@ -278,7 +300,7 @@ How the saved copy is collected, in Supabase since 2026-11-03 (#35; the design, 
 
 ### Data model and security
 
-Schema is in nine migrations in `supabase/migrations/`. The first eight are applied to the live project; the ninth is not yet:
+Schema is in twelve migrations in `supabase/migrations/`, all applied to the live project:
 - `20261023000100_init.sql`: people and organizations;
 - `20261023000200_stock_store.sql`: saved eRaktKosh data;
 - `20261023000300_blood_bank_locations.sql`: PostGIS;
@@ -287,7 +309,10 @@ Schema is in nine migrations in `supabase/migrations/`. The first eight are appl
 - `20261026000200_review_and_india_dates.sql`: India's date in the "no future dates" triggers (#46), and the admin case in `review_organization()` (#42);
 - `20261026000300_privacy_consent_and_account_deletion.sql`: agreement to the privacy note on `profiles`, and `delete_my_account()` (#18);
 - `20261103000100_cloud_collector.sql`: `pg_cron` and `pg_net`, `collector_sweeps` and `collector_runs`, the private `stock-archive` bucket, the tick and scheduling functions, and a prune that deletes a day of history only once the archive holds it (#35). It schedules nothing.
-- `20261104000100_stockout_forecast.sql`: the forecast's phase 0 (`docs/PLANS/ML_system.md`): `blood_banks.auto_refresh`, the auto-refresh call in `upstream_calls`, `feature_flags` (all off), `model_versions`, `stock_forecasts`, `forecast_outcomes`, `forecast_runs`, `forecast_daily_metrics`, the private `ml-models` bucket, the `bloodlink_ml` role, `set_feature_flag()`, `stop_forecast_flags()` and `prune_forecasts()`. **Not applied yet:** run `node scripts/check-forecast-schema.mjs`, then `npm run db:migrate`, then `node scripts/setup-cloud-collector.mjs --deploy-only`, in that order, since the redeployed collector writes `auto_refresh`.
+- `20261104000100_stockout_forecast.sql`: the forecast's phase 0 (`docs/PLANS/ML_system.md`): `blood_banks.auto_refresh`, the auto-refresh call in `upstream_calls`, `feature_flags` (all off), `model_versions`, `stock_forecasts`, `forecast_outcomes`, `forecast_runs`, `forecast_daily_metrics`, the private `ml-models` bucket, the `bloodlink_ml` role, `set_feature_flag()`, `stop_forecast_flags()` and `prune_forecasts()`. Applied on 2026-11-04.
+- `20261104000200_forecast_live.sql`: the forecast goes live: `forecast_post()` (posts a job to `score-stock` with its URL and secret from Vault), `schedule_stock_forecast()` and `unschedule_stock_forecast()` (two cron jobs: `forecast-score` at :35 past 00, 06, 12 and 18 UTC, and `forecast-daily` at 21:45 UTC), and `forecast_marks()`, search's read. Applied on 2026-11-04, with the going-live steps run: `score-stock` deployed, `stockout-logit-t2-2026-11-04` live, both cron jobs scheduled, and `forecast_badge` and `forecast_ranking` on.
+- `20261105000100_bank_location_fixes.sql`: corrected positions for the banks location search can't place (#33, #34; `docs/PLANS/plan_bank_locations.md`): `bank_location_fixes`, the `bank_location_queue` view and `review_bank_location()` (admins, audited). Applied on 2026-11-04, after `node scripts/check-location-schema.mjs` passed all 22 checks, and loaded with `node scripts/place-banks.mjs --apply`.
+- `20261105000200_admin_events.sql`: admins' stock-out events (`docs/PLANS/ML_system.md`, Part C): `admin_stock_events`, `create_admin_event()` and `end_admin_event()` (admins, audited), and `forecast_marks()` extended to return active events (behind `admin_events`) and the forecast's scores for the suggestions (behind `forecast_appeals`). Applied on 2026-11-04. Both flags are still off: turn on `forecast_appeals` on the admin overview and `admin_events` on `/admin/events`.
 
 | Table | Contents | Who can read | Who can write |
 |---|---|---|---|
@@ -305,16 +330,19 @@ Schema is in nine migrations in `supabase/migrations/`. The first eight are appl
 | `model_versions` | Each exported model: kind, artifact path and SHA-256 in `ml-models`, training dates, evaluation, `shadow`, `live` (one at a time) or `retired` | Admins | The owner only, from the laptop |
 | `stock_forecasts` | Raw and calibrated P(stock-out) at 24, 48 and 72 h per bank, component, group, grid time and model, with the top three reasons | Admins | `bloodlink_ml` only |
 | `forecast_outcomes`, `forecast_runs`, `forecast_daily_metrics` | What happened (by the label rules, with `had_appeal`), each scoring or daily job, and each day's calibration, cut-off and metrics per horizon | Admins | `bloodlink_ml` only |
+| `bank_location_fixes` | A corrected position per bank that eRaktKosh can't place: the reason, the method (`datagov`, `nominatim_name`, `nominatim_address`, `pincode`, `manual`, `bank_confirmed`), its measured `precision_m`, the evidence, and `status` (`proposed`, `accepted`, `rejected` or `superseded`), with a PostGIS point. The `bank_location_queue` view joins it to the stock and directory for `/admin/locations` | Anyone: accepted rows; admins: all, and the queue | `bloodlink_ingest`: machine fixes only, never one a person confirmed; `review_bank_location()` (admins, audited) |
+| `admin_stock_events` | A bank's component and group marked at risk by an admin for 24, 48 or 72 hours, with the reason; active until it ends or an admin ends it | Admins; anyone sees an active one's mark through `forecast_marks()` | `create_admin_event()` and `end_admin_event()` (admins, audited) |
 
 - **Row-level security** is on for every table. Grants are explicit and column-level, so the dashboard's "expose new tables" setting doesn't matter.
 - **Constraints:** CHECK constraints and triggers enforce the same value rules as `src/lib/profile.js` and `src/lib/organization.js`, plus "no future dates", judged by India's date.
-- **Admin functions:** `is_admin()`, `review_organization()` and `set_user_role()` are `security definer` with an empty `search_path`. They raise SQLSTATE 42501, 22023 or P0002, which `src/app/api/admin/rpcError.js` maps to HTTP status codes.
+- **Admin functions:** `is_admin()`, `review_organization()`, `set_user_role()` and `review_bank_location()` are `security definer` with an empty `search_path`. They raise SQLSTATE 42501, 22023 or P0002, which `src/app/api/admin/rpcError.js` maps to HTTP status codes.
 - **Account deletion:** `delete_my_account()` is `security definer` too, and deletes only the caller's own auth user. Every foreign key to `profiles` must cascade or set null, so a deletion is never blocked.
-- **No service-role or secret key** exists in the app. Everything runs as the signed-in user, or with the publishable key for the public stock tables. A secret key is used only for the private `stock-archive` bucket: by the `collect-stock` Edge Function, from the environment Supabase gives it, and by the two archive scripts.
+- **No service-role or secret key** exists in the app. Everything runs as the signed-in user, or with the publishable key for the public stock tables. A secret key is used only for the private buckets: `stock-archive`, by the `collect-stock` Edge Function, from the environment Supabase gives it, and by the two archive scripts; and `ml-models`, by `score-stock` to read the live artifact and by `setup-forecast.mjs --publish`.
 - **`bloodlink_ingest`** is a no-login role. The collector connects with `SUPABASE_DB_URL` and runs `set role bloodlink_ingest`, so its session can touch only the stock tables. `prune_stock_store()` is executable only by it, and runs with its rights.
   - On `upstream_calls` it may insert and delete, and read only `called_at`, which the prune's `DELETE … WHERE` needs.
+  - On `bank_location_fixes` it may read, insert and update, but row-level security limits it to machine fixes no person has reviewed: it can't make, change or supersede a `manual`, `bank_confirmed` or reviewed fix.
   - Postgres requires SELECT on every column an `UPDATE` or `DELETE` reads in its `WHERE`, so a new job role needs those grants too.
-- **`bloodlink_ml`** is the forecast's no-login role, for the `score-stock` job (phase 2, not built). It reads the stock store and `collector_runs`, writes only the forecast tables, and may run `stop_forecast_flags()` and `prune_forecasts()`. It can't change a flag, or register a model, any other way.
+- **`bloodlink_ml`** is the forecast's no-login role, for the `score-stock` jobs. It reads the stock store and `collector_runs`, writes only the forecast tables, and may run `stop_forecast_flags()` and `prune_forecasts()`. It can't change a flag, or register a model, any other way.
 
 ## eRaktKosh API reference
 
@@ -399,7 +427,11 @@ Blood-group codes: A+ 11, A- 12, B+ 13, B- 14, O+ 15, O- 16, AB+ 17, AB- 18, Bom
   - Add `TRUSTED_PROXY_HOPS=1` when a script sends many searches.
   - `docs/SUMMARIES/data_quality.md` (point 3.1, Results) and `docs/data_integrity.md` have the reference results.
 - **Collector:** `npm run snapshot -- --prune --log ../blood_data/eraktkosh/collector.log` must log a `pruned:` line, and `npm run snapshot -- --states 999` must stop with "Unknown state code" before any call. Neither calls eRaktKosh. The cloud runs the deployed copy of `collector.js`: after changing it or the function, run `node scripts/setup-cloud-collector.mjs --deploy-only`, then check the next sweep's four `collector_runs` rows. A laptop prune counts toward the repeat guard, so don't run one in the 50 minutes before the Monday 03:20 job.
-- **Forecast schema:** `node scripts/check-forecast-schema.mjs` must pass all its checks (it rolls everything back). On 2026-11-04 all 25 passed on a local Postgres 16 with the earlier migrations and stand-ins for `auth` and `storage`; it hasn't run on the live project yet.
+- **Forecast model:** after changing `ml/dataset.py`, `stockoutFeatures.js` or `stockoutModel.js`, run `python -I -m pytest ml/tests` and `npm test`. The parity test must pass. After retraining, commit the new artifact, its `.sha256`, the new `tests/fixtures/stockout_week.json` and a card in `ml/MODEL_CARDS.md` together.
+- **Forecast schema:** `node scripts/check-forecast-schema.mjs` must pass all its checks (it rolls everything back). On 2026-11-04 all 25 passed on the live project.
+- **Bank locations:** `node scripts/check-location-schema.mjs` must pass all its checks (it rolls everything back); on 2026-11-04 all 22 passed, with the migration applied inside the transaction. Once fixes are loaded, a location search near a newly placed bank must list it with `locationSource: "fixed"` and `relocatedBanks` above 0, and the same search on a server started with `BANK_LOCATION_FIXES=off` must not.
+- **Admins' events:** `node scripts/check-admin-events.mjs` must pass all its checks (it rolls everything back). On 2026-11-04 all 20 passed on the live project, with the migration applied inside the transaction.
+- **Forecast jobs:** `node scripts/check-forecast-live.mjs` must pass all its checks (it rolls everything back), and `npx deno@2.5.6 check --no-lock --node-modules-dir=none supabase/functions/score-stock/index.ts` must report no errors. On 2026-11-04 all 16 checks passed on the live project, with both forecast migrations applied inside the transaction. After changing `forecastJobs.js` or the function, run `node scripts/setup-forecast.mjs --deploy-only`, then check the next row in `forecast_runs`.
 - **Cloud collector:** `node scripts/check-cloud-collector.mjs` must pass all its checks (it rolls everything back), and `npx deno@2.5.6 check --no-lock --node-modules-dir=none supabase/functions/collect-stock/index.ts` must report no errors.
 - **Performance:** `npm run measure` against a fresh server started with `TRUSTED_PROXY_HOPS=1`; compare with the table in `docs/SUMMARIES/performance_testing.md`.
 - **Schema changes:** run a new migration and its checks inside one transaction that is rolled back before applying it. On 2026-10-26, `delete_my_account()` and the consent trigger were checked that way with a throwaway user.
@@ -450,19 +482,24 @@ None open.
 ### P2 · soon
 
 **#20 · Medium · No CI and no committed end-to-end tests.**
-- 200 unit tests run with `npm test`; the ETA bench's 46 run with `npx vitest run` in `../rough_work/eta_benchmarks/`. Response times and the failure drill are measured by hand; see `docs/SUMMARIES/performance_testing.md` and `docs/data_integrity.md`.
+- 248 unit tests run with `npm test`, and the Python side's 16 with `python -I -m pytest ml/tests`; the ETA bench's 46 run with `npx vitest run` in `../rough_work/eta_benchmarks/`. Response times and the failure drill are measured by hand; see `docs/SUMMARIES/performance_testing.md` and `docs/data_integrity.md`.
 - Add a GitHub Actions job for lint, test and build.
 - Add an end-to-end suite that runs against a local or staging Supabase project, never production.
 
-**#33 · Medium · 679 stocked banks have no coordinates.**
-- eRaktKosh's `nearest` omits them, so location search can't see 14% of stocked banks (432 blood banks and 247 storage units).
+**#33 · Medium · 699 stocked banks have no coordinates.**
+- eRaktKosh's `nearest` omits them (699 of 4,756 stocked banks on 2026-11-04). Location search sees those with an accepted fix; 597 are still hidden from it.
 - Region search still lists them.
-- 15 can be placed confidently from data.gov.in (`../blood_data/crosswalk/coordinates_for_unlocated_banks.csv`). For the rest, try eRaktKosh's `bloodbanks?stateCode=` call or geocode addresses with Nominatim, then add them to `blood_banks`.
+- **In progress** (`docs/PLANS/plan_bank_locations.md`, "Progress"):
+  - Built: the fixes table (migration not applied), the search merge, `/admin/locations`, and `scripts/place-banks.mjs`.
+  - `bloodbanks?stateCode=` was tried and carries no positions.
+  - In the control run, the name match was accurate when right (median 40 m) but had 2 false matches in 53; addresses and PIN codes were accurate only to a few km.
+  - 140 positions are accepted and in search: 15 from data.gov.in, 115 by name and 10 by address, all hospital buildings. Location search sees 4,004 of 4,756 stocked banks.
+  - Left: 81 positions waiting for review on `/admin/locations` (60 PIN code centres, 19 address results, 2 name matches), and 671 banks for which no position was found.
 
 **#34 · Medium · eRaktKosh coordinates are unreliable for 726 banks.**
 - On 2026-10-24, 206 banks sat outside their own state, 2 outside India, and 518 on points shared with other banks, probably district defaults. All are flagged in `blood_banks.location_quality`.
 - Location search leaves out `wrong_state` and `outside_india` banks, so, like #33, it can't find them until they are re-placed; region search still lists them. Distances to `shared` banks may be off by a few km.
-- Re-place them the way #33 suggests (data.gov.in, then geocoding addresses), then clear the flag. The 30 banks within 5 km of their own state are kept as border cases.
+- The wrong-state and outside-India banks with stock (193 on 2026-11-04) go through the same work as #33: a fix in `bank_location_fixes` replaces their point in location search, and `blood_banks` keeps eRaktKosh's flag. The 30 banks within 5 km of their own state are kept as border cases.
 - 6 pairs of eRaktKosh codes look like one bank listed twice (`../blood_data/crosswalk/eraktkosh_possible_duplicates.csv`), for example "Vardaan Charitable Blood Centre" and "VARDAAN BLOOD CENTRE".
 
 ### P3 · later
@@ -483,19 +520,18 @@ None open.
 1. **Push `supabase-migration`,** when asked. Everything since 2026-10-26 (the privacy and consent work, the move to Mumbai and the cloud collector) was committed on 2026-11-03 but not pushed, and the deployed `collect-stock` function runs code GitHub doesn't have yet.
 2. **Finish moving collection off the laptop** (#35): the 24-hour watch, then deleting the laptop tasks. Collection has run in Supabase since 2026-11-03.
 3. **Finish the move to Mumbai** (#28): one Google sign-in, then retiring Tokyo.
-4. **Stock-out forecasting** (reviewer point 5). The subplan, the seven models and the decision rule are in `docs/SUMMARIES/ml_models.md`; the scripts are in `../rough_work/ML/`, outside git.
-   - **Interim choice: logistic regression, with the GBM classifier as the challenger** (the walk-forward dry run of 2026-11-04, all seven models, 10.8 days of history).
-     - The GBM classifier ranks best (PR-AUC 0.269 at 48 h, against 0.255), but its 1.4-point lead is inside the decision rule's 2-point margin, so the rule picks the simpler model.
-     - With recall at 1 false alert per bank per week as the first test, logistic regression leads (15.8% against 15.3%), and its cut-off, set a day ahead, held at 0.98 false alerts.
-     - The GBM classifier stays in the December backtest: its lead is 2.0 points with the chosen inputs, so the rule as written could still pick it.
-     - ETS, SARIMA and TSB fall below the best baseline (0.183). Recalibrate logistic regression before its probabilities feed ranking: it predicts 25% more stock-outs than happen.
-     - The reasons are in `docs/SUMMARIES/ml_models.md`, and the tables, input tests and sources in `../rough_work/ML/SUMMARY.md`. It decides nothing; the December backtest does.
-   - Two suggestions wait for approval (`docs/plans.md`, item 4): the alert budget in the decision rule, before the December test weeks are collected, and per-group lift. Camps were checked and left out.
+4. **Stock-out forecasting** (reviewer point 5). The subplan, the seven models and the decision rule are in `docs/SUMMARIES/ml_models.md`; the scripts are in `../rough_work/ML-comparison/`, outside git.
+   - **Logistic regression, adopted on 2026-11-04.** Every check so far picked it: in the walk-forward dry run of all seven models, the GBM classifier ranked best (PR-AUC 0.269 at 48 h against 0.255), but inside the decision rule's 2-point margin. Another model can replace it later through `model_versions`, if an independent comparison on more history shows it does better. The reasons are in `docs/SUMMARIES/ml_models.md`, and the tables in `../rough_work/ML-comparison/SUMMARY.md`.
+   - **It predicts low stock:** a group falling to 2 units or fewer within 24, 48 or 72 hours, chosen on 2026-11-04 over stock-outs and other thresholds (`docs/PLANS/ML_system.md`, A1 and S13). Each group's lift is reported, collection gaps aren't censored in the labels (S14), and camps were checked and left out.
    - Run `npm run archive:sync` before any model run, since `../blood_data/eraktkosh/` can be a week behind the cloud. Then `python -I blood_data/scripts/validate_history.py blood_data` from the workspace root (the folder above `bloodlink/`).
-   - Next is phase 5.1 in November: the labels and the 19 core inputs the dry run chose. `src/lib/stockoutFeatures.js` already builds them in JS, with each open choice written down; the Python builder in `ml/` must match it, or the JS changes to match `walk_forward_check.py`, before the parity test can pass. ETS and SARIMA run on 6-hour values now, and switch to daily values with a weekly season once two weeks exist. Around late December 2026, at about 8 weeks of history, run the walk-forward backtest once and apply the decision rule as written.
+   - Phase 5.1's dataset builder is `ml/dataset.py`, the twin of `src/lib/stockoutFeatures.js`, with the parity test passing on a real week. `ml/train.py` trained the live model on it, `stockout-logit-t2-2026-11-04` (`ml/MODEL_CARDS.md`):
+     - at 48 h: PR-AUC 0.348, against 0.232 for the best baseline;
+     - 22.6% of falls to 2 units caught at 1 false alert per bank per week;
+     - 0.96 false alerts with the cut-off carried 3 days, as the app sets it.
+   - **The forecast is live in the closed beta** (`docs/PLANS/ML_system.md`, "Part A in the beta"): `score-stock`, the daily job, the mark in ranked and region search, the ranking factor, and the admin overview's card, with shadow mode skipped. Suggestions to eligible donors and admins' events wait for `20261105000200_admin_events.sql`. ETS and SARIMA run on 6-hour values now, and switch to daily values with a weekly season once two weeks exist. Around late December 2026, at about 8 weeks of history, compare the seven models again on unseen weeks, at the same threshold.
 5. **Write to eRaktKosh's team** about the misplaced banks, and ask for the monthly issue data.
 6. **CI and route tests** (#20).
-7. Then bank locations (#33, #34; `docs/PLANS/plan_bank_locations.md`), the ETA bench (`docs/SUMMARIES/eta_benchmark.md`: the Google and operational runs are done, and M3 wins with 65.0; next purging Google's answers by 3 December, the team's agreement of the rubric, and the timed trips), deployment readiness, the panels (`docs/PLANS/plan_panels.md`), the donor network (`docs/PLANS/plan_donor_network.md`), and the ML system, the forecast in the app with donor suggestions (`docs/PLANS/ML_system.md`: its groundwork, phase 0, was started on 4 November, with the migration, the two JS modules and the auto-refresh column; it runs beside phases 5.1 and 5.2, the forecast's shadow mode in January 2027, and the suggestions after the donor network's phase 2).
+7. Then bank locations (#33, #34; `docs/PLANS/plan_bank_locations.md`), the ETA bench (`docs/SUMMARIES/eta_benchmark.md`: the Google and operational runs are done, and M3 wins with 65.0; next purging Google's answers by 3 December, the team's agreement of the rubric, and the timed trips), deployment readiness, the panels (`docs/PLANS/plan_panels.md`), the donor network (`docs/PLANS/plan_donor_network.md`), and the ML system, the forecast in the app with donor suggestions (`docs/PLANS/ML_system.md`: Part A, the forecast, is live in the closed beta since 4 November. In-app suggestions to eligible donors and admins' stock-out events are built, waiting for their migration; the full suggestions, with messages and waves, wait for the donor network's phase 2).
 
 Details to keep for the later items:
 - **Donor network.** Donor location as a PostGIS `geography` point with a GiST index: the benchmark in `docs/SUMMARIES/geospatial_benchmark.md` shows an index is 75 to 300 times faster than a scan at 100,000 points and more. `blood_requests` and `request_responses` tables with row-level security. Matching with the existing compatibility, eligibility and ranking modules, with contact details masked until both sides accept. Notifications in-app first, then email, then SMS; the fork has MSG91, Fast2SMS and Twilio adapters.
@@ -533,6 +569,20 @@ The ranking section (now in `docs/SUMMARIES/ranking_algorithm.md`) is up to date
 
 **Forecast dry run (2026-11-04).** All seven stock-out models were compared on 10.8 days of history. The interim choice is logistic regression, with the GBM classifier as the challenger. It isn't in the app yet: see [Not done yet](docs/deliverables.md#what-is-not-done-yet).
 
+**Forecast for the beta (2026-11-04).** `ml/dataset.py` builds the 19 inputs and the labels exactly as `stockoutFeatures.js` does, with the parity test passing on a real week. `ml/train.py` trained logistic regression to predict a fall to 2 units or fewer, `stockout-logit-t2-2026-11-04`: PR-AUC 0.348 at 48 h, walking forward. The `score-stock` Edge Function, its daily calibration and kill switch, the search mark, the ranking factor and the admin card are built, and their dry run passed on the live project, rolled back. It has been live in the beta since 4 November.
+
+**Suggestions and admins' events (2026-11-04).** An eligible donor sees, on "My profile", the banks within 15 km where their group may run low, by the forecast or by an admin's event. Admins flag a bank on `/admin/events` for 24, 48 or 72 hours, which marks it in search as "flagged by bloodLink's team". Region search shows the forecast's marks too. The ranking sensitivity check was rerun with the forecast's factor: it moves the first choice in 8% of urgent searches and 17% of routine ones. The events' migration isn't applied yet. There are now 226 tests.
+
+**Bank locations started (2026-11-04).** Work began on placing the stocked banks location search can't see (#33, #34; `docs/PLANS/plan_bank_locations.md`):
+- **Built:** a table of corrected positions, `bank_location_fixes` (migration checked but not applied); the merge into every location search; the review page `/admin/locations`; the supersede step in the weekly directory run; and `scripts/place-banks.mjs` and `location-coverage.mjs`.
+- **Baseline:** 3,864 of 4,756 stocked banks visible.
+- **Control run on 200 banks of known position:**
+  - The name match placed 27% with a median error of 40 m, but 2 of 53 were same-named hospitals over 10 km away.
+  - Addresses and PIN codes were accurate only to a few km.
+  - No step met the rule fixed in advance.
+- **Loaded the same day:** 140 positions accepted and in search, 81 waiting for review; location search sees 4,004 of 4,756 stocked banks, up from 3,864.
+- There are now 248 tests.
+
 ### Report 3's opening notes
 
 This report records every decision and step taken on 2026-10-23 to answer the reviewer's feedback in `documentation/suggested changes after sem 7 report 1.txt`. Each section has a plan, the decisions with their evidence, the steps taken, and how the result was checked.
@@ -542,7 +592,7 @@ This report records every decision and step taken on 2026-10-23 to answer the re
 - **Order of work.** The points are worked in the order they were asked, not by number: 2, 1, 3.1, 3.2, 4, 5.
 - **Follow-up on 2026-10-24.** `docs/data_integrity.md` re-checks point 3 independently and records six faults it found and fixed (#36 to #41). The counts and results here that it changed have been updated, and each point says where.
 - **Reviews of 24 and 25 October.** A review of the code, docs and plans, whose next moves are now in `docs/plans.md`, and `docs/verify_facts.md`, which checked every number and outside fact. Thirteen of the faults they and a follow-up review found were fixed on 26 October; `CLAUDE.md` lists them and the ones still open. Where they corrected a figure or a source here, the text has been updated.
-- **Point 5 on 2026-10-26.** The shortlist of seven models, two low-fidelity checks and the subplan were added. The check scripts are in `../rough_work/ML/`, outside git.
+- **Point 5 on 2026-10-26.** The shortlist of seven models, two low-fidelity checks and the subplan were added. The check scripts are in `../rough_work/ML-comparison/`, outside git.
 - **3 November.** The database moved to Mumbai (#28), collection moved to Supabase ([point 3.1](docs/SUMMARIES/data_quality.md#collection-moved-to-supabase-3-november)), and point 5 gained an early [walk-forward dry run](docs/SUMMARIES/ml_models.md#the-walk-forward-dry-run-4-november).
 - **4 November.** Point 2's travel-time design, called M3 in the ETA benchmark, was [checked against Google's traffic-aware predictions](docs/SUMMARIES/eta_benchmark.md#checked-against-google-4-november) and compared with three other methods. It is the closest, and the benchmark's rubric keeps it.
 - **4 November, point 5.** The [walk-forward dry run](docs/SUMMARIES/ml_models.md#the-walk-forward-dry-run-4-november) now covers all seven models, with each input and design detail tested. It gives an interim choice: logistic regression, with the GBM classifier as the challenger. The December backtest decides.

@@ -5,7 +5,7 @@
 **What was asked** (reviewer point 4): "The final evaluation would be stronger with measurable results covering functional testing, search/API response time, load testing, notification performance, and failure scenarios."
 
 **The answer in brief.** Everything that is built has been measured, apart from heavier load:
-- **153 unit tests** pass, plus the ETA benchmark's 46;
+- **248 unit tests** pass, plus the forecast's 16 Python tests and the ETA benchmark's 46;
 - **searches answer in milliseconds** once warm, and within about 1.5 s on a first call to eRaktKosh;
 - **20 users at once** cause no failures;
 - **every failure mode drilled still answered** with results.
@@ -16,7 +16,7 @@ Integration and end-to-end suites with CI are planned (#20). Notifications aren'
 
 | Area | Status | Result |
 |---|---|---|
-| Unit tests | **Done** | 153 tests in 12 files, all passing (4 November), plus the ETA benchmark's 46 in `../rough_work/eta_benchmarks/` |
+| Unit tests | **Done** | 248 tests in 18 files, all passing (4 November), plus the forecast's 16 Python tests in `ml/tests/` and the ETA benchmark's 46 in `../rough_work/eta_benchmarks/` |
 | Integration tests of the API routes | **Planned** (#20) | The eRaktKosh client can already be swapped for a fake |
 | End-to-end tests | **Partly done** | 47 checks ran once, on 23 October, but aren't kept. A Playwright suite is planned (#20) |
 | Security | **Done by hand** | The publishable key reads only public tables. Writes and private tables return 42501. An automated suite is planned |
@@ -35,24 +35,32 @@ Integration and end-to-end suites with CI are planned (#20). Notifications aren'
 
 ## Unit tests
 
-Vitest. `npm test` runs 153 tests, all passing on 4 November. Lint, the format check and the production build pass too.
+Vitest. `npm test` runs 248 tests, all passing on 4 November. Lint, the format check and the production build pass too.
 
 | File | Tests | Covers |
 |---|---|---|
+| `stockout-model.test.js` | 28 | The stock-out forecast's scorer: the artifact's checks, scoring with reasons, Platt calibration and average precision matching scikit-learn, the alert cut-off, the metrics, the kill switch, the shadow exit and the overdue rule |
 | `stock-eligibility-profile.test.js` | 22 | Stock parsing, donor eligibility to NBTC's 2017 rules, the profile validator |
 | `eraktkosh-client.test.js` | 21 | Every step of the fallback chain, the per-state circuits, the saved copy |
 | `ranking.test.js` | 20 | Scores, weights and the response plan |
+| `bank-locations.test.js` | 20 | Corrected bank positions in location search (moving, adding, the radius, which position wins, the switch), and the placement script's helpers: names, distinctive words, PIN codes, addresses, result tests, centroid traps and the acceptance rule |
 | `traffic.test.js` | 19 | Zones, rush hour, weekday against Sunday, monsoon, rain, the fallback |
-| `collector.test.js` | 15 | The cloud collector: changed rows, failed and rolled-back states, its time budget, the four batches, the directory run, run records and the secret |
+| `stockout-features.test.js` | 19 | The stock-out forecast's 19 inputs and its label rules: horizons, the low-stock threshold, quick refills, cleared pages, the Bombay groups, the end of the data and gaps |
+| `collector.test.js` | 19 | The cloud collector: changed rows, failed and rolled-back states, its time budget, the four batches, the directory run, the auto-refresh list and the superseding of location fixes, run records and the secret |
 | `compatibility.test.js` | 13 | Donor-recipient compatibility per component |
 | `routing.test.js` | 11 | OSRM, Open-Meteo and Nominatim parsing, caching and failures |
+| `forecast-jobs.test.js` | 10 | The forecast's scoring and daily jobs on the parity week: the same cases and probabilities as scikit-learn through the history query's window, the daily calibration, labels, metrics and kill switch, skipped and failed runs |
 | `stock-quality.test.js` | 10 | Every validation rule |
 | `state-bounds.test.js` | 7 | The wrong-state check |
+| `stockout-parity.test.js` | 6 | The forecast's parity test on a real week (`tests/fixtures/stockout_week.json`): the same cases, inputs and labels as `ml/dataset.py`, and scikit-learn's probabilities to 6 decimal places |
 | `rings.test.js` | 6 | Ring choice, with dormant banks ignored |
+| `forecast-marks.test.js` | 8 | The forecast in search: what is forecast, reading `forecast_marks()`, the marks, the ranking factor, admins' events, who may see suggestions, and their order |
 | `auth.test.js` | 5 | Safe redirect paths |
 | `rate-limit.test.js` | 4 | Per-IP limits and trusted proxies |
 
 The ETA benchmark's own tests moved with it on 4 November: `eta-metrics.test.js` (24), `eta-rubric.test.js` (12) and `eta-google.test.js` (10), 46 in all, in `../rough_work/eta_benchmarks/tests/`. Run them there with `npx vitest run`.
+
+The forecast's Python side has 16 tests in `ml/tests/`, run with `python -I -m pytest ml/tests`: the dataset builder on the JS tests' cases and the threshold, the cut-off, Platt scaling, and the artifact scoring as scikit-learn does.
 
 ## Response time and load
 
@@ -116,7 +124,7 @@ The app sends no notifications yet. These are the tests for when it does (`../PL
 ### Unit tests
 Files: `tests/`
 
-There are 153 Vitest tests. Run them with `npm test`.
+There are 248 Vitest tests. Run them with `npm test`.
 - `ranking.test.js` (20 tests): the weights, each score, exact-group matching, the worked scenarios, urgency changing the first choice, and the response plan.
 - `eraktkosh-client.test.js` (21 tests): the eRaktKosh client's cache, saved copy, retries, per-state and service-wide circuits, freshness summary with stock and directory ages kept apart, shared calls, and the pin rounded to 3 decimals.
 - `traffic.test.js` (19 tests): the travel-time model. It covers India time, traffic zones, congestion by time, day, season and density, rain, the travel estimate, and that the model scripts load gives the app's answers.
@@ -129,7 +137,13 @@ There are 153 Vitest tests. Run them with `npm test`.
 - `rate-limit.test.js` (4 tests): `X-Forwarded-For` is trusted only behind configured proxies.
 - `auth.test.js` (5 tests): sign-in redirects stay on the site, and the admin routes' database errors map to the right HTTP status.
 - `eta-metrics.test.js` (24 tests), `eta-rubric.test.js` (12 tests) and `eta-google.test.js` (10 tests): the ETA benchmark's error, ranking and week-trend measures and its statistics; the rubric's anchors and decision rule; and the Google client's requests, answers, cache and free-allowance guard. They moved with the benchmark to `../rough_work/eta_benchmarks/tests/` on 4 November, and run there with `npx vitest run`.
-- `collector.test.js` (15 tests): the shared collector. Changed rows are uploaded in full and the rest only re-stamped; a failed state is logged, or rolled back unarchived, and the batch goes on; the time budget skips what it can't start; the four batches cover the 36 states once; the directory flags wrong-state banks; the repeat guard; the function's secret and request checks; and the overdue warning.
+- `collector.test.js` (19 tests): the shared collector. Changed rows are uploaded in full and the rest only re-stamped; a failed state is logged, or rolled back unarchived, and the batch goes on; the time budget skips what it can't start; the four batches cover the 36 states once; the directory flags wrong-state banks; the auto-refresh list is saved after the directory, and last week's values are kept when the list fails or is empty; a machine location fix is superseded once eRaktKosh's own point is within 2 km, one further away is logged, and nothing happens before the fixes table exists; the repeat guard; the function's secret and request checks; and the overdue warning.
+- `bank-locations.test.js` (20 tests): corrected bank positions. A wrong-state bank is moved and a missing one added within the radius; eRaktKosh's usable point beats a machine fix, and a confirmed fix beats it; unusable rows are dropped; the switch. And the placement script's helpers: search names, distinctive words, PIN codes, address cleaning and parts, Nominatim result tests, the viewbox, centroid traps, the accuracy statistics and the acceptance rule.
+- `stockout-features.test.js` (19 tests): the stock-out forecast's inputs. The grid, the series rebuild, the cleared-page rule, the 19 inputs on a hand-worked series, the low-stock threshold, the Bombay groups in the bank's totals, the label rules (horizons, quick refills, cleared pages, the end of the data and gaps) and `findGaps`.
+- `stockout-parity.test.js` (6 tests): the forecast's parity test on a real week (`tests/fixtures/stockout_week.json`): the same cases, inputs and labels as `ml/dataset.py`, and scikit-learn's probabilities to 6 decimal places.
+- `forecast-jobs.test.js` (10 tests): the forecast's scoring and daily jobs on the parity week: the same cases and probabilities as scikit-learn through the history query's window, the daily calibration, labels, metrics and kill switch, and skipped and failed runs.
+- `forecast-marks.test.js` (8 tests): the forecast in search: what is forecast, reading `forecast_marks()`, the marks, the ranking factor, admins' events, who may see suggestions, and their order.
+- `stockout-model.test.js` (28 tests): the stock-out forecast's scorer. The artifact's checks and scoring, the reasons, parity with scikit-learn (Platt to 6 decimal places, average precision to 12), the cut-off at 1 false alert per bank per week, the metrics, the kill switch, the shadow exit and the overdue rule.
 
 Separately, a one-off script ran 47 end-to-end checks against the live database. It is not kept in the repo.
 

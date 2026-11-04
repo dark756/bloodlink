@@ -15,6 +15,7 @@ import {
 //   "format": "bloodlink-stockout/1", "id": "stockout-logit-2027-01-04",
 //   "kind": "logistic", "component": "PRBC",
 //   "trainedFrom": "2026-10-23", "trainedTo": "2026-12-27",
+//   "thresholdUnits": 2,
 //   "horizons": {
 //     "24": {
 //       "intercept": -3.1,
@@ -31,9 +32,15 @@ import {
 // A numeric term's value is (transform(input) − mean) ÷ scale; a dummy is 1 when the
 // input equals its level and 0 otherwise. The logit is the intercept plus each
 // coefficient × value, and P = sigmoid(a · logit + b) once calibrated.
+// thresholdUnits is what the model predicts: the group's units falling to that many
+// or fewer within each horizon. 0, or no value, is a stock-out.
 
 export const ARTIFACT_FORMAT = "bloodlink-stockout/1";
 export const TRANSFORMS = ["identity", "log1p", "slog", "dummy"];
+export const MAX_THRESHOLD_UNITS = 20;
+
+// The low-stock threshold an artifact was trained with.
+export const thresholdOf = (artifact) => artifact?.thresholdUnits ?? 0;
 
 // The kill switch (A4) and the shadow exit (A7). All are assumptions, set in shadow.
 export const KILL_FALSE_ALERTS = 1.5; // per bank per week…
@@ -67,6 +74,10 @@ export function validateArtifact(artifact) {
   if (artifact.kind !== "logistic") return { error: "only logistic artifacts can be scored" };
   if (typeof artifact.id !== "string" || !/^[a-z0-9][a-z0-9.-]{2,80}$/.test(artifact.id)) {
     return { error: "id must be a short lower-case name" };
+  }
+  const threshold = thresholdOf(artifact);
+  if (!Number.isInteger(threshold) || threshold < 0 || threshold > MAX_THRESHOLD_UNITS) {
+    return { error: `thresholdUnits must be a whole number from 0 to ${MAX_THRESHOLD_UNITS}` };
   }
   for (const hours of HORIZONS_H) {
     const horizon = artifact.horizons?.[hours];

@@ -20,8 +20,17 @@ const stockRow = (hospitalCode, entrydate, quantities = "O +ve : 3") => ({
 });
 
 // A stand-in for the pg session: records every statement and answers the few
-// reads the collector makes. failOn makes a matching statement throw.
-function fakeDb({ previous = {}, directory = [], recentRun = false, failOn = null } = {}) {
+// reads the collector makes. failOn makes a matching statement throw. fixesTable
+// says whether bank_location_fixes exists, and fixRows answers the weekly run's read
+// of its machine fixes.
+function fakeDb({
+  previous = {},
+  directory = [],
+  recentRun = false,
+  failOn = null,
+  fixesTable = false,
+  fixRows = [],
+} = {}) {
   const queries = [];
   return {
     queries,
@@ -29,6 +38,10 @@ function fakeDb({ previous = {}, directory = [], recentRun = false, failOn = nul
     async query(text, params = []) {
       queries.push({ text, params });
       if (failOn?.test(text)) throw new Error("simulated write failure");
+      if (/to_regclass\('public\.bank_location_fixes'\)/.test(text)) {
+        return { rows: [{ present: fixesTable }] };
+      }
+      if (/from public\.bank_location_fixes f/.test(text)) return { rows: fixRows };
       if (/from public\.blood_banks/.test(text)) return { rows: directory };
       if (/from public\.bank_stock_latest/.test(text)) {
         const rows = Object.entries(previous[params[0]] ?? {}).map(([code, entryAt]) => ({
@@ -246,6 +259,51 @@ describe("the directory run", () => {
       expect(logged.params.slice(0, 3)).toEqual(["master/portal-refresh-hospitals", null, false]);
       expect(errors.at(-1)).toMatch(/last values kept/);
     }
+  });
+
+  it("retires a machine location fix once eRaktKosh's own point is within 2 km", async () => {
+    const fix = { latitude: 15.49, longitude: 73.83 };
+    const db = fakeDb({
+      fixesTable: true,
+      fixRows: [
+        // eRaktKosh now places 11 about 0.7 km from its fix, and 12 about 35 km away.
+        { hospital_code: "11", ...fix, eraktkosh_latitude: 15.495, eraktkosh_longitude: 73.835 },
+        { hospital_code: "12", ...fix, eraktkosh_latitude: 15.3, eraktkosh_longitude: 74.1 },
+      ],
+    });
+    const { collector, errors } = makeCollector({
+      db,
+      answers: { nearest: [{ hospitalCode: 1, name: "Bank", stateCode: 30 }], refresh: ["1"] },
+    });
+    const outcome = await collector.collectDirectory();
+    expect(outcome.locationFixes).toMatchObject({ isSuccess: true, superseded: 1 });
+    expect(outcome.locationFixes.conflicts).toEqual([
+      { hospitalCode: "12", distanceM: expect.any(Number) },
+    ]);
+    expect(outcome.locationFixes.conflicts[0].distanceM).toBeGreaterThan(30_000);
+    const [update] = db.statements(/update public\.bank_location_fixes set status = 'superseded'/);
+    expect(update.params).toEqual([["11"]]);
+    expect(update.text).toMatch(/reviewed_at is null/);
+    expect(errors.at(-1)).toMatch(/review them on \/admin\/locations/);
+  });
+
+  it("leaves location fixes alone before their table exists, and never fails the run", async () => {
+    const answers = { nearest: [{ hospitalCode: 1, name: "Bank", stateCode: 30 }], refresh: ["1"] };
+    const before = makeCollector({ answers });
+    expect((await before.collector.collectDirectory()).locationFixes).toEqual({
+      isSuccess: true,
+      skipped: "no fixes table",
+    });
+    expect(before.db.statements(/bank_location_fixes f/)).toHaveLength(0);
+
+    const failing = makeCollector({
+      db: fakeDb({ fixesTable: true, failOn: /from public\.bank_location_fixes f/ }),
+      answers,
+    });
+    const outcome = await failing.collector.collectDirectory();
+    expect(outcome.isSuccess).toBe(true);
+    expect(outcome.locationFixes).toMatchObject({ isSuccess: false });
+    expect(failing.errors.at(-1)).toMatch(/location fixes: not checked/);
   });
 
   it("refuses to run without the state outlines", async () => {

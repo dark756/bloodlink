@@ -3,7 +3,9 @@
 /assets/
 /public/
 /supabase/
-# Written by ml/make_parity_fixtures.py; kept exactly as Python writes it.
+# Written by ml/make_parity_fixtures.py and ml/train.py; kept exactly as Python writes them.
 /tests/fixtures/
+# The model artifacts: their SHA-256 is recorded, so they are never reformatted.
+/ml/models/
 package-lock.json
 *.md

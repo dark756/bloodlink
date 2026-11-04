@@ -33,7 +33,7 @@
 | 2 | Road routing and a time-aware ETA | Report 3, point 2 (the ETA in reviewer point 1) | **Done.** Calibration from timed trips is planned | [`eta_model.md`](SUMMARIES/eta_model.md) | The rural and town values from timed trips; self-hosted OSRM before real traffic |
 | 3 | The ETA benchmark | Report 3, point 4 (ETA accuracy); reviewer points 1 and 4 | **In progress:** the Google half is done; the timed trips are planned | [`eta_benchmark.md`](SUMMARIES/eta_benchmark.md) | The rubric agreed; Google's answers purged by 3 December; 30 to 60 timed trips in December; M5 in January 2027 |
 | 4 | The geospatial benchmark | Reviewer point 2; report 3, point 4 | **Done** | [`geospatial_benchmark.md`](SUMMARIES/geospatial_benchmark.md) | Using the index for donor search (planned) |
-| 5 | Data quality and freshness | Reviewer point 3; report 3, points 3.1 and 3.2 | **Done, with known gaps** | [`data_quality.md`](SUMMARIES/data_quality.md) | Placing 679 banks and re-placing 206 (#33, #34, planned); 6 likely duplicates (not touched); monthly issue data (not touched) |
+| 5 | Data quality and freshness | Reviewer point 3; report 3, points 3.1 and 3.2 | **Done, with known gaps** | [`data_quality.md`](SUMMARIES/data_quality.md) | Placing the banks location search can't see (#33, #34, in progress: 140 placed, 81 waiting for review, 671 not found); 6 likely duplicates (not touched); monthly issue data (not touched) |
 | 6 | Testing and performance | Reviewer point 4; report 3, point 4 | **Done for everything built** | [`performance_testing.md`](SUMMARIES/performance_testing.md) | Integration, end-to-end and CI (#20, planned); notification tests (planned, with the feature); heavier load and a deployed server (not touched) |
 | 7 | Where AI/ML fits | Reviewer point 5; report 3, point 5 | **In progress** | [`ml_models.md`](SUMMARIES/ml_models.md) | Labels and features (November); the backtest (late December); shadow mode (January 2027) |
 | 8 | Separate completed from planned work | Reviewer point 6 | **Done** | This file | Report 1 and its slides still claim features the code lacks (#32, dropped) |
@@ -167,7 +167,7 @@ The app's method, M3, is 24.9% off Google, the closest of four, and it wins on t
 **Summary:** [`SUMMARIES/data_quality.md`](SUMMARIES/data_quality.md), with report 3's points 3.1 and 3.2 in its [record](SUMMARIES/data_quality.md#report-3s-record).
 
 **Status: Done, with known gaps.** Left:
-- placing the 679 unlocated banks (#33) and re-placing the 206 in the wrong state (#34): planned in `PLANS/plan_bank_locations.md`, not started;
+- placing the 699 unlocated banks (#33) and re-placing the 193 in the wrong state or outside India (#34): **in progress** in `PLANS/plan_bank_locations.md`. Built: a fixes table, the search merge, `/admin/locations` and `scripts/place-banks.mjs`. 140 corrected positions are in search (15 from data.gov.in, 115 by name and 10 by address), so location search sees 4,004 of 4,756 stocked banks, up from 3,864. 81 positions wait for review;
 - the 6 likely duplicate pairs (not touched);
 - monthly issue data, which needs a login (not touched);
 - refreshing the data.gov.in directory, which needs our own key (not touched).
@@ -180,7 +180,7 @@ The app's method, M3, is 24.9% off Google, the closest of four, and it wins on t
 
 **Done:**
 - a test-level plan: unit, integration, end-to-end, security, performance, failure, data quality and CI;
-- 153 unit tests, all passing, plus the ETA benchmark's 46 in `../rough_work/eta_benchmarks/`;
+- 248 unit tests, all passing, plus the forecast's 16 Python tests in `ml/tests/` and the ETA benchmark's 46 in `../rough_work/eta_benchmarks/`;
 - response times, and 20 users at once with 0 of 560 requests failing;
 - page load;
 - the failure drill;
@@ -213,9 +213,14 @@ The app's method, M3, is 24.9% off Google, the closest of four, and it wins on t
 - **The interim choice:** logistic regression, with the GBM classifier as the challenger. The GBM classifier's 1.4-point lead is inside the rule's 2-point margin, and the two tie on donor alerts.
 
 **Where:**
-- the scripts and results: `../rough_work/ML/` (`SUMMARY.md`), outside git;
+- the scripts and results: `../rough_work/ML-comparison/` (`SUMMARY.md`), outside git;
 - the plan for the app: [`PLANS/ML_system.md`](PLANS/ML_system.md), the stock-out forecast in the app, suggesting active, eligible donors nearby, ranked by the donor network's score, and stock-out events an admin makes;
-- its phase 0, started on 4 November: `src/lib/stockoutFeatures.js` (the 19 inputs and the label rules), `src/lib/stockoutModel.js` (scoring, daily calibration, the alert cut-off, the metrics and the kill switch, matching scikit-learn), and the migration `supabase/migrations/20261104000100_stockout_forecast.sql`, not yet applied.
+- its phase 0, started on 4 November:
+  - `src/lib/stockoutFeatures.js` (the 19 inputs and the label rules) and `src/lib/stockoutModel.js` (scoring, daily calibration, the alert cut-off, the metrics and the kill switch, matching scikit-learn);
+  - `ml/`, the Python side: the dataset builder `ml/dataset.py`, and the model it trained, `stockout-logit-t2-2026-11-04`: logistic regression predicting a fall to 2 units or fewer, PR-AUC 0.348 at 48 h walking forward (`ml/MODEL_CARDS.md`). The parity test checks it against the JS on a real week (`tests/stockout-parity.test.js`);
+  - for the closed beta: the `score-stock` Edge Function (`src/lib/forecastJobs.js`), scoring every 6 hours with daily calibration and a kill switch; the "may run low" mark and the ranking factor in ranked search; and the admin overview's card. A rolled-back dry run passed on the live project (`scripts/check-forecast-live.mjs`);
+  - suggestions on "My profile" for eligible donors within 15 km, and admins' stock-out events on `/admin/events`, real, for 24 to 72 hours; built, waiting for `supabase/migrations/20261105000200_admin_events.sql`;
+  - the migrations `supabase/migrations/20261104000100_stockout_forecast.sql` and `20261104000200_forecast_live.sql`, not yet applied.
 
 **Summary:** [`SUMMARIES/ml_models.md`](SUMMARIES/ml_models.md), with report 3's point 5 in its [record](SUMMARIES/ml_models.md#report-3s-record).
 
@@ -277,9 +282,9 @@ Report 3's text keeps its own cross-references, such as "see 3.1" or "D2.4". The
 
 | Status | Items |
 |---|---|
-| **Completed** | **Search:** region, location and ranked search; exact-group ranking with the surplus score, and the response plan; road ETA by time of day, density, season and rain, checked against Google. **Data:** eRaktKosh validation, per-state circuits, retry, give-up and saved-copy fallback; the stock store, with collection every 4.5 hours in Supabase and history archived in Storage; dormant banks, freshness banners and two ages; the state-outline check on bank coordinates; PostGIS locations; the database in Mumbai. **Accounts:** Supabase sign-in, profiles and donor eligibility to NBTC's 2017 guidelines; organisation verification and admin tools, with the collection-health card; consent, a privacy page and account deletion; security headers; the search pin rounded to about 110 m. **Evidence:** 200 unit tests, plus the ETA benchmark's 46, response-time and load measurements, the failure drill, the geospatial benchmark, the ranking sensitivity check and the ETA benchmark's Google half. |
-| **In progress** | Stock history, accumulating every 4.5 hours. The stock-out forecast: seven models shortlisted and rehearsed, and a walk-forward dry run of all seven done, with an interim choice of logistic regression (the GBM classifier as the challenger). The backtest waits for 8 weeks of history. The forecast in the app, phase 0: the inputs, labels, scorer, calibration and kill switch in JS, and the schema, not yet applied. The ETA benchmark: the rubric's agreement, then timed trips in December. |
-| **Planned** | Placing the 679 banks without coordinates (#33), and re-placing the 206 in the wrong state while reviewing duplicate codes (#34). ETA calibration from timed trips (M5), and self-hosted OSRM. Stock-out forecasting in the app, and donor suggestions (`PLANS/ML_system.md`). The donor network: locations, requests, notifications. Hospital and blood-bank dashboards, and the admin and donor panels. Integration and end-to-end tests with CI (#20). Deployment: the ingest login, `after()` saves. |
+| **Completed** | **Search:** region, location and ranked search; exact-group ranking with the surplus score, and the response plan; road ETA by time of day, density, season and rain, checked against Google. **Data:** eRaktKosh validation, per-state circuits, retry, give-up and saved-copy fallback; the stock store, with collection every 4.5 hours in Supabase and history archived in Storage; dormant banks, freshness banners and two ages; the state-outline check on bank coordinates; PostGIS locations; the database in Mumbai. **Accounts:** Supabase sign-in, profiles and donor eligibility to NBTC's 2017 guidelines; organisation verification and admin tools, with the collection-health card; consent, a privacy page and account deletion; security headers; the search pin rounded to about 110 m. **Evidence:** 248 unit tests, plus the forecast's 16 Python tests and the ETA benchmark's 46, response-time and load measurements, the failure drill, the geospatial benchmark, the ranking sensitivity check and the ETA benchmark's Google half. |
+| **In progress** | Stock history, accumulating every 4.5 hours. The stock-out forecast: seven models shortlisted and rehearsed, and a walk-forward dry run of all seven done, with an interim choice of logistic regression (the GBM classifier as the challenger). The backtest waits for 8 weeks of history. The forecast in the app: logistic regression predicting low stock (2 units or fewer), its scoring job, daily calibration, kill switch, search mark, ranking factor and admin card, built for the closed beta; it goes live once its two migrations are applied. The ETA benchmark: the rubric's agreement, then timed trips in December. Placing the stocked banks location search can't see (#33, #34): 140 corrected positions in search, 81 waiting for review. |
+| **Planned** | Reviewing the duplicate codes (#34). ETA calibration from timed trips (M5), and self-hosted OSRM. Stock-out forecasting in the app, and donor suggestions (`PLANS/ML_system.md`). The donor network: locations, requests, notifications. Hospital and blood-bank dashboards, and the admin and donor panels. Integration and end-to-end tests with CI (#20). Deployment: the ingest login, `after()` saves. |
 | **Not touched** | Notification delivery of any kind. Load beyond 20 users, and on a deployed server. An expert review of the ranking weights. A blood bank's track record as a reliability score. Merging the 6 likely duplicate banks. Monthly issue data. Deployment to Vercel. |
 
 ---
@@ -294,7 +299,7 @@ Report 3's text keeps its own cross-references, such as "see 3.1" or "D2.4". The
   - the team's agreement of the rubric.
 
   Self-hosted OSRM (M7) is planned before real traffic.
-- **Banks location search can't place.** 679 stocked banks have no coordinates (#33). The 206 that eRaktKosh puts in the wrong state are left out until they are re-placed (#34). Region search lists them all.
+- **Banks location search can't place.** On 4 November, 699 stocked banks had no coordinates (#33), and 193 that eRaktKosh puts in the wrong state or outside India were left out (#34). Region search lists them all. Since 4 November, 140 of them are placed from corrected positions (`PLANS/plan_bank_locations.md`), so location search sees 4,004 of 4,756 stocked banks; 81 more positions wait for review, and 671 banks have none yet.
 - **Not built:**
   - donor matching and requests;
   - notifications;
@@ -302,7 +307,7 @@ Report 3's text keeps its own cross-references, such as "see 3.1" or "D2.4". The
     - The GBM classifier ranks stock-outs best (PR-AUC 0.269 at 48 h, against 0.255), but its lead is inside the decision rule's 2-point margin, so the rule picks the simpler model.
     - On donor alerts the two tie: about 16% of stock-outs caught at 1 false alert per bank per week.
     - Logistic regression is the simplest to build and explain. ETS, SARIMA and TSB fall below the best baseline.
-    - The December backtest decides. The models, checks, reasons and subplan are in [`ml_models.md`](SUMMARIES/ml_models.md), and the tables in `../rough_work/ML/SUMMARY.md`.
+    - The December backtest decides. The models, checks, reasons and subplan are in [`ml_models.md`](SUMMARIES/ml_models.md), and the tables in `../rough_work/ML-comparison/SUMMARY.md`.
 
   These are planned in `PLANS/plan_donor_network.md`, `PLANS/plan_panels.md` and `PLANS/ML_system.md`, and ordered in [`plans.md`](plans.md).
 
@@ -327,4 +332,4 @@ Report 3's text keeps its own cross-references, such as "see 3.1" or "D2.4". The
 | Every function and variable | [`CODE_REFERENCE.md`](CODE_REFERENCE.md) |
 | The reviewer's points split into numbered deliverables (1.1 to 6.4), as of 31 October and 3 November | `../documentation/deliverables.md`, outside git |
 | The datasets, with their validation | `../blood_data/README.md`, outside git |
-| The forecast's scripts and latest results | `../rough_work/ML/SUMMARY.md`, outside git |
+| The forecast's scripts and latest results | `../rough_work/ML-comparison/SUMMARY.md`, outside git |

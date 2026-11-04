@@ -13,8 +13,9 @@ import {
   getStateName,
 } from "@/lib/constants";
 import { formatUpdatedAgo, isDormant, normalizeAvailabilityRow } from "@/lib/stock";
-import { formatTimeAgo, hoursSince } from "@/lib/format";
+import { formatDateTime, formatTimeAgo, hoursSince } from "@/lib/format";
 import { roundPinCoordinate } from "@/lib/geo";
+import { SHOWN_PRECISION_M } from "@/lib/bankLocations";
 
 const MAX_UNITS = 50;
 // A saved copy older than this gets a red warning instead of a yellow one.
@@ -146,6 +147,46 @@ function TravelNote({ travel }) {
   );
 }
 
+const unitWord = (count) => (count === 1 ? "unit" : "units");
+
+// The stock-out forecast's reasons for a "may run low" mark, labelled as a forecast.
+function ForecastNote({ forecast }) {
+  if (!forecast?.mayRunLowSoon) return null;
+  const chance = Math.round(forecast.p48 * 100);
+  return (
+    <p className="text-xs text-[#a52121] mt-2">
+      Forecast (beta, informational): {chance}% chance of falling to {forecast.thresholdUnits}{" "}
+      {unitWord(forecast.thresholdUnits)} or fewer within 48 hours
+      {forecast.reasons.length > 0 && `: ${forecast.reasons.join("; ")}`}. Call the bank to confirm.
+    </p>
+  );
+}
+
+// A region search's bank with the marks /api/forecast-marks gave for it. "Low now" is
+// worked out here, from the bank's own units of the group asked for.
+function withMarks(bank, marks) {
+  const entry = marks.banks?.[String(bank.hospitalCode)];
+  const units = bank.stock.totalUnits;
+  const isLowNow = marks.showBadge && units > 0 && units <= marks.thresholdUnits;
+  const forecast = entry?.forecast
+    ? { ...entry.forecast, isLowNow }
+    : isLowNow
+      ? { isLowNow, mayRunLowSoon: false, thresholdUnits: marks.thresholdUnits, reasons: [] }
+      : null;
+  return { ...bank, forecast, event: entry?.event ?? null };
+}
+
+// An admin's stock-out event at the bank: who flagged it, why, and until when.
+function EventNote({ event }) {
+  if (!event) return null;
+  return (
+    <p className="text-xs text-[#a52121] mt-2">
+      Flagged by bloodLink&apos;s team until {formatDateTime(event.endsAt)}: {event.reason}. Call
+      the bank to confirm.
+    </p>
+  );
+}
+
 function BankItem({ bank }) {
   const updatedAgo = formatUpdatedAgo(bank.entryDate);
   const checkedAgo = formatTimeAgo(bank.checkedAt);
@@ -158,6 +199,14 @@ function BankItem({ bank }) {
       {bank.distanceM !== undefined && (
         <p className="text-sm text-[#d32f2f] mt-1">{describeDistance(bank)}</p>
       )}
+      {bank.locationSource === "fixed" && (
+        <p className="text-xs text-[#666] mt-1">
+          Location found by bloodLink: eRaktKosh gives none, or a wrong one
+          {bank.locationPrecisionM > SHOWN_PRECISION_M &&
+            `. Accurate to about ${formatKm(bank.locationPrecisionM)} km`}
+          .
+        </p>
+      )}
       <div className="mt-2 flex flex-wrap gap-2">
         <StockBadges stock={bank.stock} />
         {bank.isDormant && (
@@ -165,7 +214,19 @@ function BankItem({ bank }) {
             Not updated for 30+ days: call before relying on it
           </span>
         )}
+        {bank.forecast?.isLowNow && (
+          <span className="badge badge-red">
+            Low now: {bank.forecast.thresholdUnits} {unitWord(bank.forecast.thresholdUnits)} or
+            fewer
+          </span>
+        )}
+        {bank.forecast?.mayRunLowSoon && (
+          <span className="badge badge-red">May run low within 48 h</span>
+        )}
+        {bank.event && <span className="badge badge-red">Flagged by bloodLink&apos;s team</span>}
       </div>
+      <EventNote event={bank.event} />
+      <ForecastNote forecast={bank.forecast} />
       {bank.rank && <RankingDetails bank={bank} />}
       <p className="text-xs text-[#666] mt-2 flex flex-wrap gap-x-3 gap-y-1">
         {updatedAgo && (
@@ -316,6 +377,28 @@ export default function SearchPage() {
     setResult(null);
   }
 
+  // The forecast's marks and admins' events for a region search's banks, added once
+  // they arrive; the search stands without them.
+  async function addMarks(banks, component, group) {
+    const codes = banks
+      .filter((bank) => bank.stock.totalUnits > 0)
+      .map((bank) => String(bank.hospitalCode))
+      .slice(0, 500);
+    if (codes.length === 0) return;
+    try {
+      const { data } = await axios.get("/api/forecast-marks", {
+        params: { codes: codes.join(","), componentId: component, bloodGroupId: group },
+      });
+      setResult((current) =>
+        current?.mode === "region" && current.banks === banks
+          ? { ...current, banks: banks.map((bank) => withMarks(bank, data)) }
+          : current,
+      );
+    } catch {
+      // The marks are extra information.
+    }
+  }
+
   async function handleRegionSearch() {
     if (!stateCode) return;
     startSearch("region");
@@ -351,6 +434,7 @@ export default function SearchPage() {
           ? `${getDistrictName(stateCode, districtCode)}, ${getStateName(stateCode)}`
           : getStateName(stateCode),
       });
+      if (componentId && bloodGroupId) addMarks(banks, componentId, bloodGroupId);
     } catch (err) {
       setError(getErrorMessage(err));
     } finally {

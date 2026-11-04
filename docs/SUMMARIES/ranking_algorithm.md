@@ -451,3 +451,15 @@ The route counted compatible substitute groups from `donorGroupsFor` unless `com
 
 - **Urgency changes the answer.** Critical and routine pick a different first bank in **13 of the 48 sets (27%)**.
 - **So:** the ranking is stable to reasonable doubt about the exact weights, yet still responds to urgency. That is the property a weighted score should have.
+
+**With the stock-out forecast's factor** (`docs/PLANS/ML_system.md`, A6): coverage and surplus × (1 − P), with P the chance that the group falls to 2 units or fewer within 24 h, or 48 h for a routine request. It was rerun on 48 sets captured on 4 November from the saved stock, with the forecast attached (`../blood_data/measurements/ranking_sensitivity_2026-11-04/`):
+
+| Urgency | First choice unchanged: full factor | Mean τ: full | First choice unchanged: half factor (1 − P/2) | Mean τ: half |
+|---|---|---|---|---|
+| critical | 92% | 0.953 | 94% | 0.977 |
+| urgent | 92% | 0.942 | 94% | 0.967 |
+| routine | 83% | 0.857 | 83% | 0.925 |
+
+- **The factor moves the order more than any weight changed by 20%** does (96% to 98% of first choices unchanged on the same sets), most for routine requests, where P48 is larger.
+- **Where it moves the first choice,** the bank it demotes usually carries a high risk: in Kolkata A+ routine, the first choice without it had a 74% chance of falling to 2 units and drops to 13th. Where the demoted bank's own risk is small (1.6% in Guwahati), two banks scored nearly the same.
+- **Open:** whether to keep the full factor or halve it (the plan's open question 7). It is behind `forecast_ranking`, which an admin can turn off.

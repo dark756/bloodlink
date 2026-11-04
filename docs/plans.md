@@ -13,16 +13,16 @@ All the planned work for bloodLink, in order of priority: what each item involve
 | 1 | [Push the work committed on 3 November](#1--push-the-work-committed-on-3-november) | — | Committed, not pushed | Minutes | Your go-ahead |
 | 2 | [Finish moving collection off the laptop](#2--finish-moving-collection-off-the-laptop-35) (#35) | Done; the record is in `SUMMARIES/data_quality.md` | Cut over; the first cloud sweep passed | Minutes, spread over a week | Delete the laptop tasks after 16:05 on 4 November |
 | 3 | [Finish the move to Mumbai](#3--finish-the-move-to-mumbai-28) (#28) | — | Moved; Tokyo still running | 30 minutes | Pause Tokyo |
-| 4 | [Stock-out forecasting](#4--stock-out-forecasting-reviewer-point-5) | `SUMMARIES/ml_models.md` | Interim choice: logistic regression, the GBM classifier as challenger | Ongoing, to January | Two decisions; phase 5.1 |
+| 4 | [Stock-out forecasting](#4--stock-out-forecasting-reviewer-point-5) | `SUMMARIES/ml_models.md` | Logistic regression adopted 4 November, predicting 2 units or fewer; phase 5.1 done | Ongoing: a comparison on more history in December | Phase 5.2 from mid-November |
 | 5 | [Write to eRaktKosh's team](#5--write-to-eraktkoshs-team) | — | Not started | An hour, then a long wait | Draft the letter |
 | 6 | [Route tests and CI](#6--route-tests-and-ci-20) (#20) | — | Not started | 1 to 2 days | Record the fixtures |
-| 7 | [Bank locations](#7--bank-locations-33-34) (#33, #34) | [`PLANS/plan_bank_locations.md`](PLANS/plan_bank_locations.md) | Not started | 3 to 4 days | Phase 0 |
+| 7 | [Bank locations](#7--bank-locations-33-34) (#33, #34) | [`PLANS/plan_bank_locations.md`](PLANS/plan_bank_locations.md) | In progress: 140 positions in search, 81 waiting for review | About an hour of review | You: review the 81 waiting positions on `/admin/locations` |
 | 8 | [ETA comparison](#8--eta-comparison) | `docs/SUMMARIES/eta_benchmark.md` | Google and operational runs done: M3 is 24.9% off Google and wins with 65.0 of 100 | The team's hour for phase 1, then the timed trips | Purge Google's answers by 3 December |
 | 9 | [Deployment readiness](#9--deployment-readiness) | — | Partly done | 1 to 2 days | The Vercel project |
 | 10 | [Panels](#10--panels) | [`PLANS/plan_panels.md`](PLANS/plan_panels.md) | Not started | Phases A to C, about a month | Phase A |
 | 11 | [Threat model](#11--threat-model) | — | Not started | Half a day | Write the page |
 | 12 | [Donor network](#12--donor-network) | [`PLANS/plan_donor_network.md`](PLANS/plan_donor_network.md) | Not started | Phases 0 to 2, about a month, plus the legal review | Phase 0's prerequisites |
-| 13 | [The ML system: forecast in the app and donor suggestions](#13--the-ml-system-forecast-in-the-app-and-donor-suggestions) | [`PLANS/ML_system.md`](PLANS/ML_system.md) | Phase 0 started 4 November: migration (not applied), inputs, scorer, calibration and kill switch in JS | Phases 0 to 3, about 3 weeks beside item 4; phases 4 to 6 with item 12 | Phase 0, in November |
+| 13 | [The ML system: forecast in the app and donor suggestions](#13--the-ml-system-forecast-in-the-app-and-donor-suggestions) | [`PLANS/ML_system.md`](PLANS/ML_system.md) | Part A live in the closed beta since 4 November. In-app suggestions to eligible donors and admins' stock-out events built, waiting for their migration | Messages, waves and partner centres with item 12 | Apply `20261105000200_admin_events.sql` |
 | 14 | [Usability study](#14--usability-study) | — | Not started | 2 to 3 days | Needs the deployed demo (9) |
 | 15 | [Accessibility and language](#15--accessibility-and-language) | — | Not started | 2 to 4 days | The contrast fix |
 
@@ -56,24 +56,22 @@ All the planned work for bloodLink, in order of priority: what each item involve
 
 ## 4 · Stock-out forecasting (reviewer point 5)
 
-- **The plan** is `SUMMARIES/ml_models.md`, with no separate file: the question (will a bank's group of a component run out within 24, 48 or 72 h), the seven shortlisted models and why, the checks, how they are compared, the decision rule fixed in advance, the label rules, how the prediction feeds ranking and donor alerts, and phases 5.0 to 5.5 with dates. The scripts and results are in `../rough_work/ML/`, outside git; the latest summary is `../rough_work/ML/SUMMARY.md`.
+- **The plan** is `SUMMARIES/ml_models.md`, with no separate file: the question (will a bank's group of a component run out within 24, 48 or 72 h), the seven shortlisted models and why, the checks, how they are compared, the decision rule fixed in advance, the label rules, how the prediction feeds ranking and donor alerts, and phases 5.0 to 5.5 with dates. The scripts and results are in `../rough_work/ML-comparison/`, outside git; the latest summary is `../rough_work/ML-comparison/SUMMARY.md`.
 - **Where it stands.**
   - Phase 5.0, choosing and rehearsing the models, was done on 26 October.
   - **The walk-forward dry run of 4 November**, on 10.8 days of history, ran all seven models, with ETS and SARIMA in a stand-in form on 6-hour values, and tested each input and design detail in turn.
-  - **Interim choice: logistic regression, with the GBM classifier as the challenger.**
-    - At 48 h the GBM classifier ranks best (PR-AUC 0.269), ahead of logistic regression (0.255), but by 1.4 points, inside the rule's 2-point margin. No model reaches precision 0.5 with useful recall, so the rule falls back to PR-AUC and picks the simpler model.
-    - With recall at 1 false alert per bank per week as the first test, logistic regression leads (15.8% against 15.3%), and its cut-off, set a day ahead, held at 0.98 false alerts per bank per week.
-    - ETS, SARIMA and TSB fall below the best baseline (0.183). The reasons are in `SUMMARIES/ml_models.md`. It decides nothing.
-- **Decisions waiting for you,** from the dry run:
-  1. **Add recall at 1 false alert per bank per week** to the decision rule, as its first test. The false-alert limit is what decides donor alerts. It has to be agreed before the December test weeks are collected, so within the next week or two, to keep the rule fixed in advance. On the dry run it picks the same model.
-  2. **Report each group's PR-AUC with its lift** over that group's base rate, so the Rh− groups' weakness is visible.
+  - **Logistic regression, adopted on 4 November.** At 48 h the GBM classifier ranked best in the dry run (PR-AUC 0.269 against 0.255), but by 1.4 points, inside the rule's 2-point margin, and the two tied on donor alerts. ETS, SARIMA and TSB fell below the best baseline (0.183). Further testing on more history goes on apart from the app; a better model can replace it later through `model_versions`.
+- **Decided on 4 November:**
+  1. **The model is logistic regression,** as above. The December comparison doesn't gate it.
+  2. **Each group's PR-AUC is reported with its lift** over that group's base rate, in training and in the daily metrics, so the Rh− groups' weakness is visible.
+  3. **It predicts low stock, not only stock-outs:** a group falling to 2 units or fewer. At 48 h that catches 22.6% of falls within the alert budget, against 15.2% for stock-outs (`PLANS/ML_system.md`, A1 and S13). Collection gaps aren't censored in the labels (S14).
 - **Camps are left out.** Checked on 4 November with the data already on disk, before any download: they don't show up in red-cell stock, so no camps download is needed.
 - **Next, by date:**
-  - **November, phase 5.1:** one script that rebuilds the labels and features from the raw history, built the way `walk_forward_check.py` works (stock rebuilt at the banks' own update times, the cleared-page rule, the 6-hourly India-time grid), so the laptop's gaps and the cloud's 4.5-hour sweeps give the same rows. Unit tests pin the label rules.
+  - **Phase 5.1, done on 4 November:** `ml/dataset.py` rebuilds the labels and the 19 inputs from the raw history the way `walk_forward_check.py` works: stock rebuilt at the banks' own update times, the cleared-page rule, and the 6-hourly India-time grid. So the laptop's gaps and the cloud's 4.5-hour sweeps give the same rows. Its inputs are exactly `src/lib/stockoutFeatures.js`'s. 16 unit tests pin the label rules and inputs, and the parity test checks them against the JS on a real week.
   - **8 November:** Diwali, the first festival in the history.
   - **From mid-November, every 2 weeks, phase 5.2:** rerun the harness without `--until`, checking only that it runs and the numbers are sane. Switch ETS and SARIMA to daily values with a weekly season once two weeks exist, refitted weekly. Run `npm run archive:sync` first, since the laptop's copy can be a week behind the cloud.
-  - **Late December, phase 5.3:** the backtest, at about 8 weeks of history, run once, with the decision rule applied as written, and presented to the panel.
-  - **January 2027, phase 5.4:** the chosen model scores every series at each 6-hourly grid time, the grid it was trained on; ranked search reads it behind a flag, and donor alerts are logged, not sent, for 2 weeks. How it is deployed, and how suggestions to donors follow, is item 13. **2027, phase 5.5:** monthly retraining, the earlier warning (output 1b), and the deferred models.
+  - **Late December, phase 5.3:** the seven models compared again at about 8 weeks of history, on unseen weeks, at the same threshold, and presented to the panel. A better model replaces logistic regression through `model_versions`.
+  - **Phase 5.4, brought forward to 4 November:** the model scores every series at each 6-hourly grid time in the closed beta, with no shadow period; item 13 has the details. **2027, phase 5.5:** monthly retraining, the earlier warning (output 1b), and the deferred models.
 - **Depends on** unbroken collection (item 2). The monthly issue data asked for in item 5 would raise every model's ceiling.
 
 ## 5 · Write to eRaktKosh's team
@@ -94,9 +92,21 @@ All the planned work for bloodLink, in order of priority: what each item involve
 ## 7 · Bank locations (#33, #34)
 
 - **Plan:** [`PLANS/plan_bank_locations.md`](PLANS/plan_bank_locations.md).
-- **What it involves.** Placing the up to 885 stocked banks location search can't see: 679 with no coordinates and 206 in the wrong state. Positions come from eRaktKosh's other calls, data.gov.in, Nominatim and PIN codes, and are accepted only at a measured accuracy. They live in their own table, so the weekly directory run can't overwrite them, are reviewed on an admin page, and are merged into every location search, with a before-and-after count for the report.
-- **Phases 0 to 7,** 3 to 4 days, plus 2 to 4 hours of review with a teammate. 15 placements from data.gov.in are ready to load.
-- **Since the plan was written,** the weekly directory run is `collectDirectory()` in `src/lib/collector.js`, run by the cloud. The supersede step goes there, and needs `node scripts/setup-cloud-collector.mjs --deploy-only` after the change.
+- **What it involves.** Placing the 892 stocked banks location search can't see (4 November): 699 with no coordinates, and 193 in the wrong state or outside India. Positions come from data.gov.in, Nominatim and PIN codes, and are accepted only at a measured accuracy. They live in their own table, so the weekly directory run can't overwrite them, are reviewed on an admin page, and are merged into every location search, with a before-and-after count for the report.
+- **Done on 4 November** (the plan's "Progress" section has the detail):
+  - the fixes table, applied, with 221 positions loaded;
+  - `scripts/place-banks.mjs`, with its control and target runs;
+  - the search merge, behind `BANK_LOCATION_FIXES`;
+  - `/admin/locations`;
+  - the supersede step in `collectDirectory()`, deployed to the cloud collector.
+- **Where it stands:**
+  - 140 positions are in search: 15 from data.gov.in, 115 by name and 10 by address.
+  - Location search sees 4,004 of 4,756 stocked banks, up from 3,864.
+  - In the control run, the name match was accurate when right (median 40 m), but 2 of its 53 positions were same-named hospitals more than 10 km away.
+- **Left:**
+  1. Review the 81 waiting positions on `/admin/locations` with a teammate (about an hour).
+  2. Check the weekly directory run on Monday 9 November.
+  3. Measure again after the review with `node scripts/location-coverage.mjs --snapshot <baseline snapshot> --placements db`.
 
 ## 8 · ETA comparison
 
@@ -170,14 +180,17 @@ All the planned work for bloodLink, in order of priority: what each item involve
   - a manual appeal, for a shortage the forecast missed, reaches real people only at a partner centre that approves it;
   - neither is ever shown as the forecast, and both are audited.
 - **Phases 0 to 5.**
-  - 0 (groundwork) runs in November and December, beside item 4's phases 5.1 and 5.2.
-  - 1 and 2 are item 4's phases 5.3 and 5.4: the backtest, then two weeks of shadow in January 2027.
-  - 2 also adds drills of the mark; 3 shows the forecast in February.
+  - 0 to 3, Part A, were built on 4 November for the closed beta, with shadow mode skipped at the project's request, since the beta isn't public.
+  - Drills of the mark (Part C) wait for test accounts and `/admin/events`; manual appeals need a partner centre.
   - 4 and 5, the suggestions, need item 12's phases 2 and 3 and a partner centre.
 - **Needs:** item 12 (consent, donor areas, `donor_status` and its eligibility parity test, the outbox); item 10's F1, F3, F5, F6 and F8; the project guide's sign-off on proactive suggestions.
-- **Phase 0 so far** (4 November; the plan's "Phase 0 so far" has the details):
-  - written: the migration `20261104000100_stockout_forecast.sql` with its rolled-back checks (`scripts/check-forecast-schema.mjs`), the auto-refresh column in the weekly directory run, `src/lib/stockoutFeatures.js` (the 19 inputs and the labels) and `src/lib/stockoutModel.js` (scoring, Platt, the cut-off, the metrics, the kill switch), with 47 tests and a scikit-learn parity fixture;
-  - left: apply the migration and redeploy the collector; move the dataset builder from `../rough_work/ML/` into `ml/` and pass the parity test on a week of real history.
+- **Part A in the beta** (4 November; the plan's "Part A in the beta" has the details):
+  - the model: `ml/dataset.py`, the Python twin of the inputs and labels, and `ml/train.py`, which trained `stockout-logit-t2-2026-11-04`. At 48 h, walking forward, it scores PR-AUC 0.348 and catches 22.6% of falls to 2 units at 1 false alert per bank per week. Its model card is `ml/MODEL_CARDS.md`, and the parity test passes on a real week;
+  - in the cloud: the `score-stock` Edge Function, with `src/lib/forecastJobs.js`, scoring every 6 hours, and the daily labels, Platt scaling, cut-off, metrics, kill switch and prune. The two migrations, `20261104000100_stockout_forecast.sql` and `20261104000200_forecast_live.sql`, and `scripts/setup-forecast.mjs` set it up. A rolled-back dry run on the live project passed (`scripts/check-forecast-live.mjs`);
+  - in the app: the "may run low within 48 h" and "low now" marks and the ranking factor in ranked location search, and the admin overview's card with the flags' switches;
+  - live since 4 November: the two forecast migrations applied, `score-stock` scoring every 6 hours, the mark and the ranking factor on;
+  - built since: suggestions on "My profile" for a complete donor profile eligible today, within 15 km or in their district (behind `forecast_appeals`); admins' stock-out events on `/admin/events`, real, for 24, 48 or 72 hours, ending by themselves or with "End now" (behind `admin_events`); the marks in region search; and the sensitivity check rerun with the ranking factor (it moves the first choice in 8% of urgent and 17% of routine searches);
+  - left: apply `20261105000200_admin_events.sql` (`npm run db:migrate`, after `node scripts/check-admin-events.mjs`), then turn on the two flags; decide whether the ranking factor stays at full strength.
 
 ## 14 · Usability study
 
@@ -206,7 +219,7 @@ All the planned work for bloodLink, in order of priority: what each item involve
 
 | When | Work |
 |---|---|
-| This week, to 8 November | 1. 2: the watch, then deleting the laptop tasks on 4 November. 3: pausing Tokyo. 4: the two decisions. 5: the letter |
+| This week, to 8 November | 1. 2: the watch, then deleting the laptop tasks on 4 November. 3: pausing Tokyo. 4: the three decisions. 5: the letter |
 | 9 to 22 November | 2: the first weekly run (9 November). 3: deleting Tokyo (from 10 November). 4: phase 5.1. 13: phase 0 begins. 6. 7. 8: phases 0 to 2 |
 | From mid-November, every 2 weeks | 4: phase 5.2, with ETS and SARIMA once two weeks of daily values exist |
 | 23 November to 20 December | 9. 10: phases A to C. 11. 12: phases 0 and 1. 13: phase 0. 14. 15 |

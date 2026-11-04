@@ -17,6 +17,10 @@ import { parseEntryDate } from "./stock.js";
 //   freshness  100 when stock was updated within 6 h, falling linearly to 0
 //              at 72 h; 30 when the bank gives no update time
 // The total is a weighted sum; weights depend on urgency (they add up to 1).
+// When the stock-out forecast's ranking flag is on, a bank's stockoutRisk (the
+// forecast's chance that the group falls to its low-stock threshold within 24 h, or
+// 48 h for a routine request) scales its coverage and surplus by (1 - risk), as
+// report 3 proposed (docs/PLANS/ML_system.md, A6). Banks without one are unchanged.
 //
 // Then buildResponsePlan() walks the ranked list and takes units from each bank
 // until the request is covered, so one request can be split across banks.
@@ -100,9 +104,15 @@ function describeStock(source, unitsNeeded) {
     : `${listed}: covers the ${unitsNeeded} needed, with ${spareUnits} to spare`;
 }
 
-// Three plain-language reasons for a bank's rank: travel, stock, freshness.
+// Three plain-language reasons for a bank's rank: travel, stock, freshness; and a
+// fourth when the forecast's risk lowered it.
 function buildReasons(source, freshness, unitsNeeded, now, trafficLabel) {
   const reasons = [describeEta(source, trafficLabel), describeStock(source, unitsNeeded)];
+  if (hasRisk(source)) {
+    reasons.push(
+      `Forecast: ${Math.round(source.stockoutRisk * 100)}% chance its stock runs low soon, so its stock counts for less (informational)`,
+    );
+  }
   const age = formatAge(hoursSinceUpdate(source.entryDate, now));
   if (source.isDormant) reasons.push(`Stock not updated for ${age}, so it is left out of the plan`);
   else if (age === null) reasons.push("No stock update time listed, so call to confirm");
@@ -111,8 +121,11 @@ function buildReasons(source, freshness, unitsNeeded, now, trafficLabel) {
   return reasons;
 }
 
-// sources: [{ hospitalCode, name, units, groupName, etaMinutes, etaSource, entryDate, ... }]
-// where units is the bank's stock of the exact group asked for.
+const hasRisk = (source) =>
+  typeof source.stockoutRisk === "number" && source.stockoutRisk >= 0 && source.stockoutRisk <= 1;
+
+// sources: [{ hospitalCode, name, units, groupName, etaMinutes, etaSource, entryDate,
+// stockoutRisk?, ... }] where units is the bank's stock of the exact group asked for.
 // Returns the sources sorted by score, each with score, breakdown and reasons.
 // weights overrides the urgency's weights, for sensitivity analysis.
 export function rankSources(
@@ -128,12 +141,14 @@ export function rankSources(
   return sources
     .filter((source) => source.units > 0)
     .map((source) => {
+      const forecastFactor = hasRisk(source) ? 1 - source.stockoutRisk : 1;
       const breakdown = {
         eta: etaScore(source.etaMinutes, urgency),
-        coverage: coverageScore(source.units, unitsNeeded),
-        surplus: surplusScore(source.units, unitsNeeded),
+        coverage: roundToTenth(coverageScore(source.units, unitsNeeded) * forecastFactor),
+        surplus: roundToTenth(surplusScore(source.units, unitsNeeded) * forecastFactor),
         freshness: freshnessScore(source.entryDate, now),
       };
+      if (hasRisk(source)) breakdown.forecastFactor = Math.round(forecastFactor * 1000) / 1000;
       const score = roundToTenth(
         Object.entries(weights).reduce(
           (sum, [scoreName, weight]) => sum + weight * breakdown[scoreName],

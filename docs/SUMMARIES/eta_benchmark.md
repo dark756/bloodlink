@@ -72,13 +72,38 @@ In detail, with what each step needs and when it is done, in [the plan to finish
 | The write-up: tables, charts, the viva sentence | By 15 January |
 | Self-hosted OSRM (M7), before real traffic | With deployment |
 
+## Running the bench
+
+The bench's code, tests and data are in `../rough_work/eta_benchmarks/`, outside git, since 4 November:
+- **Code:** the scripts `eta-bench.mjs`, `eta-methods.mjs`, `eta-sample.mjs`, `eta-google.mjs` and `eta-data.mjs`, and the modules `etaMetrics.js` and `etaRubric.js`.
+- **Tests and data:** the tests in `tests/`, and the data and runs in `data/`.
+- **The app's code:** it imports the app's `src/lib/trafficModel.js`, `routing.js` and `ranking.js`, so it tests the code the app runs.
+- **Packages:** its `node_modules` is a junction to `bloodlink/node_modules`.
+
+Run from that folder, or any other, since every path is built from the files' own location. Add `--disable-warning=MODULE_TYPELESS_PACKAGE_JSON` after `node` to quiet Node's warning.
+
+```text
+node eta-bench.mjs --google [--dry-run]                    score against Google; --dry-run: M3 stands in
+node eta-bench.mjs <trips.ndjson> [--sets <capture dir>]   score against timed trips
+node eta-bench.mjs --dry-run [<capture dir>]               check the plumbing on the saved captures
+node eta-bench.mjs --ops [--calls 200]                     OSRM latency and reliability
+node eta-sample.mjs [--week YYYY-MM-DD]                    pick the sample; calls nothing
+node eta-google.mjs [--plan] [--free-cap 35000]            ask Google; --plan sends nothing
+node eta-google.mjs --purge                                delete Google's raw answers, by 3 December 2026
+npx vitest run                                             its 46 tests; npm test in bloodlink/ doesn't run them
+```
+
+- **The Google key** is `GOOGLE_ROUTES_API_KEY` in `bloodlink/.env.local`, read only by `eta-google.mjs`, never by app code.
+- **A re-run of `--google`** reads the caches, so it makes no calls and gives the same scorecard.
+- **The bench folder's `README.md`** lists every function and constant, in the form of `docs/CODE_REFERENCE.md`.
+
 ## Where the details are
 
 | What | Where |
 |---|---|
 | Design, rubric, every result | [The benchmark in full](#the-benchmark-in-full), with [the Google run](#the-google-run-4-november-2026) |
 | The steps left, in detail | [The plan to finish it](#the-plan-to-finish-it) |
-| The code, data and runs, and how to run them | `../rough_work/eta_benchmarks/` and its `README.md`, outside git |
+| The code, data and runs, and how to run them | [Running the bench](#running-the-bench); the code and data in `../rough_work/eta_benchmarks/`, outside git |
 | The model | [`eta_model.md`](eta_model.md) |
 | The findings in full, and report 3's record of the Google check | [Below](#the-feature-in-full) |
 | The run's files | `../rough_work/eta_benchmarks/data/runs/2026-11-04-google/` and `ops/osrm-2026-11-04.json`, outside git |
@@ -87,7 +112,7 @@ In detail, with what each step needs and when it is done, in [the plan to finish
 
 ## The benchmark in full
 
-*Moved here word for word on 4 November 2026 from `docs/SUMMARIES/eta_benchmark.md` (before that `docs/PLANS/benchmark_eta_system.md`), which was then deleted. It is the benchmark's design and every result.*
+*Moved here word for word on 4 November 2026 from `../rough_work/eta_benchmarks/BENCHMARK.md` (before that `docs/PLANS/benchmark_eta_system.md`), which was then deleted. It is the benchmark's design and every result.*
 
 **Status, 4 November 2026: the Google half is done; the timed trips are not.** On the rubric as written, **M3 wins** with 65.0 of 100, 8.7 points ahead of M1, so the app keeps its method. The results are [below](#the-google-run-4-november-2026). The summary of findings is in [the summary above](#summary-the-eta-benchmark), and the model in [`eta_model.md`](eta_model.md). The steps left are planned in detail, with dates, in [the plan to finish it](#the-plan-to-finish-it). The Google results were seen before the team agreed the rubric. So the rubric is recorded as unchanged since, and any change to it now must be marked as made after the results.
 - **Done:**
@@ -687,7 +712,7 @@ If time is short, phases 0 to 3 already answer "which method follows the trend b
 
 ## The plan to finish it
 
-*Moved here word for word on 4 November 2026 from `docs/SUMMARIES/eta_benchmark.md`, "The plan to finish it" (before that `docs/PLANS/plan_complete_eta_benchmark.md`), which was then deleted. "The benchmark" below means the section above.*
+*Moved here word for word on 4 November 2026 from `../rough_work/eta_benchmarks/PLAN.md` (before that `docs/PLANS/plan_complete_eta_benchmark.md`), which was then deleted. "The benchmark" below means the section above.*
 
 **Status, 4 November 2026: not started.** This plan covers the steps the ETA benchmark still needs, in date order, each in enough detail to carry out. The benchmark is described in [the benchmark in full](#the-benchmark-in-full), which is called "the benchmark" below. Its phases 0, 2 and 3 are done: against Google's traffic-aware predictions, M3 (the app's method) is 24.9% off on average and wins on the rubric with 65.0 of 100. Its findings are summarised in [the summary above](#summary-the-eta-benchmark).
 
@@ -1076,7 +1101,7 @@ By Friday 15 January.
 
 ### How well it does: the ETA benchmark, 4 November 2026
 
-The ETA benchmark (`docs/SUMMARIES/eta_benchmark.md`) scored M3 and three other methods against Google's traffic-aware predictions for a coming week (Routes API, `TRAFFIC_AWARE_OPTIMAL`, `BEST_GUESS`).
+The ETA benchmark ([above](#the-benchmark-in-full)) scored M3 and three other methods against Google's traffic-aware predictions for a coming week (Routes API, `TRAFFIC_AWARE_OPTIMAL`, `BEST_GUESS`).
 - **Google is the reference, not a candidate.** Its terms bar showing its results on the app's non-Google map. Only aggregates are given here, as its terms ask. Results derived from Google Maps Platform data.
 - **The sample:** 40 hospital-to-bank pairs, 10 in each zone across 8 or 9 states. Each pair was timed every 2 hours on all 7 days of 9 to 15 November, 3,360 trips in all, 840 per zone. The 52 saved searches were also timed at 02:00, 12:00 and 18:00 on the Wednesday, giving 396 searches to compare rankings on.
 - **The cost:** 4,107 elements, within Google's free 5,000 a month, so ₹0.
@@ -1148,7 +1173,7 @@ M3 scores 65.0, 8.7 points ahead of M1. That is outside the 5-point band where t
 - **The latency was measured from a laptop.** A deployed server's will differ.
 
 **Where the details are:**
-- the benchmark, `docs/SUMMARIES/eta_benchmark.md`, under "The Google run, 4 November 2026", and its summary, `docs/SUMMARIES/eta_benchmark.md`;
+- the benchmark in full, above, under ["The Google run, 4 November 2026"](#the-google-run-4-november-2026), and the summary at the top of this file;
 - report 3's record of the Google check, below;
 - the run's files, in `../rough_work/eta_benchmarks/data/runs/2026-11-04-google/` (`scorecard.md`, `metrics.json`, `trend.json` and the chart CSVs).
 
@@ -1158,7 +1183,7 @@ Google's raw answers are deleted by 3 December 2026. The metrics are kept.
 
 ### Checked against Google (4 November)
 
-The ETA benchmark (`docs/SUMMARIES/eta_benchmark.md`) names the methods it compares. **This point's design is M3**: OSRM's road route with the free-flow floor (D2.2), the zone's congestion (D2.3, D2.4), season and rain (D2.5). The others:
+The ETA benchmark ([above](#the-benchmark-in-full)) names the methods it compares. **This point's design is M3**: OSRM's road route with the free-flow floor (D2.2), the zone's congestion (D2.3, D2.4), season and rain (D2.5). The others:
 - **M0** is the rule this point started from: straight line × 1.4 at 25 or 45 km/h.
 - **M1** is M3's own fallback when OSRM fails (D2.6): straight line × 1.34 with the same model.
 - **M2** is OSRM's time with no adjustment.
@@ -1182,11 +1207,11 @@ The benchmark also runs ablations of M3, each with one part removed.
 - **By zone:** metro 20.0%, city 23.5% (8.7% slow), town 28.0%, rural 28.0% (28.0% quick). By time, 22% to 29% in every two-hour block: quick at night (−15%), close in the evening peak (+4.7%). Weekdays and the weekend are alike.
 - **The week's pattern:** in the metros, M3 follows Google's week closely (median trend R² 0.86, the same peak hours, the same swing). In towns it swings more than Google, whose week there is almost flat. Google may have less traffic data there.
 - **The rural assumption flagged in D2.3 is the weak spot,** but the 0.29 scale isn't the problem. Rural trips' base time is a median 28% below Google's, and removing the scale would make their weekly swing twice Google's. The highway free-flow speed (57.8 km/h) is what to calibrate, from timed trips.
-- **It stays the app's method.** The benchmark's rubric also weighs latency, reliability, cost and effort before declaring a winner. Over 200 uncached calls to the public OSRM server, each with every bank in the widest ring, all succeeded, in 217 ms at the 95th percentile. On the rubric, M3 scores 65.0 of 100, against 56.3 for M1, 55.0 for M0 and 45.0 for M2. Its lead holds with each weight moved by ±20%. The team still has to agree the rubric, so the result is provisional. The full results are in `docs/SUMMARIES/eta_benchmark.md`, under "The Google run, 4 November 2026", and the summary in `docs/SUMMARIES/eta_benchmark.md`.
+- **It stays the app's method.** The benchmark's rubric also weighs latency, reliability, cost and effort before declaring a winner. Over 200 uncached calls to the public OSRM server, each with every bank in the widest ring, all succeeded, in 217 ms at the 95th percentile. On the rubric, M3 scores 65.0 of 100, against 56.3 for M1, 55.0 for M0 and 45.0 for M2. Its lead holds with each weight moved by ±20%. The team still has to agree the rubric, so the result is provisional. The full results are [above](#the-google-run-4-november-2026), under "The Google run, 4 November 2026", and the summary at the top of this file.
 
 ### Point 4: the ETA accuracy test
 
-**ETA accuracy**, the calibration flagged in point 2. `docs/SUMMARIES/eta_benchmark.md` now plans it in full: a rubric fixed before any results, timed trips as the truth, and Google's traffic-aware predictions as a reference for the week's pattern. In short:
+**ETA accuracy**, the calibration flagged in point 2. [The benchmark above](#the-benchmark-in-full) now plans it in full: a rubric fixed before any results, timed trips as the truth, and Google's traffic-aware predictions as a reference for the week's pattern. In short:
 - **Collect:** timed trips by car or taxi in each zone (metro, city, town, rural) at night, midday and the evening peak, plus Google's predictions for the same weekday and time through its Routes API.
 - **Measure:** mean absolute error, mean percentage error and bias, by zone and hour, and whether each method picks the same first bank as the true times.
 - **Adjust:** `ZONE_SCALE` and the town and rural free-flow speeds from the timed trips only, until the percentage error is under 25% everywhere. Google's numbers are used to score, never to tune (the plan's decision E10).
