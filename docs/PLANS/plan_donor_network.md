@@ -3,7 +3,7 @@
 **Status: PLAN, not started.** Nothing has been built. The architecture, logic and defaults below are proposals with reasons. Every default marked *assumption* must be calibrated in shadow mode or the pilot before it is trusted.
 
 - Paths are relative to `bloodlink/` unless they start with `../`.
-- It builds on `CLAUDE.md` ("Where to go next", item 6), report 3 (point 4's PostGIS benchmark, point 5's donor-response model R and notification tests) and `plan_panels.md` (organization members, notifications inbox, two-factor sign-in).
+- It builds on `CLAUDE.md` ("Where to go next", item 6), report 3 (point 4's PostGIS benchmark and notification tests, and point 5's donor alerts) and `plan_panels.md` (organization members, notifications inbox, two-factor sign-in).
 - Medical and legal statements here are a starting point for review by the project guide and a blood-bank medical officer, not advice.
 
 **Contents**
@@ -130,7 +130,7 @@ sequenceDiagram
 | **Shortfall** | Verified hospital or blood centre | Exact group; compatible groups only if the centre allows it | Critical, urgent | The emergency path, from a response plan |
 | **Platelet apheresis** (single donor platelets: eRaktKosh component 14, short name "PLA") | Verified blood centre with apheresis | Exact ABO by default | Urgent | Dengue season makes this common. Donors must opt in to apheresis; extra screening at the centre. Don't abbreviate this as "SDP": in eRaktKosh's component list "SDP" is Single Donor *Plasma* (component 18) |
 | **Centre appeal** | Verified blood centre | One or more groups, or any group | Routine | For stock running low over days, with booked slots |
-| **Forecast appeal** (later) | The forecast job, approved by the centre | The groups at risk | Routine | Report 3, point 5: "donor alerts" |
+| **Forecast appeal** (later) | The forecast job, or an admin, approved by the centre | The groups at risk | Routine | Report 3, point 5: "donor alerts". Designed in [`ML_system.md`](ML_system.md) |
 | **Camp** (later) | Verified blood centre | Any | Routine | From eRaktKosh's camp data or created in the panel |
 
 **Group policy, consistent with report 3's D1.4.**
@@ -408,7 +408,7 @@ groupFit  = 1 for the exact group, 0.7 for a compatible group
 - `e^(−minutes / τ)` is the same curve the bank ranking uses, so one explanation covers both.
 - `rested` spreads requests across donors, which is fairer and fights fatigue.
 - Ties are broken at random, so equal donors share the load.
-- **Later:** report 3's response model R (logistic regression, then gradient-boosted trees, on recency, frequency, distance and past responses) replaces `p_donate` once a few hundred real asks are logged.
+- **No trained model of who comes.** [`ML_system.md`](ML_system.md) ranks forecast appeals with this score too (its S7). At the pilot's size, most requests have fewer donors who pass the filters than one wave asks, so the order rarely matters, and the smoothed counts already learn each donor's record.
 
 ### Step 3: waves
 
@@ -627,7 +627,7 @@ Logged automatically from the tables, shown on the admin and organization panels
 
 **The simulation.**
 - **Donors:** 10,000 to 100,000 synthetic donors placed around real bank positions with a few km of jitter (the method `scripts/benchmark-geo.mjs` uses), with a published Indian blood-group distribution (cite it when used).
-- **Behaviour:** each notified donor accepts with a probability from the UCI donor-return data's recency and frequency (report 3's model R, with that dataset's duplicates removed), after a delay drawn from a long-tailed distribution; accepted donors arrive with a show probability; arrivals are deferred with a deferral probability.
+- **Behaviour:** each notified donor accepts with a probability from the UCI donor-return data's recency and frequency (with that dataset's duplicates removed), after a delay drawn from a long-tailed distribution; accepted donors arrive with a show probability; arrivals are deferred with a deferral probability.
 - **Requests:** a mix of critical, urgent and routine at real hospital positions.
 - **Output:** for each setting, fill rate, time to fill and notifications per unit. Plot the trade-off between notifications per unit and time to fill, and pick settings on it. The behavioural inputs are guesses until shadow mode and the pilot replace them, and the report must say so.
 
@@ -641,7 +641,7 @@ Logged automatically from the tables, shown on the admin and organization panels
 | **1 · Donors only** | Join, consent, areas, availability, `donor_status` triggers and parity test; admin and centre see aggregated donor counts per 1 km cell (cells under 5 hidden) | 100 donors in the pilot city; parity test green |
 | **2 · Requests in shadow mode** | `blood_requests`, `match_wave`, the cron, the outbox with in-app only for team accounts; real requests matched but not sent | Two weeks of logs; the matches look sensible to the centre's staff; simulation settings chosen |
 | **3 · Live pilot** | One centre and one hospital; in-app, web push and email; daytime only at first; admins watch open critical requests | 20 real requests closed with every outcome recorded; no safety incident |
-| **4 · SMS and learning** | DLT registration and SMS for critical requests; model R once about 500 asks are logged | Delivery and fill targets met |
+| **4 · SMS and tuning** | DLT registration and SMS for critical requests; the score's starting counts and the wave settings set again from the pilot's outcomes | Delivery and fill targets met |
 | **5 · Appeals and growth** | Centre appeals with slots, forecast appeals, camps, more cities; then, perhaps, public requests confirmed by the anchor centre | Decided after phase 4 |
 
 ---
@@ -723,8 +723,8 @@ Logged automatically from the tables, shown on the admin and organization panels
 
 ## Sources
 
-- `docs/report3.md`: point 4 (PostGIS benchmark; notification tests) and point 5 (donor-response model R, shadow-mode alerts, UCI data).
-- The cloud collector (`supabase/migrations/20261103000100_cloud_collector.sql`, `supabase/functions/collect-stock/`; `docs/report3.md`, point 3.1): the pg_cron, pg_net, Edge Function, Vault and limited-role pattern reused here.
+- `docs/SUMMARIES/geospatial_benchmark.md` (the PostGIS benchmark), `docs/SUMMARIES/performance_testing.md` (notification tests) and `docs/SUMMARIES/ml_models.md` (shadow-mode alerts, UCI data).
+- The cloud collector (`supabase/migrations/20261103000100_cloud_collector.sql`, `supabase/functions/collect-stock/`; `docs/SUMMARIES/data_quality.md`: the pg_cron, pg_net, Edge Function, Vault and limited-role pattern reused here.
 - `src/lib/eligibility.js`, `src/lib/compatibility.js`, `src/lib/ranking.js`, `src/lib/traffic.js`: the modules the matching reuses.
 - [DLT registration for SMS to India](https://www.plivo.com/docs/sms/concepts/dlt-registration-process) (Plivo's guide; check the operator's DLT portal for current rules).
 - NBTC, [*Guidelines for Blood Donor Selection & Blood Donor Referral*](https://www.isignal.in/h-library/document-2.pdf), NACO letter S-12016/5/2016-NACO (NBTC), 11 October 2017. Read from the copy the Union of India annexed to its affidavit in *Thangjam Santa Singh v. Union of India*, WP (C) 275 of 2021 (Annexure A5, pages 162 to 192), because NACO's own server wasn't reachable. Clauses 12 and 51, which exclude transgender people, men who have sex with men and female sex workers, are what that case challenges.

@@ -4,7 +4,7 @@ import { cleanText, isDormant, normalizeGroupName, parseEntryDate } from "./stoc
 // saved or ranked. Rows keep eRaktKosh's own shape, so everything downstream
 // reads them unchanged. The explicit ".js" import lets the Node scripts use it too.
 //
-// Rules, set from a survey of all 4,707 banks on 2026-10-23 (docs/report3.md, point 3.1):
+// Rules, set from a survey of all 4,707 banks on 2026-10-23 (docs/SUMMARIES/data_quality.md:
 // - Units per group must be whole numbers from 0 to 2,000. 30 entries were
 //   above that, up to 15,280, and are dropped.
 // - Group labels become the 10 canonical names ("O +ve" -> "O+Ve"). Unknown

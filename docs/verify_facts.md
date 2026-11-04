@@ -22,6 +22,8 @@
 > - **Later on 26 October:** F1 to F4 are fixed in the form and `eligibility.js`, each checked against the official text of the 2017 guidelines: the copy the Union of India filed in the Supreme Court (WP (C) 275 of 2021, Annexure A5). Clause 16, 6 months after an abortion, was added too.
 > - **Also later on 26 October:** F16 is resolved. Place names now come from bloodLink's server, which asks Nominatim at most once a second and caches each rounded point for a week (#52).
 
+> **Status update, 4 November 2026.** `docs/report3.md` and `docs/features.md` were folded into `docs/SUMMARIES/`, word for word, one file per topic. Where this file names them, `docs/deliverables.md` gives the summary that now holds each point.
+
 **Labels used below**
 
 | Label | Meaning |
@@ -242,8 +244,8 @@ Recomputed with `src/lib/ranking.js` itself.
 | Urgent: A 65.5, B 68.3; routine: A 73.7, B 74.4 | Identical | **Confirmed** |
 | Spare stock is worth +12.6, +9.5, +3.2 points, or about 15, 19 and 10 extra minutes | +12.6 = 14.9 min; +9.5 = 18.6 min; +3.2 = 9.7 min | **Confirmed** |
 | Every urgency's weights add up to 1 | 1.00, 1.00, 1.00 | **Confirmed** |
-| A 10-minute error costs 28%, 20% and 15% of ETA points (`plan_eta_comparison.md`) | 28%, 20%, 15% | **Confirmed** |
-| 71 paired trips detect a 5-point MAPE difference (`plan_eta_comparison.md`) | (1.96 + 0.84)² × 15² ÷ 5² = 70.6 | **Confirmed** |
+| A 10-minute error costs 28%, 20% and 15% of ETA points (`docs/SUMMARIES/eta_benchmark.md`) | 28%, 20%, 15% | **Confirmed** |
+| 71 paired trips detect a 5-point MAPE difference (`docs/SUMMARIES/eta_benchmark.md`) | (1.96 + 0.84)² × 15² ÷ 5² = 70.6 | **Confirmed** |
 | The ranking's "first choice unchanged in 92 to 98%" (sensitivity) | Data outside the repo | **Unverified** here |
 
 ---
@@ -267,9 +269,9 @@ Recomputed with `src/lib/ranking.js` itself.
 | OSRM demo server: at most 1 request a second, non-commercial | `routing.js`, `CLAUDE.md` | OSRM wiki (FOSSGIS sponsors it) | **Confirmed;** citation fix (F19) |
 | Nominatim: 1 request a second, identifying User-Agent, attribution, one-time bulk rules, 4 a minute for periodic scripts, end-user use only if "moderate" | `BloodMap.js`, `plan_bank_locations.md` | OSM Foundation usage policy | **Confirmed;** see F16 |
 | Open-Meteo free API: non-commercial only, under 10,000 calls a day, data CC BY 4.0 | `weather.js`, search-page credit | Open-Meteo terms | **Confirmed** |
-| Google Routes: `TRAFFIC_AWARE_OPTIMAL` needed for traffic models; 100 elements a request; future departure times | `plan_eta_comparison.md` | Google's Routes docs | **Confirmed** |
+| Google Routes: `TRAFFIC_AWARE_OPTIMAL` needed for traffic models; 100 elements a request; future departure times | `docs/SUMMARIES/eta_benchmark.md` | Google's Routes docs | **Confirmed** |
 | Google Geocoding: latitude and longitude may be cached for 30 days | `plan_bank_locations.md` | Google Maps Platform service terms | **Confirmed** |
-| Google's free cap: 5,000 Pro route-matrix elements a month | `plan_eta_comparison.md` | Google's pricing table | **Confirmed** as listed; the billing tier for traffic-aware calls is still unconfirmed, as the plan says |
+| Google's free cap: 5,000 Pro route-matrix elements a month | `docs/SUMMARIES/eta_benchmark.md` | Google's pricing table | **Confirmed** as listed; the billing tier for traffic-aware calls is still unconfirmed, as the plan says |
 | TRAI DLT registration for SMS in India | `plan_donor_network.md` | Vendor guides (Plivo and others) | **Confirmed** in substance (secondary sources) |
 
 ---

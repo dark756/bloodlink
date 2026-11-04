@@ -1,4 +1,4 @@
-// Sets up the cloud collector (docs/report3.md, point 3.1) on
+// Sets up the cloud collector (docs/SUMMARIES/data_quality.md on
 // the project in SUPABASE_DB_URL. Needs `npx supabase login` once, and the
 // *_cloud_collector.sql migration applied.
 //

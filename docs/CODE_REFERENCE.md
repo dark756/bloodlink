@@ -3,6 +3,7 @@
 This lists every function, component, constant and variable in the app, file by file, with one line on what each one is or does.
 
 - Paths are relative to `bloodlink/`.
+- **The ETA bench** (its scripts, `etaMetrics.js`, `etaRubric.js` and their tests) is in `../rough_work/eta_benchmarks/`, outside git, since 4 November. Its `README.md` lists its functions in the same form. It imports the app's own modules, such as `src/lib/trafficModel.js` below.
 - **Kinds:** *function*, *component* (a React component), *hook*, *constant* (a fixed module-level value), *variable*, *state* (a React `useState` value and its setter), *class*, *handler* (a route handler such as `GET`).
 - **Inside** says where a name is declared: *module* means the top level of the file; otherwise it is the function the name lives in.
 - Callback parameters such as `(bank) => …` are named after the item they hold, so they aren't listed.
@@ -41,7 +42,7 @@ This lists every function, component, constant and variable in the app, file by 
 - Raw eRaktKosh fields keep eRaktKosh's own spelling (`hospitalname`, `available_WithQty`). Once a row is normalized, its fields are `camelCase`: `row.entrydate` becomes `entryDate`.
 - Code is formatted by Prettier 3: 2-space indents, double quotes, semicolons, trailing commas, lines up to 100 characters. The settings are in `.prettierrc.json`.
   - `npm run format` rewrites files, and `npm run format:check` reports any that need it.
-  - `.prettierignore` skips the top-level `archive/`, `assets/`, `public/` and `supabase/` folders, plus Markdown files. The entries start with `/` so that `src/lib/supabase/` is still formatted.
+  - `.prettierignore` skips the top-level `assets/`, `public/` and `supabase/` folders, plus Markdown files. The entries start with `/` so that `src/lib/supabase/` is still formatted.
 
 ## Common names
 
@@ -444,12 +445,11 @@ Emergency ranking for exact-group stock: four scores per bank, urgency weights, 
 | `units` | variable | `buildResponsePlan` | Units taken from the current bank. |
 | `shortfall` | variable | `buildResponsePlan` | Units that couldn't be found. 0 when the plan covers everything. |
 
-### `src/lib/traffic.js`
-Pure travel-time model: ETA = free-flow time × (1 + congestion / 100) × rain factor. Safe in the browser and on the server.
+### `src/lib/trafficModel.js`
+Pure travel-time model: ETA = free-flow time × (1 + congestion / 100) × rain factor. The TomTom profiles are passed in rather than imported, so plain Node can load it; the app reaches it through `src/lib/traffic.js`.
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `trafficProfiles` | import | module | `assets/traffic_profiles.json`: TomTom weekday-hour congestion for 10 Indian metros plus an India average. |
 | `DETOUR_FACTOR` | constant | module | 1.34; road distance ÷ straight-line distance, the median of 94 Mumbai bank trips. Used when there is no route. |
 | `METRO_MARGIN_KM` | constant | module | 10 km; how far outside a TomTom metro's box its own profile still applies. |
 | `ZONE_MIN_BANKS` | constant | module | Banks within 15 km that make a city (11) or a town (3). |
@@ -459,24 +459,36 @@ Pure travel-time model: ETA = free-flow time × (1 + congestion / 100) × rain f
 | `KM_PER_DEGREE` | constant | module | 111.32 km per degree of latitude. |
 | `DAY_NAMES` | constant | module | `"Sun"` to `"Sat"`. |
 | `roundToTenth(value)` | function | module | Rounds to one decimal place. |
+| `hasRoute(leg)` | function | module | Whether OSRM gave the leg both a distance and a time. |
 | `indiaClock(now)` | function | module | `{ day, hour, minute, month }` on India's clock; day 0 is Sunday. |
 | `shifted` | variable | `indiaClock` | The time moved by +5:30, read with UTC getters. |
 | `formatIndiaTime(now)` | function | module | `"Fri 6:05 pm"`. |
 | `hour12` | variable | `formatIndiaTime` | The hour on a 12-hour clock. |
-| `findMetro(latitude, longitude)` | function | module | The TomTom metro whose box (plus margin) contains the point, nearest centre first, or `null`. |
-| `latMargin`, `lonMargin` | variable | `findMetro` | The 10 km margin in degrees. |
-| `squaredDistance(city)` | function | `findMetro` | Rough distance to a city centre, for choosing between overlapping boxes. |
-| `trafficZone({ latitude, longitude }, banksWithin15Km)` | function | module | The zone for a search: `{ kind, name, freeFlowKmh, scale, weekHour, seasonal }`. |
-| `metro`, `india`, `kind` | variable | `trafficZone` | The matched metro, the India average profile, and `"metro"`, `"city"`, `"town"` or `"rural"`. |
-| `freeFlowKmh` | variable | `trafficZone` | Free-flow speed per zone kind: city streets, halfway for towns, highway for rural. |
 | `congestionPercent(zone, now)` | function | module | % extra travel time now: the weekday-hour value interpolated to the minute, times the month's factor and the zone's scale. |
 | `nextDay`, `nextHour`, `thisHourValue`, `nextHourValue`, `hourValue` | variable | `congestionPercent` | The two hourly values around now, and the value between them. |
 | `rainFactor(rainMmPerHour)` | function | module | 1, 1.15 or 1.3. |
 | `describeCongestion(congestion)` | function | module | `"light"`, `"moderate"`, `"heavy"` or `"rush-hour traffic"`. |
 | `trafficConditions(zone, { now, rainMmPerHour })` | function | module | Conditions shared by every bank in one search: zone, city, India time, congestion, label, rain. |
 | `congestion` | variable | `trafficConditions` | This search's congestion %. |
-| `estimateTravel({ straightLineM, leg }, zone, conditions)` | function | module | `{ etaMinutes, roadDistanceM, etaSource }` for one bank. |
-| `hasRoute`, `roadKm`, `routeMinutes`, `freeFlowMinutes`, `minutes` | variable | `estimateTravel` | Whether OSRM routed it, road km, OSRM minutes, the slower free-flow time, and the final minutes. |
+| `createTrafficModel(profiles, { detourFactor, zoneScale })` | function | module | The model for one profile file: `{ findMetro, trafficZone, travelMinutes, estimateTravel }`. `detourFactor` and `zoneScale` default to `DETOUR_FACTOR` and `ZONE_SCALE`; only the ETA bench changes them. |
+| `findMetro(latitude, longitude)` | function | `createTrafficModel` | The TomTom metro whose box (plus margin) contains the point, nearest centre first, or `null`. |
+| `latMargin`, `lonMargin` | variable | `findMetro` | The 10 km margin in degrees. |
+| `squaredDistance(city)` | function | `findMetro` | Rough distance to a city centre, for choosing between overlapping boxes. |
+| `trafficZone({ latitude, longitude }, banksWithin15Km)` | function | `createTrafficModel` | The zone for a search: `{ kind, name, freeFlowKmh, scale, weekHour, seasonal }`. |
+| `metro`, `india`, `kind` | variable | `trafficZone` | The matched metro, the India average profile, and `"metro"`, `"city"`, `"town"` or `"rural"`. |
+| `freeFlowKmh` | variable | `trafficZone` | Free-flow speed per zone kind: city streets, halfway for towns, highway for rural. |
+| `travelMinutes({ straightLineM, leg }, zone, conditions)` | function | `createTrafficModel` | One bank's minutes before rounding. |
+| `roadKm`, `routeMinutes`, `freeFlowMinutes` | variable | `travelMinutes` | Road km, OSRM minutes, and the slower free-flow time. |
+| `estimateTravel(trip, zone, conditions)` | function | `createTrafficModel` | `{ etaMinutes, roadDistanceM, etaSource }` for one bank: `travelMinutes` rounded, at least 1. |
+
+### `src/lib/traffic.js`
+The model from `trafficModel.js`, bound to the TomTom profiles. This is what the app imports; safe in the browser and on the server.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `trafficProfiles` | import | module | `assets/traffic_profiles.json`: TomTom weekday-hour congestion for 10 Indian metros plus an India average. |
+| `DETOUR_FACTOR`, `METRO_MARGIN_KM`, `RAIN`, `ZONE_MIN_BANKS`, `ZONE_SCALE`, `congestionPercent`, `describeCongestion`, `formatIndiaTime`, `indiaClock`, `rainFactor`, `trafficConditions` | re-export | module | Passed on from `trafficModel.js` unchanged. |
+| `findMetro`, `trafficZone`, `estimateTravel` | function | module | `createTrafficModel(trafficProfiles)`'s functions. |
 
 ### `src/lib/routing.js`
 Server-only OSRM table client. Failures never throw; a failed leg is `null`.
@@ -1154,6 +1166,9 @@ Every signed-in person can reach it, whatever their profile's state, so anyone c
 | `mumbaiProfile`, `mumbaiZone` | constant | module | Mumbai's entry in the profile file, and its zone. |
 | `MUMBAI_TO_CSMT` | constant | module | A real OSRM leg: 14.2 km, 869.6 s. |
 | `fridayNight`, `fridayRush` | constant | travel tests | Traffic conditions at 3 am and 6 pm. |
+| `model`, `noRoute` | constant | factory tests | `createTrafficModel` on the real profiles, checked against the app's exports, and a trip with no OSRM leg. |
+| `minutes` | constant | factory tests | Minutes before rounding, which must round to `estimateTravel`'s answer. |
+| `tested` | constant | factory tests | A model with a 1.58 detour factor and a town scale of 0.5. |
 
 ### `tests/routing.test.js`
 
@@ -1334,17 +1349,6 @@ Runs on the project in `SUPABASE_DB_URL` inside one transaction that is always r
 | `moveLastSweep(ago)` | function | module | Moves the newest sweep's start into the past, since `now()` is fixed inside the transaction. |
 | `first`, `second`, `jobs`, `tick`, `pruned`, `left`, `bucket` | variable | module | The values each check reads. |
 
-### `scripts/probe-cloud-collector.mjs`: Phase 0 of the cloud collector
-Deploys the throwaway `collector-probe` function, calls it with `x-region: ap-south-1` and without, then deletes it and its secret. Saves the answers to `../blood_data/measurements/collector_probe_<date>.json`. Four eRaktKosh calls in all.
-
-| Name | Kind | Inside | What it is / does |
-|---|---|---|---|
-| `SUPABASE_CLI` | constant | module | The pinned CLI, `supabase@3.0.0`. |
-| `MEASUREMENTS_DIR`, `ref`, `probeUrl` | constant | module | Where results go, the project ref (from the pooler user `postgres.<ref>`), and the probe's URL. |
-| `supabase(cliArgs)` | function | module | Runs the CLI against the project with `--remote` and `--yes`; on Windows through a shell, since `npx` is a `.cmd`. |
-| `callProbe(secret, region)` | function | module | One call: status, `x-sb-edge-region`, total time and the probe's answer. |
-| `secret`, `results`, `isDeployed` | variable | module | The probe's random secret, what is saved, and whether cleanup must delete the function. |
-
 ### `scripts/setup-cloud-collector.mjs`: sets up, deploys, schedules
 With no flag: a new random secret, stored as the function secret `COLLECTOR_SECRET` and in Vault as `collector_secret`, with the function's URL as `collector_url`; then deploys `collect-stock` with JWT verification off. Re-running rotates the secret. `--deploy-only` redeploys; `--schedule [interval] [--region r | --no-region]` and `--unschedule` run the scheduling functions.
 
@@ -1428,12 +1432,12 @@ Compares radius searches in memory and in PostGIS at growing dataset sizes, chec
 
 | Name | Kind | Inside | What it is / does |
 |---|---|---|---|
-| `args` | constant | module | The command-line arguments: `--capture <url> <dir>`, or a folder to analyse. |
-| `PLACES`, `GROUPS`, `FACTORS` | constant | module | 13 places, 4 blood groups, and the ±20% factors. |
-| `capture(baseUrl, outDir)` | function | module | Saves one ranked search per place and group from a running server, which needs `TRUSTED_PROXY_HOPS=1`. |
-| `kendallTau(orderA, orderB)` | function | module | Rank agreement from -1 to 1. |
+| `args` | constant | main block | The command-line arguments: `--capture <url> <dir>`, or a folder to analyse. The block runs only when the script is called directly, not when the ETA bench imports `PLACES`. |
+| `PLACES`, `GROUPS`, `FACTORS` | constant | module | 13 places (exported), 4 blood groups, and the ±20% factors. |
+| `capture(baseUrl, outDir)` | function | module | Saves one ranked search per place and group, with the place's `origin`, from a running server, which needs `TRUSTED_PROXY_HOPS=1`. |
 | `perturbed(weights, name, factor)` | function | module | One weight scaled, with all of them rescaled to add up to 1. |
-| `analyse(dir)` | function | module | Re-ranks every saved set with each change and writes `sensitivity_report.json`. |
+| `kendallTau(orderA, orderB)` | function | module | Kendall's τ between two orders of the same banks: 1 for the same order, 0 for unrelated. The ETA bench has its own copy in `etaMetrics.js`. |
+| `analyse(dir)` | function | module | Re-ranks every saved set with each change (Kendall's τ) and writes `sensitivity_report.json`. |
 | `sets`, `summary`, `urgencyFlips`, `report` | variable | `analyse` | The candidate sets, results per urgency, how often critical and routine disagree, and the output. |
 
 ### `scripts/build-traffic-profiles.mjs`: rebuilds the traffic profiles
@@ -1485,18 +1489,18 @@ Downloads geoBoundaries' India state outlines (DataMeet, CC BY 2.5 IN), matches 
 | (rules) | config | `.gitattributes` | `* text=auto eol=lf`: text files are stored and checked out with LF line endings on every system. |
 | (template) | config | `.env.example` | Every environment variable with a placeholder. Committed, through `!.env.example` in `.gitignore`. |
 | (default export) | config | `vitest.config.mjs` | Test settings, plus the `@` alias for `src/`. |
-| `eslintConfig` | constant | `eslint.config.mjs` | Next.js lint rules. `archive/` is ignored. |
+| `eslintConfig` | constant | `eslint.config.mjs` | Next.js lint rules, with eslint-config-next's default ignores. |
 | `config` | constant | `postcss.config.mjs` | Loads Tailwind. |
 | (settings) | config | `.prettierrc.json` | `printWidth: 100`; everything else uses Prettier's defaults. |
 | (paths) | config | `.prettierignore` | Folders and files Prettier skips. |
-| (data) | asset | `assets/traffic_profiles.json` | TomTom congestion profiles for 10 Indian metros plus an India average, built by `scripts/build-traffic-profiles.mjs`. Read by `src/lib/traffic.js`. |
+| (data) | asset | `assets/traffic_profiles.json` | TomTom congestion profiles for 10 Indian metros plus an India average, built by `scripts/build-traffic-profiles.mjs`. Read by `src/lib/traffic.js` and by the ETA bench, `../rough_work/eta_benchmarks/eta-methods.mjs`. |
 | (data) | asset | `assets/state_boundaries.json` | Simplified outlines of the 36 states and union territories, keyed by eRaktKosh state code, with bounding boxes and the CC BY 2.5 IN credit. Built by `scripts/build-state-boundaries.mjs`; read by `/api/blood-search` and by the collector's directory run (`src/lib/collector.js`, on the laptop and in the Edge Function) through `src/lib/stateBounds.js`. |
 
 ---
 
 ## Edge Functions, `supabase/functions/`
 
-TypeScript for Supabase's Deno runtime. They import `src/lib/` and `assets/` directly, which the CLI's `--use-api` deploy bundles. Prettier skips `/supabase/`; type-check them with `npx deno@2.5.6 check --no-lock --node-modules-dir=none supabase/functions/collect-stock/index.ts supabase/functions/collector-probe/index.ts`.
+TypeScript for Supabase's Deno runtime. They import `src/lib/` and `assets/` directly, which the CLI's `--use-api` deploy bundles. Prettier skips `/supabase/`; type-check them with `npx deno@2.5.6 check --no-lock --node-modules-dir=none supabase/functions/collect-stock/index.ts`.
 
 ### `supabase/functions/collect-stock/index.ts`: the cloud collector
 Called by the cron jobs with `x-collector-secret`. Deployed with JWT verification off, so the secret is the only way in.
@@ -1514,18 +1518,6 @@ Called by the cron jobs with `x-collector-secret`. Deployed with JWT verificatio
 | `receivedAt`, `job`, `historyLines`, `directoryAnswer`, `client`, `finishOnError` | variable | handler | When the call came in (the time budget starts there), the parsed request, what the archive hooks buffered, the Postgres connection, and the hook that records a fatal error against the job in progress. |
 | `collector`, `results`, `status`, `refuse(name)` | variable | handler | The shared collector with runner `edge`, the answer, its HTTP status, and a helper for a refused job. |
 | `run`, `outcome`, `name`, `archived`, `errors`, `summary` | variable | handler | One job's row and outcome, the file name, the archive fields for `finishRun`, upload errors, and the batch summary. |
-
-### `supabase/functions/collector-probe/index.ts`: Phase 0's throwaway probe
-Deployed, called and deleted by `scripts/probe-cloud-collector.mjs`. Guarded by `COLLECTOR_PROBE_SECRET`.
-
-| Name | Kind | Inside | What it is / does |
-|---|---|---|---|
-| `respond(status, body)` | function | module | A JSON response. |
-| `fetchState(stateCode)` | function | module | One `blood-availability` call: status, bytes, rows, fetch time, and the time to parse and validate it, which is CPU time. |
-| `probeDatabase()` | function | module | Connects with `SUPABASE_DB_URL` as given, then with certificate checks off if that fails; runs `set role bloodlink_ingest` and three timed reads. Reports the host and port, never the password. |
-| `host`, `attempts`, `roundTrips` | variable | `probeDatabase` | The connection's host, each attempt's result, and the read times. |
-| (handler) | handler | module | Checks the secret; reports the region, whether the shared modules and assets bundled, whether a secret key is present, Goa and Uttar Pradesh one second apart, and the database. |
-| `secretKeys`, `goa`, `uttarPradesh` | variable | handler | The secret keys, and the two states' results. |
 
 ---
 

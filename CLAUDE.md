@@ -7,17 +7,21 @@ bloodLink is a final-year B.Tech project. It is a Next.js web app on Supabase th
 **How to use this file**
 - This file is the single source of project guidance. It replaced the old AGENTS.md and ROADMAP.md.
 - The other documents are in `docs/`:
-  - `docs/report3.md` records report 3's decisions, measurements and the answer to each reviewer suggestion.
+  - `docs/deliverables.md` lists each suggestion, the reviewer's points and report 3's requests: what was asked, what was done, where, its status and its summary.
   - `docs/data_integrity.md` checks reviewer point 3 (data quality, freshness and failures) and records the faults found and fixed.
-  - `docs/features.md` describes the features, including the ranking formulas and the reasons for their weights.
   - `docs/CODE_REFERENCE.md` describes every function and variable, file by file. Update it when you add, rename or remove one.
   - **`docs/plans.md` lists all planned work in order of priority:** each item's details, status, size and next step, and its plan file in `docs/PLANS/` where one exists. Begin a plan only when asked.
     - `docs/PLANS/plan_bank_locations.md`: place the banks location search can't see (#33, #34).
-    - `docs/PLANS/plan_eta_comparison.md`: a rubric and test bench for comparing ETA methods.
     - `docs/PLANS/plan_panels.md`: the admin, blood-bank, hospital and donor panels.
     - `docs/PLANS/plan_donor_network.md`: the peer-to-peer donor network.
-    - A finished plan's file is deleted, and its record moves to `docs/report3.md` or `docs/features.md`. The cloud collector's (#35) is in `docs/report3.md`, point 3.1.
+    - `docs/PLANS/ML_system.md`: the ML system: the stock-out forecast in the app, suggesting active, eligible donors nearby, ranked by the donor network's score, and stock-out events an admin makes (drills for test accounts, and manual appeals a partner centre approves).
+    - A finished plan's file is deleted, and its record moves to its topic's summary in `docs/SUMMARIES/`, or to "History" at the end of this file. The cloud collector's (#35) is in `docs/SUMMARIES/data_quality.md`.
+  - **`docs/SUMMARIES/`** has one file per topic: a summary for the final report, then the full record. "The feature in full" says how it works now, and "Report 3's record" is the dated record of the work. The topics are the ranking, the ETA model, the ETA benchmark, the geospatial benchmark, data quality, testing and performance, and the ML models, with an index in its `README.md`. When a result changes, update its summary in the same change.
   - **Dated review:** `docs/verify_facts.md` checks every number and outside fact, as of 24 October, with status notes since.
+  - **Outside the repo:** `../blood_data/README.md` catalogues the collected and outside datasets, with their validation results. `../documentation/sem 7 progress reports/report 2/` holds report 2 and its slides:
+    - they add the ranking algorithm and worked examples, verification and admin, test results, and a Completed / In Progress / Planned table;
+    - they correct report 1's claims about the stack and about features the app doesn't have;
+    - they show the database schema: an entity-relationship diagram (slide 23, report Figure 3) and each table's contents, rules and access (slide 24, report Table 7).
 - Paths that start with `../` are outside the repository, on the project laptop only. Cloud sessions don't have them.
 - The known-issues list uses stable IDs, so a prompt can say "fix #20". When an issue is fixed, delete its entry and do not renumber the rest or reuse its ID. Add new findings with the next free ID, a severity and a tier.
 - Facts marked *verified* were checked against the live eRaktKosh API or the live Supabase project on 2026-10-23, or on the date given.
@@ -30,15 +34,14 @@ Edit only `bloodlink/`. Older copies of the app exist elsewhere in the workspace
 |---|---|
 | `bloodlink/` | **The active app.** Git repo, remote `github.com/dark756/bloodlink`. The default branch, `supabase-migration`, holds the Supabase app. `master` holds the last MongoDB version, which tag `mongodb-final` also marks. |
 | `supabase/migrations/` | Database schema, applied with `npm run db:migrate`. The only place schema changes go. |
-| `supabase/functions/` | Edge Functions: `collect-stock`, the cloud collector, and `collector-probe`, Phase 0's throwaway probe (#35). Both import `src/lib/` and `assets/` directly. |
-| `scripts/` | `migrate.mjs`, `make-admin.mjs` and `snapshot.mjs` run with Node against `SUPABASE_DB_URL`. `copy-project.mjs` copies every table into the new Mumbai project (#28). The cloud collector's scripts (#35): `probe-cloud-collector.mjs` (Phase 0), `check-cloud-collector.mjs` (its SQL, rolled back), `setup-cloud-collector.mjs` (secret, Vault, deploy, schedule), `upload-archive.mjs` and `sync-archive.mjs` (the archive bucket). `measure-search.mjs` times a running server. `benchmark-geo.mjs` compares spatial search methods, and `ranking-sensitivity.mjs` tests the weights. `build-traffic-profiles.mjs` and `build-state-boundaries.mjs` rebuild the traffic and state-outline assets. |
+| `supabase/functions/` | Edge Functions: `collect-stock`, the cloud collector (#35). It imports `src/lib/` and `assets/` directly. |
+| `scripts/` | `migrate.mjs`, `make-admin.mjs` and `snapshot.mjs` run with Node against `SUPABASE_DB_URL`. `copy-project.mjs` copies every table into the new Mumbai project (#28); delete it once Tokyo is deleted. The cloud collector's scripts (#35): `check-cloud-collector.mjs` (its SQL, rolled back), `setup-cloud-collector.mjs` (secret, Vault, deploy, schedule), `upload-archive.mjs` and `sync-archive.mjs` (the archive bucket). `measure-search.mjs` times a running server. `benchmark-geo.mjs` compares spatial search methods, and `ranking-sensitivity.mjs` tests the weights. `build-traffic-profiles.mjs` and `build-state-boundaries.mjs` rebuild the traffic and state-outline assets. |
 | `tests/` | Vitest unit tests for the pure modules in `src/lib/` and the eRaktKosh client. |
-| `archive/` | The old search page iterations, kept for reference. Not routable and not linted. |
 | `../redundant_bloodlink/bloodlink/` | April 2026 prototype: Next + TypeScript, Supabase, Expo, FastAPI. Abandoned. |
 | `../redundant_bloodlink/bloodlink-borade/` | A teammate's Sept 2026 Supabase fork with dashboard scaffolds, request flows and notification adapters. Reference only; much of it falls back to mock data. |
 | `../redundant_bloodlink/` top-level files | data.gov.in download scripts and dumps. `all_gov_data.json` holds about 2,800 blood banks. |
 | `../blood_data/` | Collected data, outside the repo. `eraktkosh/` holds the laptop's copy of the collector's archive: changed stock (`history/*.ndjson`), weekly directory copies, `sweeps.ndjson`, `collector.log` (the laptop collector) and `sync.log` (the weekly sync). `scripts/` holds the Python checks, the Task Scheduler wrappers and the saved task definitions; `measurements/` the measured results. Point 3.2 adds other datasets. |
-| `../rough_work/` | eRaktKosh endpoint notes and the density-aware ring-search spec at the bottom of `blood links.txt`. `ML/` holds the forecasting checks, with a `README.md` and the latest results in `SUMMARY.md`. |
+| `../rough_work/` | eRaktKosh endpoint notes and the density-aware ring-search spec at the bottom of `blood links.txt`. `ML/` holds the forecasting checks, with a `README.md` and the latest results in `SUMMARY.md`. `eta_benchmarks/` holds the ETA benchmark: its scripts, metrics, rubric and 46 tests, its data and runs in `data/`, and its documents, `README.md` (files, how to run it, code reference), `BENCHMARK.md` (the design and results) and `PLAN.md` (the steps left). Its `node_modules` is a junction to `bloodlink/node_modules`. It imports the app's `src/lib/trafficModel.js`, so it tests the code the app runs. |
 | `../documentation/` | Sem 6 ESE report and slides, Sem 7 progress report 1 and slides, and the reviewer's feedback file `suggested changes after sem 7 report 1.txt`. |
 | `../Research Papers/` | Literature-survey PDFs. |
 
@@ -55,20 +58,24 @@ npm start                            # serve the build
 npm run lint                         # ESLint 9; passes with zero errors and warnings
 npm run format                       # Prettier 3: rewrite files in the house style
 npm run format:check                 # Prettier: list files that need formatting
-npm test                             # Vitest; 150 tests in tests/
+npm test                             # Vitest; 153 tests in tests/ (the ETA bench's 46: npx vitest run in ../rough_work/eta_benchmarks/)
 npm run db:migrate                   # apply pending supabase/migrations/*.sql
 node scripts/migrate.mjs --status    # list applied and pending migrations
 npm run db:make-admin -- a@b.com     # make an existing account the first admin
 npm run snapshot -- --all --archive ../blood_data/eraktkosh   # a sweep from the laptop, by hand only: the cloud collects
 npm run snapshot -- --directory --prune                       # the directory and the prune, from the laptop
 node scripts/check-cloud-collector.mjs   # check the cloud collector's SQL in a rolled-back transaction
-node scripts/probe-cloud-collector.mjs   # Phase 0: deploy, call and delete a probe function (needs npx supabase login)
 node scripts/setup-cloud-collector.mjs [--deploy-only | --schedule | --unschedule]   # cloud collector setup
 npm run archive:upload [-- --check | --from-db YYYY-MM-DD]   # laptop archive into the bucket; compare per day
 npm run archive:sync                 # download the cloud archive into ../blood_data/eraktkosh/
 npm run measure -- --base http://localhost:3000 --runs 10     # search response times; add --concurrency 20. Start the server with TRUSTED_PROXY_HOPS=1
 node scripts/benchmark-geo.mjs ../blood_data/eraktkosh/directory/<nearest json> [--postgis]   # spatial search benchmark
 node scripts/ranking-sensitivity.mjs ../blood_data/measurements/ranking_sensitivity          # weights ±20%
+node ../rough_work/eta_benchmarks/eta-sample.mjs [--week YYYY-MM-DD]   # pick the 40 pairs and the week Google times (calls nothing)
+node ../rough_work/eta_benchmarks/eta-google.mjs [--plan]   # ask Google for the sample, within the free cap; --purge deletes its answers
+node ../rough_work/eta_benchmarks/eta-bench.mjs --google [--dry-run]   # score the ETA methods against Google; --dry-run: M3 stands in
+node ../rough_work/eta_benchmarks/eta-bench.mjs <trips.ndjson> --sets ../blood_data/measurements/ranking_sensitivity   # against timed trips
+node ../rough_work/eta_benchmarks/eta-bench.mjs --ops   # OSRM latency and reliability, 200 uncached calls
 node scripts/build-traffic-profiles.mjs  # rebuild assets/traffic_profiles.json from TomTom (yearly)
 node scripts/build-state-boundaries.mjs  # rebuild assets/state_boundaries.json from geoBoundaries (if boundaries change)
 ```
@@ -87,6 +94,7 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.examp
 | `NEXT_PUBLIC_CARTO_API_KEY` | `src/app/components/BloodMap.js` | Map tiles. Public by design. |
 | `NEXT_PUBLIC_CONTACT_EMAIL` | `src/lib/privacy.js` | The address `/privacy` gives for privacy questions and requests. Unset, the page points to the GitHub repository instead. Inlined at build time. |
 | `ERAKTKOSH_SIMULATE`, `ERAKTKOSH_SIMULATE_STATES` | `src/lib/eraktkosh.js` | Failure drill: `down`, `slow` or `flaky`, and state codes that always fail. Only outside production, or with `ERAKTKOSH_SIMULATE_ALLOW_PRODUCTION=1` on a local build. Never set on a deployed server. |
+| `GOOGLE_ROUTES_API_KEY` | `../rough_work/eta_benchmarks/eta-google.mjs` only | A Google Cloud key restricted to the Routes API, for the ETA bench's reference. The project needs billing enabled; the script stays within the free cap (5,000 elements a month, 35,000 when billed in India). Never use it in app code: Google's terms bar its results on the app's map. |
 | `OSRM_URL` | `src/lib/routing.js` | Optional OSRM server ending in `/`. Defaults to the public demo server (one request a second, no heavy use). Server-only, read at runtime. |
 | `TRUSTED_PROXY_HOPS` | `src/lib/rateLimit.js` | How many trusted proxies in front of the app add to `X-Forwarded-For`; the client's IP is that many entries from the right. Defaults to 1 on Vercel (`VERCEL` is set) and 0 elsewhere. At 0 the header is ignored and all callers share one rate limit, because on a bare `next start` the client writes it. Set it to 1 for `npm run measure` and the sensitivity capture, which simulate many users. |
 
@@ -146,7 +154,8 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.examp
 | `rings.js` | Which search ring results come from: `nearestModeRing` and `rankedModeRing`. Dormant banks never decide the ring. |
 | `compatibility.js` | Donor groups a recipient can receive, per component category. Not used by search since report 3 (exact group only); kept for donor matching. |
 | `ranking.js` | Source scoring (ETA, coverage, surplus, freshness), urgency weights and the greedy response plan. |
-| `traffic.js` | Pure travel-time model: traffic zone, congestion by India-time weekday, hour and month, rain factor, ETA. Reads `assets/traffic_profiles.json`. |
+| `trafficModel.js` | Pure travel-time model: traffic zone, congestion by India-time weekday, hour and month, rain factor, ETA. `createTrafficModel(profiles)` takes the profiles as an argument, so Node scripts can load it. |
+| `traffic.js` | The model bound to `assets/traffic_profiles.json`, with the exports the app uses. |
 | `routing.js` | Server-only OSRM table client: road distance and free-flow time per bank, 24 h cache, one request a second on the public server. |
 | `weather.js` | Server-only Open-Meteo client: current rain in mm/h, 15 min cache. |
 | `eligibility.js` | Donor eligibility computed on every read, following NBTC's 2017 donor-selection guidelines: clauses 2 to 4 (age, with 60 the limit for a first donation; weight; gap), 15 to 17 (birth, abortion, breastfeeding) and 47 (tattoos and the like). |
@@ -169,7 +178,7 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.examp
    - It scores each bank with `rankSources` and splits the request with `buildResponsePlan`.
 6. Every result carries `roadDistanceM`, `etaMinutes` and `etaSource` (`road` or `estimate`). The response has a `travel` block: zone, city, India time, congestion %, label and rain.
 
-Travel time in `src/lib/traffic.js` is free-flow time × (1 + congestion / 100) × rain factor.
+Travel time in `src/lib/trafficModel.js` is free-flow time × (1 + congestion / 100) × rain factor.
 - **Free-flow time:** the slower of two times, OSRM's and road distance at the zone's measured free-flow speed.
   - OSRM's car profile assumes about 65 km/h through Mumbai, while TomTom measures 33.7 km/h.
   - Without a route, road distance is straight-line × 1.34, the median over 94 Mumbai bank trips.
@@ -183,7 +192,14 @@ Travel time in `src/lib/traffic.js` is free-flow time × (1 + congestion / 100) 
 
 - **Congestion:** the zone's weekday-hour value in India time, interpolated to the minute, times the month's seasonal factor. The monsoon months run about 10% higher.
 - **Rain:** × 1.15 at 2.5 mm/h or more, × 1.3 at 7.6 mm/h or more (the American Meteorological Society's moderate and heavy rates).
-- `docs/report3.md` has the measurements and sources behind each number.
+- `docs/SUMMARIES/eta_model.md` has the measurements and sources behind each number.
+- **This method is M3 in the ETA bench** (`docs/SUMMARIES/eta_benchmark.md`). The bench also scores:
+  - M0, the original straight line × 1.4 at 25 or 45 km/h;
+  - M1, this model on a straight line × 1.34, which is the fallback;
+  - M2, raw OSRM.
+- **How M3 compared.** Against Google's traffic-aware predictions for 3,360 trips (4 November), M3 was 24.9% off on average, against 32.8% to 47% for the others, and picked Google's first bank in 81% of searches. Rural trips come out 28% too quick, from the highway base speed.
+- **M3 is the chosen method:** 65.0 of 100 on the bench's rubric, against 56.3 for M1, with OSRM's p95 at 217 ms and 200 of 200 calls answered. This is provisional until the team agrees the rubric (phase 1). Change `routing.js` or `traffic.js` only through the bench.
+- **Calibration** of the town and rural values comes from timed trips only, never from Google's numbers (Google's terms; the benchmark's E10). The steps left are in `docs/SUMMARIES/eta_benchmark.md`, "The plan to finish it".
 
 Scoring in `src/lib/ranking.js` counts exact-group stock only:
 - **ETA:** `100 · e^(−minutes / τ)`, with τ = 30, 45 or 60 minutes for critical, urgent and routine.
@@ -230,7 +246,7 @@ What the user sees:
 - The page shows a yellow banner when the oldest saved stock is under 24 h old and a red one when it is older. Each bank shows two ages, "Bank updated 3 h ago · checked 12 min ago".
 - Dormant banks (stock not updated for 30 days) are listed with a red badge but never decide the ring and are left out of the plan.
 
-How the saved copy is collected, in Supabase since 2026-11-03 (#35; the design, measurements and decisions are in `docs/report3.md`, point 3.1):
+How the saved copy is collected, in Supabase since 2026-11-03 (#35; the design, measurements and decisions are in `docs/SUMMARIES/data_quality.md`:
 - **Every 4.5 hours.** Four `pg_cron` jobs, `collector-batch-1` to `-4`, tick every 30 minutes (5, 7, 9 and 11 minutes past the hour and the half hour). `collector_tick` starts a sweep once 4.5 hours have passed and posts each batch of 9 states, 2 minutes apart, to the `collect-stock` Edge Function through `pg_net`, pinned to `ap-south-1`.
 - The function runs `src/lib/collector.js` as `bloodlink_ingest`, validated with `stockQuality.js`, one state a second. Full rows are uploaded only for banks whose update time changed; the others get a new `fetched_at`. It refuses a job that started in the last 50 minutes, whichever runner ran it.
 - `collector-weekly`, Monday 03:20 India time, saves the directory, runs the prune and trims `pg_cron`'s run log.
@@ -339,7 +355,7 @@ Blood-group codes: A+ 11, A- 12, B+ 13, B- 14, O+ 15, O- 16, AB+ 17, AB- 18, Bom
 - **Derived state.** Compute values such as `districtsFor(stateCode)` during render. The React Compiler lint rules reject a direct `setState` in an effect body and reading `ref.current` during render.
 - **Leaflet.** Load `src/app/components/BloodMap.js` only through `dynamic(..., { ssr: false })`. Build Leaflet objects with a lazy `useState` initializer, and keep the stable `key` on `MapContainer`.
 - **Per-process state.** Rate limits and the eRaktKosh cache live in server memory, so each serverless instance has its own.
-- **Formatting.** Prettier 3, settings in `.prettierrc.json` (`printWidth` 100, otherwise defaults). Run `npm run format` before committing. `.prettierignore` skips the top-level `archive/`, `assets/`, `public/` and `supabase/` folders (anchored with `/`, so `src/lib/supabase/` is still formatted) and Markdown.
+- **Formatting.** Prettier 3, settings in `.prettierrc.json` (`printWidth` 100, otherwise defaults). Run `npm run format` before committing. `.prettierignore` skips the top-level `assets/`, `public/` and `supabase/` folders (anchored with `/`, so `src/lib/supabase/` is still formatted) and Markdown.
 - **Naming.**
   - `camelCase` for variables and functions, `PascalCase` for components and their file names, `UPPER_SNAKE_CASE` for module-level constants.
   - `is`/`has`/`can` for booleans, `handleX` for event handlers, `onX` for callback props.
@@ -370,10 +386,10 @@ Blood-group codes: A+ 11, A- 12, B+ 13, B- 14, O+ 15, O- 16, AB+ 17, AB- 18, Bom
   - `slow` must serve the saved copy after 8 s.
   - `ERAKTKOSH_SIMULATE_STATES=27` must keep other states live, even after several Maharashtra failures in a minute.
   - Add `TRUSTED_PROXY_HOPS=1` when a script sends many searches.
-  - `docs/report3.md` and `docs/data_integrity.md` have the reference results.
+  - `docs/SUMMARIES/data_quality.md` (point 3.1, Results) and `docs/data_integrity.md` have the reference results.
 - **Collector:** `npm run snapshot -- --prune --log ../blood_data/eraktkosh/collector.log` must log a `pruned:` line, and `npm run snapshot -- --states 999` must stop with "Unknown state code" before any call. Neither calls eRaktKosh. The cloud runs the deployed copy of `collector.js`: after changing it or the function, run `node scripts/setup-cloud-collector.mjs --deploy-only`, then check the next sweep's four `collector_runs` rows. A laptop prune counts toward the repeat guard, so don't run one in the 50 minutes before the Monday 03:20 job.
-- **Cloud collector:** `node scripts/check-cloud-collector.mjs` must pass all its checks (it rolls everything back), and `npx deno@2.5.6 check --no-lock --node-modules-dir=none supabase/functions/collect-stock/index.ts supabase/functions/collector-probe/index.ts` must report no errors.
-- **Performance:** `npm run measure` against a fresh server started with `TRUSTED_PROXY_HOPS=1`; compare with the table in `docs/report3.md`.
+- **Cloud collector:** `node scripts/check-cloud-collector.mjs` must pass all its checks (it rolls everything back), and `npx deno@2.5.6 check --no-lock --node-modules-dir=none supabase/functions/collect-stock/index.ts` must report no errors.
+- **Performance:** `npm run measure` against a fresh server started with `TRUSTED_PROXY_HOPS=1`; compare with the table in `docs/SUMMARIES/performance_testing.md`.
 - **Schema changes:** run a new migration and its checks inside one transaction that is rolled back before applying it. On 2026-10-26, `delete_my_account()` and the consent trigger were checked that way with a throwaway user.
 - **End to end:** on 2026-10-23, a throwaway script ran 47 checks against the live project. It seeded users directly into `auth.users`, signed them in, and exercised every flow and refusal, then deleted them. It is not in the repo because it writes to the auth schema of the live project; see issue #20.
 
@@ -407,11 +423,11 @@ None open.
 - Left:
   1. Sign in once with Google at `/login`, to check the whole round trip.
   2. Pause the Tokyo project. On 2026-11-03 it held nothing Mumbai lacks: the same counts in every table, its last write the 14:05 sweep before the copy, and no Storage files, Vault secrets or functions.
-  3. Delete Tokyo from about 2026-11-10, since the free plan keeps no backups, then remove its callback URL from the Google Cloud console.
+  3. Delete Tokyo from about 2026-11-10, since the free plan keeps no backups, then remove its callback URL from the Google Cloud console and delete `scripts/copy-project.mjs`, which only the move needed.
   4. Tidy `.env.local`: `SUPABASE_MUMBAI_PWD` is unused, and the `MUMBAI_*` lines repeat the active ones.
 
 **#35 · Low · Finish moving collection off the laptop.**
-- Cut over on 2026-11-03 (`docs/report3.md`, point 3.1): the laptop's tasks were disabled after its 15:05 sweep, its archive was uploaded and matched the database day by day, and the cloud schedule began at 15:36. The first cloud sweep, at 16:05, passed every check: four batches 2 minutes apart, 36 to 42 s each, 36 of 36 states, and all 63 changed rows archived and synced to the laptop.
+- Cut over on 2026-11-03 (`docs/SUMMARIES/data_quality.md`: the laptop's tasks were disabled after its 15:05 sweep, its archive was uploaded and matched the database day by day, and the cloud schedule began at 15:36. The first cloud sweep, at 16:05, passed every check: four batches 2 minutes apart, 36 to 42 s each, 36 of 36 states, and all 63 changed rows archived and synced to the laptop.
 - Left:
   1. Watch the first 24 hours, to 16:05 on 2026-11-04: the sweeps at 20:35, 01:05, 05:35, 10:05 and 14:35, each with four `collector_runs` rows of 9 states.
   2. Then delete the two laptop tasks, by name so the sync task stays: `Unregister-ScheduledTask -TaskPath '\bloodLink\' -TaskName 'Stock snapshot (hourly)','Directory snapshot and prune (weekly)' -Confirm:$false`.
@@ -422,7 +438,7 @@ None open.
 ### P2 · soon
 
 **#20 · Medium · No CI and no committed end-to-end tests.**
-- 150 unit tests run with `npm test`. Response times and the failure drill are measured by hand; see `docs/report3.md` and `docs/data_integrity.md`.
+- 153 unit tests run with `npm test`; the ETA bench's 46 run with `npx vitest run` in `../rough_work/eta_benchmarks/`. Response times and the failure drill are measured by hand; see `docs/SUMMARIES/performance_testing.md` and `docs/data_integrity.md`.
 - Add a GitHub Actions job for lint, test and build.
 - Add an end-to-end suite that runs against a local or staging Supabase project, never production.
 
@@ -455,15 +471,219 @@ None open.
 1. **Push `supabase-migration`,** when asked. Everything since 2026-10-26 (the privacy and consent work, the move to Mumbai and the cloud collector) was committed on 2026-11-03 but not pushed, and the deployed `collect-stock` function runs code GitHub doesn't have yet.
 2. **Finish moving collection off the laptop** (#35): the 24-hour watch, then deleting the laptop tasks. Collection has run in Supabase since 2026-11-03.
 3. **Finish the move to Mumbai** (#28): one Google sign-in, then retiring Tokyo.
-4. **Stock-out forecasting** (reviewer point 5). The subplan, the seven models and the decision rule are in `docs/report3.md`, point 5; the scripts are in `../rough_work/ML/`, outside git.
-   - An early walk-forward dry run on 2026-11-03 put the GBM classifier, the hazard model and logistic regression within 0.008 PR-AUC of each other at 48 h, about 40% above the best baseline, and the decision rule's dry run picks logistic regression. Three suggestions wait for approval (`docs/plans.md`, item 4), one before the December test weeks are collected.
+4. **Stock-out forecasting** (reviewer point 5). The subplan, the seven models and the decision rule are in `docs/SUMMARIES/ml_models.md`; the scripts are in `../rough_work/ML/`, outside git.
+   - **Interim choice: logistic regression, with the GBM classifier as the challenger** (the walk-forward dry run of 2026-11-04, all seven models, 10.8 days of history).
+     - The GBM classifier ranks best (PR-AUC 0.269 at 48 h, against 0.255), but its 1.4-point lead is inside the decision rule's 2-point margin, so the rule picks the simpler model.
+     - With recall at 1 false alert per bank per week as the first test, logistic regression leads (15.8% against 15.3%), and its cut-off, set a day ahead, held at 0.98 false alerts.
+     - The GBM classifier stays in the December backtest: its lead is 2.0 points with the chosen inputs, so the rule as written could still pick it.
+     - ETS, SARIMA and TSB fall below the best baseline (0.183). Recalibrate logistic regression before its probabilities feed ranking: it predicts 25% more stock-outs than happen.
+     - The reasons are in `docs/SUMMARIES/ml_models.md`, and the tables, input tests and sources in `../rough_work/ML/SUMMARY.md`. It decides nothing; the December backtest does.
+   - Two suggestions wait for approval (`docs/plans.md`, item 4): the alert budget in the decision rule, before the December test weeks are collected, and per-group lift. Camps were checked and left out.
    - Run `npm run archive:sync` before any model run, since `../blood_data/eraktkosh/` can be a week behind the cloud. Then `python -I blood_data/scripts/validate_history.py blood_data` from the workspace root (the folder above `bloodlink/`).
-   - Next is phase 5.1, the labels and features, in November; ETS and SARIMA join from mid-November. Around late December 2026, at about 8 weeks of history, run the walk-forward backtest once and apply the decision rule as written.
+   - Next is phase 5.1 in November: the labels and the 19 core inputs the dry run chose. ETS and SARIMA run on 6-hour values now, and switch to daily values with a weekly season once two weeks exist. Around late December 2026, at about 8 weeks of history, run the walk-forward backtest once and apply the decision rule as written.
 5. **Write to eRaktKosh's team** about the misplaced banks, and ask for the monthly issue data.
 6. **CI and route tests** (#20).
-7. Then bank locations (#33, #34; `docs/PLANS/plan_bank_locations.md`), the ETA bench (`docs/PLANS/plan_eta_comparison.md`), deployment readiness, the panels (`docs/PLANS/plan_panels.md`) and the donor network (`docs/PLANS/plan_donor_network.md`).
+7. Then bank locations (#33, #34; `docs/PLANS/plan_bank_locations.md`), the ETA bench (`docs/SUMMARIES/eta_benchmark.md`: the Google and operational runs are done, and M3 wins with 65.0; next purging Google's answers by 3 December, the team's agreement of the rubric, and the timed trips), deployment readiness, the panels (`docs/PLANS/plan_panels.md`), the donor network (`docs/PLANS/plan_donor_network.md`), and the ML system, the forecast in the app with donor suggestions (`docs/PLANS/ML_system.md`: its groundwork runs beside phases 5.1 and 5.2, the forecast's shadow mode in January 2027, and the suggestions after the donor network's phase 2).
 
 Details to keep for the later items:
-- **Donor network.** Donor location as a PostGIS `geography` point with a GiST index: the benchmark in `docs/report3.md`, point 4, shows an index is 75 to 300 times faster than a scan at 100,000 points and more. `blood_requests` and `request_responses` tables with row-level security. Matching with the existing compatibility, eligibility and ranking modules, with contact details masked until both sides accept. Notifications in-app first, then email, then SMS; the fork has MSG91, Fast2SMS and Twilio adapters.
+- **Donor network.** Donor location as a PostGIS `geography` point with a GiST index: the benchmark in `docs/SUMMARIES/geospatial_benchmark.md` shows an index is 75 to 300 times faster than a scan at 100,000 points and more. `blood_requests` and `request_responses` tables with row-level security. Matching with the existing compatibility, eligibility and ranking modules, with contact details masked until both sides accept. Notifications in-app first, then email, then SMS; the fork has MSG91, Fast2SMS and Twilio adapters.
 - **Routing.** Self-host OSRM (Docker, Geofabrik India extract) before real traffic, and calibrate the town and rural values against timed trips.
 - **Ship.** Custom SMTP (`docs/PLANS/plan_panels.md`, F8), `NEXT_PUBLIC_CONTACT_EMAIL`, the project guide's reading of `/privacy`, and the Content-Security-Policy enforced once it reports nothing. Then deploy to Vercel's Mumbai region (`bom1`), and build a PWA before any native mobile app.
+
+## History: what changed since the original app
+
+*Moved here word for word on 4 November 2026 from `docs/features.md` ("What changed in bloodLink") and `docs/report3.md`, when both were folded into `docs/SUMMARIES/`. Each topic's details are in its summary, and `docs/deliverables.md` says what each suggestion asked, what was done and where. This keeps the rest: the rounds of work, the features outside the reviewer's points, the bug fixes, the move to Supabase and report 3's dated notes.*
+
+### The rounds of work
+
+This lists everything added or changed on top of the original app, the version tagged `mongodb-final`. The work came in three rounds:
+
+1. **Bug fixes and cleanup.** This is commit `fdb2b2a` on `master`.
+2. **The move from MongoDB and NextAuth to Supabase.** This is on branch `supabase-migration`, committed on 24 October as `5af73b9`. It has been GitHub's default branch since 26 October.
+3. **New features:** the ranking engine, the response plan, compatibility, and verification with admin tools. These are in the same commit.
+
+Paths are relative to `bloodlink/`. Everything listed here passes `npm run lint`, `npm test` and `npm run build`.
+
+**Report 3 update (2026-10-23).** A fourth round changed the ranking engine:
+- It now counts the exact blood group only, with no compatible substitutes.
+- It scores spare stock, weighted most when critical.
+- ETA comes from OSRM road routes, adjusted for time of day, day of week, season, area density and rain.
+
+The ranking section (now in `docs/SUMMARIES/ranking_algorithm.md`) is up to date with report 3. Where the rest of this list disagrees, report 3's record in `docs/SUMMARIES/` is the current record of what changed and why.
+
+**Data checks (2026-10-24).** An independent re-check of the data found and fixed six faults, #36 to #41. They are listed under [Found in the 24 October data checks](docs/SUMMARIES/data_quality.md#found-in-the-24-october-data-checks), and `docs/data_integrity.md` has the details.
+
+**Review fixes (2026-10-26).** Thirteen faults found in the reviews of 24 and 25 October were fixed. They are listed under [Found in the reviews of 24 and 25 October](#found-in-the-reviews-of-24-and-25-october). There are now 125 tests.
+
+**Cloud collection (2026-11-03).** The database moved from Tokyo to Mumbai (#28), and stock collection moved off the laptop to Supabase (#35): see [Stock collected in Supabase, every 4.5 hours](docs/SUMMARIES/data_quality.md#stock-collected-in-supabase-every-45-hours). It was committed on 3 November. There are now 150 tests.
+
+**ETA benchmark (2026-11-04).** The travel-time method, M3 in the benchmark, was checked against Google's traffic-aware predictions. It came out closest of the four methods compared, and the benchmark's rubric keeps it: see [Travel times by road, for the hour you search](docs/SUMMARIES/eta_model.md#travel-times-by-road-for-the-hour-you-search). There are now 199 tests.
+
+**Forecast dry run (2026-11-04).** All seven stock-out models were compared on 10.8 days of history. The interim choice is logistic regression, with the GBM classifier as the challenger. It isn't in the app yet: see [Not done yet](docs/deliverables.md#what-is-not-done-yet).
+
+### Report 3's opening notes
+
+This report records every decision and step taken on 2026-10-23 to answer the reviewer's feedback in `documentation/suggested changes after sem 7 report 1.txt`. Each section has a plan, the decisions with their evidence, the steps taken, and how the result was checked.
+
+- **Code paths** are relative to `bloodlink/` unless they start with `../`.
+- **Where the work is.** Branch `supabase-migration`, GitHub's default branch since 26 October. Report 3's work was committed on 24 October as `5af73b9`, on top of `798fe73`, and the review fixes on 26 October. The later fixes of 26 October and the work of 3 November were committed on 3 November.
+- **Order of work.** The points are worked in the order they were asked, not by number: 2, 1, 3.1, 3.2, 4, 5.
+- **Follow-up on 2026-10-24.** `docs/data_integrity.md` re-checks point 3 independently and records six faults it found and fixed (#36 to #41). The counts and results here that it changed have been updated, and each point says where.
+- **Reviews of 24 and 25 October.** A review of the code, docs and plans, whose next moves are now in `docs/plans.md`, and `docs/verify_facts.md`, which checked every number and outside fact. Thirteen of the faults they and a follow-up review found were fixed on 26 October; `CLAUDE.md` lists them and the ones still open. Where they corrected a figure or a source here, the text has been updated.
+- **Point 5 on 2026-10-26.** The shortlist of seven models, two low-fidelity checks and the subplan were added. The check scripts are in `../rough_work/ML/`, outside git.
+- **3 November.** The database moved to Mumbai (#28), collection moved to Supabase ([point 3.1](docs/SUMMARIES/data_quality.md#collection-moved-to-supabase-3-november)), and point 5 gained an early [walk-forward dry run](docs/SUMMARIES/ml_models.md#the-walk-forward-dry-run-4-november).
+- **4 November.** Point 2's travel-time design, called M3 in the ETA benchmark, was [checked against Google's traffic-aware predictions](docs/SUMMARIES/eta_benchmark.md#checked-against-google-4-november) and compared with three other methods. It is the closest, and the benchmark's rubric keeps it.
+- **4 November, point 5.** The [walk-forward dry run](docs/SUMMARIES/ml_models.md#the-walk-forward-dry-run-4-november) now covers all seven models, with each input and design detail tested. It gives an interim choice: logistic regression, with the GBM classifier as the challenger. The December backtest decides.
+
+### Features outside the reviewer's points
+
+#### Hospital and blood-bank verification
+Files: `src/app/organization/`, `src/app/api/organization/`, `src/lib/organization.js`
+
+- Any signed-in user can apply on `/organization` to register a hospital or a blood bank. The application includes the name, registration number, address, contact and an optional eRaktKosh code.
+- The application stays **Pending** until an admin reviews it. The applicant sees its status and the admin's note.
+- If the admin **approves** it, the user's role becomes Hospital or Blood bank, and a badge appears on their profile.
+- If the admin **rejects** or **suspends** it, the role goes back to User. A rejected applicant can apply again.
+- An applicant who is already an admin keeps the admin role, but is still linked to the organization, so removing the admin role later leaves them its role.
+
+#### Admin dashboard
+Files: `src/app/admin/`, `src/app/api/admin/`
+
+The Admin pages are only visible to admins.
+- **Overview:** counts, plus the queue of pending applications with Approve, Reject and Suspend buttons and a note field. It also shows the eRaktKosh collection card for the last 24 hours (success rate, response times, each state's last good fetch, worst first) and the collector's last sweep, in red once none has finished within the interval plus 2 hours.
+- **Organizations:** every application, filterable by status.
+- **Users:** search users by name or email, filter by role, and grant or remove admin rights. The database refuses to remove the last admin.
+- **Audit log:** every admin action, with who did it and when.
+
+Run `npm run db:make-admin -- <email>` to make the first admin.
+
+#### Email/password sign-in
+File: `src/app/login/`
+
+Besides Google, you can now sign up and sign in with an email and password. New accounts confirm their address by email.
+
+#### Privacy note, consent and account deletion
+Files: `src/app/privacy/page.js`, `src/app/account/`, `src/lib/privacy.js`
+
+India's Digital Personal Data Protection Act, 2023 asks for a notice, specific consent, and a way to withdraw it and have your data erased (#18).
+- **`/privacy`** says what bloodLink stores and why, who can see it, which outside services receive what, how long it is kept, and how to use your rights. The footer links to it.
+- **Consent.** Saving your details needs a tick against the current version of the note. The database records the version and stamps the time itself. When the note changes, its version date changes and the form asks again.
+- **Account deletion.** `/account`, reached from your name in the header, deletes your account, profile, health answers and organization applications at once. The last admin can't delete theirs.
+
+#### Less of your location leaves your browser
+Files: `src/lib/geo.js`, `src/lib/geocoding.js`, `src/app/api/reverse-geocode/route.js`
+
+A search pin is personal data: it shows where someone needs blood (#52).
+- The pin is rounded to 3 decimals, about 110 m, in the browser and again on the server, so eRaktKosh, OSRM and Nominatim never get more.
+- The place name under the map now comes from bloodLink's server. It asks Nominatim at most once a second and remembers each point for a week, so the app's total traffic stays within Nominatim's policy. Browsers no longer contact Nominatim at all.
+
+#### Security headers
+File: `next.config.mjs`
+
+Every response now tells the browser not to let other sites frame bloodLink, to send only the site's address as the referrer, to let only bloodLink's own pages ask for your location, and not to guess file types (#51). A full Content-Security-Policy is reported in the browser console rather than enforced, until it has been checked on every page.
+
+#### Live donor eligibility
+File: `src/lib/eligibility.js`
+
+Eligibility used to be a yes/no value saved when the form was submitted, so it never changed. It is now worked out each time the profile is viewed, from:
+- age: 18 to 65, but at most 60 for a first donation
+- the gap since the last donation: 90 days for men, 120 days otherwise
+- the health answers: a tattoo, piercing or acupuncture in the last 12 months; pregnancy, breastfeeding, a birth in the last 12 months, or an abortion or miscarriage in the last 6; weight under 45 kg; medication; and the listed infections
+
+`/peer-to-peer` shows the result, and, if you're deferred, the next date you can donate. The rules and the form's questions follow the National Blood Transfusion Council's 2017 donor-selection guidelines, clauses 2 to 4, 15 to 17 and 47. They were checked against the official text on 26 October, which fixed four mismatches (#24).
+
+#### Better search results
+Files: `src/lib/stock.js`, `src/app/search/page.js`
+
+Each result card now shows:
+- stock as unit counts per group
+- a tap-to-call phone number
+- a **Directions** link to Google Maps
+- two ages: when the bank updated its stock and when bloodLink last checked it, for example "Bank updated 3 h ago · checked 12 min ago"
+
+### Bug fixes
+
+The first four groups are in commit `fdb2b2a`. The 23 and 24 October fixes are in `5af73b9`, on `supabase-migration`. The fixes from the 24 and 25 October reviews were committed on 26 October, on the same branch, and the later ones of that day on 3 November.
+
+#### Security
+- **Anyone could overwrite anyone's profile.** `/api/details` trusted the email address sent in the request. It now takes your identity from your sign-in session only.
+- **Personal data in logs.** The same route printed phone numbers and health answers to the logs. It no longer does.
+- **Open proxy.** The search routes forwarded any query string to eRaktKosh. They now accept only known parameters and are rate-limited per IP address.
+- **Unvalidated form input.** The profile form now goes through a whitelist validator (`src/lib/profile.js`): phone format, no future dates, a valid state and district.
+
+#### Search
+- **Filters were silently ignored.** The app sent `districtCode` and `ComponentId`, but eRaktKosh only accepts `districtId` and `componentId`, and it is case-sensitive. District and component filters now work. For example, North Goa returns 3 banks instead of all 5.
+- **Banks with no stock were listed.** eRaktKosh returns every bank whatever you filter for. Results are now filtered on real stock.
+- **The search could freeze.** A failed request left the page loading forever. Errors now show a red notice, and the buttons work again.
+- **The location button stayed disabled.** After a denied location permission, picking a point on the map now enables the search.
+- **Old results stayed on screen.** A new search now replaces them, so "No results" shows correctly.
+- **Slow and repeated requests.** Requests to eRaktKosh now time out after 25 s, results are cached for 5 min, and if eRaktKosh is down the app shows the last good result, marked as stale.
+- **Too many map lookups.** The address lookup (Nominatim) fired on every map click, against its usage policy. It now waits until you stop clicking.
+
+#### Profile form
+- Editing your details now **prefills** the form instead of wiping your profile.
+- The form now ends on a success state for non-donors too, instead of a blank step.
+- Signing out mid-form is handled properly.
+
+#### Code health
+- Three copies of the search page (v1, v2, v3) became one `/search` page. The old copies were deleted on 4 November and remain in git history, for example `git show d3fa97d:archive/search-v1/page.js`.
+- The lookup tables (states, districts, groups, components) were copied into five files. They now come from one place, `src/lib/constants.js`.
+- `npm run lint` went from 9 errors to none.
+- Leaflet's CSS no longer loads twice, and the map icons no longer come from a CDN.
+- The default Next.js icons are gone from `public/`, `.gitattributes` keeps line endings LF on every system, and the committed `.env.example` lists every variable (#23).
+
+#### Found in the 23 October cross-check
+- **Two files were never formatted.** `.prettierignore` listed `supabase/`, which also matched `src/lib/supabase/`. The entries are now anchored to the app folder, and both Supabase client files are formatted.
+
+The fixes found in the 24 October data checks (#36 to #41) are in `docs/SUMMARIES/data_quality.md`, under "Found in the 24 October data checks".
+
+#### Found in the reviews of 24 and 25 October
+#42 to #55 were found in the code, docs and plans review of 24 October; #56 to #60 in the review that checked it. All were fixed on 26 October. The ones left open are in `CLAUDE.md`.
+- **#56 · The weekly prune could never run.** `prune_stock_store()` runs as the collector's role, which couldn't read `upstream_calls.called_at` in its `DELETE … WHERE`, so every prune failed with "permission denied" and nothing was trimmed. A migration grants that one column.
+- **#57 · Collector failures were invisible.** The Task Scheduler wrapper dropped Node's exit code, so every run looked successful, and an error at the top of the collector bypassed its log. Both now report the failure.
+- **#58 · An open redirect after email sign-in.** `/login?next=/%09/evil.com` passed the check, and browsers drop the tab, which leaves `//evil.com`. `safeNextPath` now refuses control characters and anything that resolves to another site.
+- **#59 · Impossible dates were accepted.** JavaScript rolls "2026-02-30" over to 2 March, so it passed the check and then failed in the database with a vague error. Dates must now be real calendar dates.
+- **#60 · One state's save error stopped the rest of the sweep.** It is now logged, and the sweep goes on.
+- **#46 · "Today" was the UTC date.** Between midnight and 05:30 India time, a date of birth or donation of today was refused as being in the future, in the form and in the database. Both now use India's date.
+- **#47 · The profile form preselected "male".** A donor who skipped the field got the 90-day gap instead of 120. Gender must now be chosen.
+- **#42 · An admin's approved organization wasn't linked to them.** If they later lost the admin role, they became a plain user. They are now linked, and keep the admin role.
+- **#43 · Re-approving an old application gave a server error** when the same person had another open one. It now says why (409).
+- **#44 · The misplaced-bank count read 0 during an outage,** because the saved directory had already dropped those banks. It now keeps them, so the route counts them as it does for live data.
+- **#53 · A signed-in user opening `/login?next=…` went to the home page.** They now go to `next`.
+- **#48 · The home page promised direct contact with donors,** which the donor-network plan rules out. It now says donors are asked to give at a blood centre.
+- **#55 · The documents disagreed with the repository.** They now live in `docs/`, point at one copy of each other, and say what is committed.
+- **#45 · A district search during an outage missed banks with no coordinates.** Their saved rows had no district. It now comes from the end of the bank's address, which eRaktKosh writes as "…, district, state". That matched the known district for all 4,048 saved banks that have one, and places 674 of the 683 that had none; the other 9 have no address.
+- **#50 · The saved copy was downloaded again for every filter.** Each state's rows are now downloaded once per 10 minutes and cut to the district, component and group in memory.
+- **#51 and #52,** the security headers and the rounded pin, are described in section 1.
+- **#54 · The `mongodb-final` tag** is now on GitHub.
+- **#49 · Every page waited on a profile query.** The root layout read the session and the profile for the header, so no page could be prerendered, and a signed-in user's every page waited on a database round trip (a median 206 ms from the laptop to Tokyo). The header now reads the user in the browser. Six pages are prerendered, and signed out, the home page's median response went from 16.9 ms to 11.0 ms.
+- **#24 · Donor screening differed from the national guidelines.** Checked against the official text of NBTC's 2017 guidelines: a first donation only up to 60, at least 45 kg rather than 50, 12 months after a tattoo, piercing or acupuncture rather than 6, and a new deferral after a birth (12 months) or an abortion (6 months).
+
+### The move to Supabase
+
+The app used MongoDB with NextAuth. It now uses **Supabase**, a hosted Postgres database with built-in sign-in.
+- **Sign-in:** Supabase Auth handles Google and email/password. `src/proxy.js` keeps you signed in and guards pages, replacing the old `middleware.js`.
+- **Database:**
+  - The schema is a set of SQL files in `supabase/migrations/`, applied with `npm run db:migrate`.
+  - Four tables for people and organizations: `profiles`, `donor_screening`, `organizations` and `audit_log`.
+  - Four for saved eRaktKosh data, filled by the collector, which runs in Supabase every 4.5 hours: `blood_banks`, `bank_stock_latest`, `stock_history` and `upstream_calls`. Two more record the collector's own sweeps and runs: `collector_sweeps` and `collector_runs`.
+- **Security in the database itself:**
+  - Each user can read and edit only their own rows.
+  - Users can never change their own role.
+  - Health answers are visible only to their owner, not even to admins.
+  - Admin actions run through checked database functions.
+  - The app holds no master key. Everything runs as the signed-in user, or with the public key for the public stock tables.
+- **Removed:** `src/lib/db.js`, the NextAuth route and `SessionWrapper.js`.
+- **Region:** Mumbai (ap-south-1), the nearest to the app's users, since 2026-11-03 (#28). `scripts/copy-project.mjs` moved everything from Tokyo. A round trip from the laptop takes about 10 ms, against 175 ms to Tokyo.
+
+### Report 3's status notes, by date
+
+> **Status update, 26 October 2026 (later).** Consent, a privacy note and account deletion (#18) are now done, with security headers (#51) and a search pin rounded to about 110 m before it reaches any outside service (#52). Donor eligibility now follows NBTC's 2017 guidelines, checked against the official text (#24), and pages no longer wait on a profile query (#49). The database is moving from Tokyo to Mumbai (#28). There are 135 unit tests.
+
+> **Status update, 3 November 2026.** The database moved from Tokyo to Mumbai (#28), and collection moved off the laptop to Supabase (#35, [point 3.1](docs/SUMMARIES/data_quality.md#collection-moved-to-supabase-3-november)): `pg_cron` and an Edge Function sweep all 36 states every 4.5 hours, around the clock, through the same `bloodlink_ingest` role. Measured on the laptop's hourly sweeps, 4.5 hours misses 4.9% of the updates hourly sweeps see, most of them values replaced within 10 minutes. Every change is archived, gzipped, in Supabase Storage, including all the laptop collected since 23 October, and a weekly task keeps a copy on the laptop. An early [walk-forward dry run](docs/SUMMARIES/ml_models.md#the-walk-forward-dry-run-4-november) of the forecast picks logistic regression, deciding nothing. There are 150 unit tests.
+
+> **Status update, 4 November 2026.** The ETA benchmark is built, and its Google half has run. The travel-time design (M3) is 24.9% off Google's traffic-aware predictions on average, the closest of four methods, and it picks Google's first bank in 81% of searches ([point 2](docs/SUMMARIES/eta_benchmark.md#checked-against-google-4-november)). With latency, reliability, cost and effort weighed in, the rubric keeps it as the app's method, pending the team's agreement of the rubric. Rural base speed is the weak spot. Calibration from timed trips is still **Planned**. There are 199 unit tests.
+>
+> The forecast's [dry run](docs/SUMMARIES/ml_models.md#the-walk-forward-dry-run-4-november) now covers all seven models, with each input tested. Its interim choice is logistic regression, with the GBM classifier as the challenger: the GBM classifier ranks best (PR-AUC 0.269 at 48 h against 0.255), but its lead is inside the decision rule's 2-point margin, and the two tie on donor alerts. ETS, SARIMA and TSB fall below the best baseline. The December backtest decides.
+
+> The spatial-indexing ambiguity the reviewer pointed out is now resolved. Search uses eRaktKosh's own `nearest` call, or a linear scan over the saved directory when that is down. The benchmark shows that is right at 4,328 banks. A PostGIS GiST index exists on `blood_banks.location`, but search doesn't use it yet. It is planned for the donor network, where the benchmark shows it is needed.

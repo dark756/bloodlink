@@ -4,7 +4,7 @@ This document records how bloodLink's blood-bank data was checked for the review
 
 > **Point 3, as the reviewer wrote it.** "Strengthen Data Quality and Freshness Handling: As the system relies on eRaktKosh and data.gov.in, the report should explain how the approximately 4,487 records are standardized, validated, deduplicated, and refreshed. The handling of stale data and API failures should also be demonstrated. Also try to search other datasets also."
 
-- **Sources of the earlier numbers.** `report3.md` (points 3.1 and 3.2) describes how the data pipeline was built. This document checks that work independently, then records the faults found and how each was fixed.
+- **Sources of the earlier numbers.** `SUMMARIES/data_quality.md` describes how the data pipeline was built. This document checks that work independently, then records the faults found and how each was fixed.
 - **Paths.** Code paths are relative to `bloodlink/`, data paths to `blood_data/`.
 - **Issue numbers** (#33 to #41) are the stable IDs in `CLAUDE.md`'s known-issues list.
 
@@ -34,7 +34,7 @@ This document records how bloodLink's blood-bank data was checked for the review
 | Refresh them | **Done** | Stock every 4.5 hours in Supabase since 3 November; before that hourly from the laptop, 36 of 36 states in every run since the fix on 23 October. Weekly directory refresh; its first scheduled run is Monday 26 October. |
 | Handle stale data | **Done, two faults fixed** | Two ages on every bank, 297 dormant banks marked. Fixed: dormant banks could choose the search ring (#40); the outage banner could show the directory's age as the stock's (#39). |
 | Demonstrate API failures | **Done, two faults fixed** | Every failure mode re-run on a production build. Fixed: the saved copy could count the wrong blood component (#37); one failing state cut every state off from live data (#38). |
-| Search other datasets | **Done** | Camps, data.gov.in, Malaysia MoH, UCI and NCVBDC, each validated (`report3.md`, point 3.2). Camp data checked for personal details: none. |
+| Search other datasets | **Done** | Camps, data.gov.in, Malaysia MoH, UCI and NCVBDC, each validated (`SUMMARIES/data_quality.md`. Camp data checked for personal details: none. |
 
 ---
 
@@ -146,7 +146,7 @@ eRaktKosh's `nearest` call supplies each bank's latitude and longitude. Report 3
 - **Uploads.** Only banks whose update time changed are uploaded in full; the rest get a new fetch time.
 - **Retention.** History is kept 60 days in Supabase and indefinitely in `eraktkosh/history/`. The prune that enforces it could not run until 26 October (#56, below); it works now.
 - **Limits.**
-  - Collection ran only while the project laptop was on (#35). Since 3 November it runs in Supabase every 4.5 hours, around the clock, and history is archived for good in Supabase Storage (`docs/report3.md`, point 3.1).
+  - Collection ran only while the project laptop was on (#35). Since 3 November it runs in Supabase every 4.5 hours, around the clock, and history is archived for good in Supabase Storage (`docs/SUMMARIES/data_quality.md`.
   - Two early runs were stopped by a console signal. Since the collector runs in its own hidden console, no stock sweep has failed.
   - Until 26 October a failed run would also have gone unnoticed (#57, below). Both are now reported: in Task Scheduler's last result and in the log.
 
@@ -208,7 +208,7 @@ All are stored and catalogued in `blood_data/` (`README.md`), with validation re
 | eRaktKosh auto-refresh list | 452 banks | Refreshed in batches at fixed times: median stock age 0.3 h against 9.7 h for the rest at 18:30, minutes after a batch, but 4.6 h against 3.2 h at 10:47 the next morning | Possibly the cleanest series to model first; the history will show |
 | data.gov.in blood bank directory | 2,823 banks | 33 duplicates, 372 at (0, 0), licence dates up to "2105" | Licences, service hours, placing banks |
 | Malaysia MoH daily donations | 20 years, national and 13 states | No missing days; groups add up on 96 to 100% of days | Testing forecast methods on a long series |
-| UCI blood transfusion | 748 donors | 29% exact duplicate rows | Donor-response model |
+| UCI blood transfusion | 748 donors | 29% exact duplicate rows | Donor behaviour in the donor network's simulation |
 | NCVBDC dengue cases | 36 states, 2021 to 2026 | State sums match the totals | Seasonal platelet demand |
 | geoBoundaries IND states (new) | 36 outlines | Every outline matched an eRaktKosh state by name. Its metadata says "year represented 2011", yet the outlines include the post-2020 units (Telangana, Ladakh, the merged Dadra and Nagar Haveli and Daman and Diu) | The wrong-state check above |
 

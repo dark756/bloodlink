@@ -420,7 +420,7 @@ Lint, the format check, the tests and the build must pass after phases 2, 5 and 
 - **`CLAUDE.md`:** delete #33 and #34, or shrink them to what remains, without renumbering. Add `BANK_LOCATION_FIXES` to the environment table, the new table to the data model, `bankLocations.js` to the modules, the review page to the routes, and a verification step ("a missing bank with an accepted fix appears in a nearby location search").
 - **`docs/CODE_REFERENCE.md`:** every new function and variable.
 - **`docs/data_integrity.md`:** "What remains" and the before-and-after table.
-- **`docs/report3.md`** (point 3) and **`docs/features.md`:** the new numbers and the accuracy table.
+- **`docs/SUMMARIES/data_quality.md`** and **`docs/SUMMARIES/geospatial_benchmark.md`** (the ring search): the new numbers and the accuracy table.
 
 ---
 

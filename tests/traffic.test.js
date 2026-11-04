@@ -13,6 +13,7 @@ import {
   trafficConditions,
   trafficZone,
 } from "@/lib/traffic";
+import { createTrafficModel } from "@/lib/trafficModel";
 
 // India time, written with its offset. 2026-10-23 is a Friday.
 const at = (localDateTime) => new Date(`${localDateTime}+05:30`);
@@ -144,5 +145,57 @@ describe("travel estimate", () => {
     expect(estimate.etaMinutes).toBe(
       Math.round(freeFlowMinutes * (1 + fridayNight.congestionPercent / 100)),
     );
+  });
+});
+
+describe("the model factory, as scripts load it", () => {
+  const model = createTrafficModel(trafficProfiles);
+  const noRoute = { straightLineM: 11_900, leg: null };
+
+  it("gives the same answers as the app's bound exports", () => {
+    for (const [point, banks] of [
+      [MUMBAI, 44],
+      [NASHIK, 20],
+      [NASHIK, 5],
+      [NASHIK, 1],
+    ]) {
+      expect(model.trafficZone(point, banks)).toEqual(trafficZone(point, banks));
+    }
+    expect(model.findMetro(28.6139, 77.209)).toEqual(findMetro(28.6139, 77.209));
+    for (const conditions of [
+      trafficConditions(mumbaiZone, { now: FRIDAY_3AM }),
+      trafficConditions(mumbaiZone, { now: FRIDAY_6PM, rainMmPerHour: 12 }),
+    ]) {
+      for (const trip of [MUMBAI_TO_CSMT, noRoute]) {
+        expect(model.estimateTravel(trip, mumbaiZone, conditions)).toEqual(
+          estimateTravel(trip, mumbaiZone, conditions),
+        );
+      }
+    }
+  });
+  it("gives the minutes before rounding", () => {
+    const fridayNight = trafficConditions(mumbaiZone, { now: FRIDAY_3AM });
+    const minutes = model.travelMinutes(MUMBAI_TO_CSMT, mumbaiZone, fridayNight);
+    // OSRM's 14.5 min is faster than 14.2 km at 33.7 km/h, so the free-flow speed decides.
+    expect(minutes).toBeCloseTo(
+      (14.223 / 33.7) * 60 * (1 + fridayNight.congestionPercent / 100),
+      6,
+    );
+    expect(Math.round(minutes)).toBe(
+      estimateTravel(MUMBAI_TO_CSMT, mumbaiZone, fridayNight).etaMinutes,
+    );
+  });
+  it("takes another detour factor and zone scale for testing", () => {
+    const tested = createTrafficModel(trafficProfiles, {
+      detourFactor: 1.58,
+      zoneScale: { ...ZONE_SCALE, town: 0.5 },
+    });
+    const fridayNight = trafficConditions(mumbaiZone, { now: FRIDAY_3AM });
+    expect(tested.travelMinutes(noRoute, mumbaiZone, fridayNight)).toBeCloseTo(
+      (model.travelMinutes(noRoute, mumbaiZone, fridayNight) * 1.58) / DETOUR_FACTOR,
+      6,
+    );
+    expect(tested.trafficZone(NASHIK, 5).scale).toBe(0.5);
+    expect(tested.trafficZone(NASHIK, 20).scale).toBe(ZONE_SCALE.city);
   });
 });

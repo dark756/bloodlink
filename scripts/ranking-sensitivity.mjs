@@ -10,12 +10,16 @@
 // (the rest rescaled so they still add up to 1) and the banks are ranked again.
 // It reports how often the first choice stays the same and Kendall's tau between
 // the new order and the original (1 = same order, 0 = unrelated).
+//
+// The ETA bench, ../rough_work/eta_benchmarks/eta-bench.mjs, reuses PLACES and the
+// saved sets.
 
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { URGENCY_LEVELS, WEIGHTS, rankSources } from "../src/lib/ranking.js";
 
-const PLACES = [
+export const PLACES = [
   ["Mumbai", 19.076, 72.8777],
   ["New Delhi", 28.6139, 77.209],
   ["Bengaluru", 12.9716, 77.5946],
@@ -52,7 +56,13 @@ async function capture(baseUrl, outDir) {
       const fileName = `${place.replace(/\W+/g, "_")}_${groupName.replace("+", "pos").replace("-", "neg")}.json`;
       fs.writeFileSync(
         path.join(outDir, fileName),
-        JSON.stringify({ place, groupName, capturedAt: new Date().toISOString(), ...body }),
+        JSON.stringify({
+          place,
+          origin: { latitude: lat, longitude: lng },
+          groupName,
+          capturedAt: new Date().toISOString(),
+          ...body,
+        }),
       );
       console.log(`${place} ${groupName}: ${body.results?.length ?? body.error} banks`);
     }
@@ -153,6 +163,9 @@ function analyse(dir) {
   fs.writeFileSync(path.join(dir, "sensitivity_report.json"), JSON.stringify(report, null, 2));
 }
 
-const args = process.argv.slice(2);
-if (args[0] === "--capture") await capture(args[1].replace(/\/$/, ""), args[2]);
-else analyse(args[0]);
+// Run only when called directly, not when another script imports PLACES.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const args = process.argv.slice(2);
+  if (args[0] === "--capture") await capture(args[1].replace(/\/$/, ""), args[2]);
+  else analyse(args[0]);
+}
