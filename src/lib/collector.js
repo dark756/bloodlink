@@ -3,7 +3,7 @@ import { cleanText, parseEntryDate, parseQuantities } from "./stock.js";
 import { createStateChecker } from "./stateBounds.js";
 
 // The eRaktKosh collector, shared by scripts/snapshot.mjs on the laptop and the
-// collect-stock Edge Function in Supabase (docs/report3.md, point 3.1).
+// collect-stock Edge Function in Supabase (docs/SUMMARIES/data_quality.md.
 // For each state it fetches the stock, validates it with stockQuality.js, uploads
 // the rows whose update time changed, refreshes the fetch time of the rest, adds
 // history and logs the call. The weekly run saves the directory and flags banks

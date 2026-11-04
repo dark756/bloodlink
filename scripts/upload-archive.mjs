@@ -1,5 +1,5 @@
 // Puts the laptop's local archive into the Storage bucket stock-archive, so the
-// cloud archive is complete from 2026-10-23 on (docs/report3.md, point 3.1). Run it
+// cloud archive is complete from 2026-10-23 on (docs/SUMMARIES/data_quality.md. Run it
 // once the laptop's collector tasks are disabled. It can be re-run
 // at any time: files and their records are replaced, never added twice.
 //   history/D.ndjson  -> history/D.ndjson.gz   lines recorded in collector_runs

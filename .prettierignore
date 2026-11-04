@@ -1,6 +1,5 @@
-# Not part of the app's source: reference copies, data files, SQL and notes.
+# Not part of the app's source: data files, SQL and notes.
 # Leading slashes anchor each folder to this directory, so src/lib/supabase/ is still formatted.
-/archive/
 /assets/
 /public/
 /supabase/

@@ -1,4 +1,4 @@
-// collect-stock: the cloud collector (#35; docs/report3.md, point 3.1).
+// collect-stock: the cloud collector (#35; docs/SUMMARIES/data_quality.md.
 // pg_cron's ticks post { batch: 1-4, sweep } and the weekly job posts
 // { directory: true, prune: true }; see supabase/migrations/*_cloud_collector.sql.
 //
