@@ -1,13 +1,15 @@
 import { validateAvailabilityRows } from "./stockQuality.js";
 import { cleanText, parseEntryDate, parseQuantities } from "./stock.js";
 import { createStateChecker } from "./stateBounds.js";
+import { haversineMeters } from "./geo.js";
 
 // The eRaktKosh collector, shared by scripts/snapshot.mjs on the laptop and the
 // collect-stock Edge Function in Supabase (docs/SUMMARIES/data_quality.md.
 // For each state it fetches the stock, validates it with stockQuality.js, uploads
 // the rows whose update time changed, refreshes the fetch time of the rest, adds
 // history and logs the call. The weekly run saves the directory, flags banks
-// outside their own state and saves the auto-refresh list. Meant to run hourly or
+// outside their own state, saves the auto-refresh list, and retires corrected bank
+// positions that eRaktKosh's own point has caught up with. Meant to run hourly or
 // less often.
 //
 // The caller passes in what differs between Node and Deno:
@@ -32,6 +34,9 @@ export const ARCHIVE_VERSION = 1;
 // A batch or weekly job that ran this recently is refused, so no schedule or leaked
 // secret can make collection more frequent than hourly.
 export const REPEAT_GUARD_MINUTES = 50;
+// A machine location fix gives way to eRaktKosh's own usable point within this distance
+// of it; further away, the difference is logged for review (plan_bank_locations.md, L6).
+export const SUPERSEDE_WITHIN_M = 2_000;
 
 // The four batches of a cloud sweep, split by measured time so each takes about
 // 36 s of a free Edge Function's 150 s (2026-10-23 sweep). eRaktKosh state codes.
@@ -402,7 +407,65 @@ export function createCollector({
     await archive?.directory?.(call.data, seenAt);
     log(`directory: ${rows.length} banks in ${call.durationMs} ms`, qualityCounts);
     const autoRefresh = await collectAutoRefresh();
-    return { isSuccess: true, banks: rows.length, qualityCounts, autoRefresh };
+    const locationFixes = await supersedeLocationFixes();
+    return { isSuccess: true, banks: rows.length, qualityCounts, autoRefresh, locationFixes };
+  }
+
+  // Once eRaktKosh gives a usable point for a bank that has an unreviewed machine fix
+  // (#33, #34; src/lib/bankLocations.js), its point wins and the fix is marked
+  // superseded. A new point more than SUPERSEDE_WITHIN_M from the fix is logged for
+  // review instead of decided. Before the bank_location_fixes migration is applied
+  // this does nothing, and a failure never fails the directory run.
+  // Returns { isSuccess, superseded, conflicts } or { isSuccess, skipped | error }.
+  async function supersedeLocationFixes() {
+    try {
+      const { rows: present } = await db.query(
+        "select to_regclass('public.bank_location_fixes') is not null as present",
+      );
+      if (!present[0]?.present) return { isSuccess: true, skipped: "no fixes table" };
+      const { rows } = await db.query(
+        `select f.hospital_code, f.latitude, f.longitude, b.latitude as eraktkosh_latitude,
+           b.longitude as eraktkosh_longitude
+         from public.bank_location_fixes f
+         join public.blood_banks b using (hospital_code)
+         where f.status = 'accepted' and f.reviewed_at is null
+           and f.method not in ('manual', 'bank_confirmed')
+           and b.latitude is not null
+           and (b.location_quality = 'ok' or (b.location_quality = 'shared' and f.reason <> 'shared'))`,
+      );
+      const near = [];
+      const conflicts = [];
+      for (const row of rows) {
+        const distanceM = haversineMeters(
+          { latitude: row.latitude, longitude: row.longitude },
+          { latitude: row.eraktkosh_latitude, longitude: row.eraktkosh_longitude },
+        );
+        if (distanceM <= SUPERSEDE_WITHIN_M) near.push(row.hospital_code);
+        else conflicts.push({ hospitalCode: row.hospital_code, distanceM: Math.round(distanceM) });
+      }
+      if (near.length > 0) {
+        await db.query(
+          `update public.bank_location_fixes set status = 'superseded'
+           where hospital_code = any($1::text[]) and status = 'accepted' and reviewed_at is null`,
+          [near],
+        );
+      }
+      if (conflicts.length > 0) {
+        logError(
+          `location fixes: eRaktKosh now places ${conflicts.length} fixed banks more than ` +
+            `${SUPERSEDE_WITHIN_M / 1000} km from their fix; review them on /admin/locations:`,
+          conflicts
+            .map((c) => `${c.hospitalCode} (${(c.distanceM / 1000).toFixed(1)} km)`)
+            .join(", "),
+        );
+      }
+      if (near.length > 0)
+        log(`location fixes: ${near.length} superseded by eRaktKosh's own point`);
+      return { isSuccess: true, superseded: near.length, conflicts };
+    } catch (error) {
+      logError(`location fixes: not checked (${error.message})`);
+      return { isSuccess: false, error: error.message };
+    }
   }
 
   // Saves blood_banks.auto_refresh from eRaktKosh's auto-refresh list: true for the

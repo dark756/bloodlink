@@ -56,7 +56,14 @@ function MapClickHandler({ onMapClick }) {
 // Props:
 //   coords          — { lat, lng } | null — current pin position
 //   onCoordsChange  — (coords) => void     — called on map click or GPS fix
-export default function BloodMap({ coords, onCoordsChange }) {
+//   initialCenter   — [lat, lng]           — where the map opens (default: all of India)
+//   initialZoom     — number               — its zoom (default 5)
+export default function BloodMap({
+  coords,
+  onCoordsChange,
+  initialCenter = INDIA_CENTER,
+  initialZoom = 5,
+}) {
   // A unique key gives every mount a fresh DOM node, which avoids Leaflet's
   // "Map container is being reused by another instance" error.
   const [mapKey] = useState(() => `map-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -130,8 +137,8 @@ export default function BloodMap({ coords, onCoordsChange }) {
       <div className="map-box" style={{ position: "relative", height: 300 }}>
         <MapContainer
           key={mapKey}
-          center={INDIA_CENTER}
-          zoom={5}
+          center={initialCenter}
+          zoom={initialZoom}
           style={{ height: "100%", width: "100%" }}
         >
           <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />

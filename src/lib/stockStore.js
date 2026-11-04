@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { toLocationFix } from "./bankLocations";
 import { findState, getComponentName } from "./constants";
 import { haversineMeters } from "./geo";
 import { districtFromAddress, keepOnlyComponent } from "./stock";
@@ -150,4 +151,40 @@ export async function loadSavedNearest({ latitude, longitude, radius }) {
     .filter((bank) => bank.dist <= radius)
     .sort((a, b) => a.dist - b.dist);
   return { data, fetchedAt: Math.max(...banks.map((bank) => Date.parse(bank.last_seen_at))) };
+}
+
+// Kept on globalThis so the fixes survive hot reloads in development.
+const fixesCache = globalThis._bloodlinkLocationFixes ?? { fixes: null, loadedAt: 0, ttlMs: 0 };
+globalThis._bloodlinkLocationFixes = fixesCache;
+const FIXES_TTL_MS = 60 * 60 * 1000;
+// After a failed read (for example, before the migration is applied), wait this long
+// before trying again, so searches don't each pay for it.
+const FIXES_RETRY_MS = 5 * 60 * 1000;
+
+// The accepted bank_location_fixes rows, in the shape src/lib/bankLocations.js
+// merges: about 900 at most, cached for an hour like the directory. Never throws:
+// with no database, no table or a failed read, there are simply no fixes.
+export async function loadLocationFixes() {
+  if (fixesCache.fixes && Date.now() - fixesCache.loadedAt < fixesCache.ttlMs) {
+    return fixesCache.fixes;
+  }
+  const supabase = getPublicClient();
+  if (!supabase) return [];
+  try {
+    const rows = await selectAllRows(() =>
+      supabase
+        .from("bank_location_fixes")
+        .select("hospital_code, state_code, latitude, longitude, method, precision_m, reviewed_at")
+        .eq("status", "accepted")
+        .order("hospital_code"),
+    );
+    fixesCache.fixes = rows.map(toLocationFix).filter(Boolean);
+    fixesCache.ttlMs = FIXES_TTL_MS;
+  } catch (error) {
+    console.warn(`bank location fixes unavailable (${error.message}); none applied`);
+    fixesCache.fixes = [];
+    fixesCache.ttlMs = FIXES_RETRY_MS;
+  }
+  fixesCache.loadedAt = Date.now();
+  return fixesCache.fixes;
 }

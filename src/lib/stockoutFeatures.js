@@ -8,8 +8,9 @@ import { DORMANT_DAYS, GROUP_NAMES } from "./stock.js";
 // One case is one bank × one component × one blood group at one grid time: 00:00,
 // 06:00, 12:00 or 18:00 India time. Stock is rebuilt at the bank's own update times
 // (entry_at), carrying the last value forward, so the laptop's hourly sweeps and the
-// cloud's 4.5-hourly ones give the same rows. Only cases with stock above zero at a
-// bank that isn't dormant are scored.
+// cloud's 4.5-hourly ones give the same rows. Only cases with stock above the
+// low-stock threshold, at a bank that isn't dormant, are scored. The threshold is the
+// model's (artifact.thresholdUnits); 0 is a stock-out.
 //
 // The Python dataset builder (ml/, phase 5.1) must give the same inputs on the same
 // history: the parity test gates every model (A2). Each choice the summaries leave
@@ -38,6 +39,9 @@ export const FORECAST_GROUPS = GROUP_NAMES.slice(0, 8);
 // A gap in collection longer than this drops a case's window (the label rules):
 // the 4.5-hour interval plus the admin overview's 2 hours of grace.
 export const DEFAULT_GAP_HOURS = 6.5;
+// The low-stock threshold ml/dataset.py trains with by default: the event is the
+// group's units falling to this many or fewer. Callers pass the artifact's value.
+export const DEFAULT_THRESHOLD_UNITS = 2;
 
 // The 19 core inputs the dry run chose, in the artifact's order.
 export const INPUT_NAMES = [
@@ -178,7 +182,8 @@ export const isRhNegative = (group) => /-ve$/i.test(group);
 
 /**
  * The 19 inputs for one bank and group at one grid time, or null when the case
- * isn't scored: no update yet, no stock of the group, or a dormant bank.
+ * isn't scored: no update yet, stock of the group at or below the threshold (0 by
+ * default), or a dormant bank.
  *
  * events must hold every update in the 7 days before asOf and the last one before
  * them (training passes the whole series). Choices the summaries leave open:
@@ -199,9 +204,17 @@ export const isRhNegative = (group) => /-ve$/i.test(group);
  *   group: string,
  *   asOf: number | string,
  *   component?: string,
+ *   threshold?: number,
  * }} options
  */
-export function buildInputs({ events, bank = {}, group, asOf, component = DEFAULT_COMPONENT }) {
+export function buildInputs({
+  events,
+  bank = {},
+  group,
+  asOf,
+  component = DEFAULT_COMPONENT,
+  threshold = 0,
+}) {
   const time = toMs(asOf);
   const current = indexAt(events, time);
   if (current < 0) return null;
@@ -209,7 +222,7 @@ export function buildInputs({ events, bank = {}, group, asOf, component = DEFAUL
   const hoursSinceUpdate = (time - latest.at) / HOUR_MS;
   if (hoursSinceUpdate > DORMANT_DAYS * 24) return null;
   const units = groupUnits(latest.stock, component, group);
-  if (units <= 0) return null;
+  if (units <= threshold) return null;
 
   const bankUnits = componentUnits(latest.stock, component);
   const groupsStocked = Object.values(latest.stock?.[component] ?? {}).filter(
@@ -296,6 +309,7 @@ export function buildInputs({ events, bank = {}, group, asOf, component = DEFAUL
  *   asOf: number | string,
  *   component?: string,
  *   groups?: string[],
+ *   threshold?: number,
  * }} options
  */
 export function buildCases({
@@ -304,6 +318,7 @@ export function buildCases({
   asOf,
   component = DEFAULT_COMPONENT,
   groups = FORECAST_GROUPS,
+  threshold = 0,
 }) {
   const time = toMs(asOf);
   const cases = [];
@@ -315,6 +330,7 @@ export function buildCases({
         group,
         asOf: time,
         component,
+        threshold,
       });
       if (inputs) cases.push({ hospitalCode, group, asOf: time, inputs });
     }
@@ -341,12 +357,13 @@ export function findGaps(sweepTimes, maxGapHours = DEFAULT_GAP_HOURS) {
 }
 
 /**
- * The outcome of one case at each horizon, by the label rules fixed before the
- * backtest: true when the group reaches zero within (asOf, asOf + H]; null when the
- * case is left out (a cleared page comes first, the window runs past dataEnd or
- * into a gap); false otherwise. A drop to zero that was seen counts even across a
- * gap, since a gap can only hide one. Quick refills still count. Returns null when the
- * case isn't scored at all (no stock at asOf, or a dormant bank).
+ * The outcome of one case at each horizon, by the label rules: true when the group
+ * falls to the threshold or below within (asOf, asOf + H] (0, the default, is a
+ * stock-out); null when the case is left out (a cleared page comes first, the window
+ * runs past dataEnd or into a gap); false otherwise. A fall that was seen counts even
+ * across a gap, since a gap can only hide one. Quick refills still count. Returns
+ * null when the case isn't scored at all (at or below the threshold at asOf, or a
+ * dormant bank).
  * @param {{
  *   events: { at: number, stock: any }[],
  *   group: string,
@@ -355,6 +372,7 @@ export function findGaps(sweepTimes, maxGapHours = DEFAULT_GAP_HOURS) {
  *   component?: string,
  *   horizons?: number[],
  *   gaps?: number[][],
+ *   threshold?: number,
  * }} options
  */
 export function labelCase({
@@ -365,18 +383,20 @@ export function labelCase({
   component = DEFAULT_COMPONENT,
   horizons = HORIZONS_H,
   gaps = [],
+  threshold = 0,
 }) {
   const time = toMs(asOf);
   const end = toMs(dataEnd);
   const current = indexAt(events, time);
   if (current < 0) return null;
   if (time - events[current].at > DORMANT_DAYS * DAY_MS) return null;
-  if (groupUnits(events[current].stock, component, group) <= 0) return null;
+  if (groupUnits(events[current].stock, component, group) <= threshold) return null;
 
-  // The first time the group reaches zero after asOf, and whether it was a cleared page.
+  // The first time the group falls to the threshold or below after asOf, and whether
+  // that update was a cleared page.
   let firstZero = null;
   for (let index = current + 1; index < events.length; index += 1) {
-    if (groupUnits(events[index].stock, component, group) === 0) {
+    if (groupUnits(events[index].stock, component, group) <= threshold) {
       firstZero = {
         at: events[index].at,
         isCleared: isClearedPage(events[index - 1].stock, events[index].stock, component),

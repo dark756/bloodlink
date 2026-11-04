@@ -45,5 +45,8 @@ next-env.d.ts
 AGENTS.md
 
 
+# Python, for ml/
+__pycache__/
+
 # Supabase CLI cache
 supabase/.temp/
