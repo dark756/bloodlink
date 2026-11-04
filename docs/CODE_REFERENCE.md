@@ -254,6 +254,7 @@ The eRaktKosh collector, shared by `scripts/snapshot.mjs` on the laptop and the 
 |---|---|---|---|
 | `BASE_URL`, `TIMEOUT_MS`, `STATE_GAP_MS`, `BATCH_SIZE` | constant | module | eRaktKosh address, 60 s timeout, 1 s between states, 400 rows per insert. |
 | `DIRECTORY_QUERY` | constant | module | One `nearest` call from central India with a 5,000 km radius. |
+| `AUTO_REFRESH_ENDPOINT` | constant | module | `master/portal-refresh-hospitals`: the banks eRaktKosh refreshes automatically, as a list of codes. |
 | `ARCHIVE_VERSION` | constant | module | 1: the format version each archive line carries as `v`. Lines without one are version 1. |
 | `REPEAT_GUARD_MINUTES` | constant | module | 50: the Edge Function refuses a job that already started this recently. |
 | `STATE_BATCHES` | constant | module | The four batches of a cloud sweep, 9 state codes each, split by measured time. |
@@ -275,7 +276,9 @@ The eRaktKosh collector, shared by `scripts/snapshot.mjs` on the laptop and the 
 | `compactStock(row)` | function | `createCollector` | `{ "PRBC": { "O+Ve": 74 } }`: the copy kept in `stock_history`. |
 | `startRun({ job, batch, sweepId, guardMinutes })` | function | `createCollector` | Inserts the job's `collector_runs` row and returns `{ id }`. With `guardMinutes`, it first takes an advisory lock and returns `null` if the same job and batch started that recently. |
 | `finishRun(run, outcome)` | function | `createCollector` | Fills in the finish time, state counts, rows, archive file, `archive_day`, lines archived, result and error. |
-| `collectDirectory()` | function | `createCollector` | Saves the nationwide directory, flagging `missing`, `outside_india`, `wrong_state` (outside its own state, from `locationProblem`) and `shared` locations. Returns `{ isSuccess, banks, qualityCounts }`, or `{ isSuccess: false, error }`. |
+| `collectDirectory()` | function | `createCollector` | Saves the nationwide directory, flagging `missing`, `outside_india`, `wrong_state` (outside its own state, from `locationProblem`) and `shared` locations, then runs `collectAutoRefresh`. Returns `{ isSuccess, banks, qualityCounts, autoRefresh }`, or `{ isSuccess: false, error }`. |
+| `collectAutoRefresh()` | function | `createCollector` | Sets `blood_banks.auto_refresh` from the auto-refresh list: true for the banks on it, false for the rest, writing only rows that change. A failed call, or a list with no valid code, keeps last week's values and logs the failure. Returns `{ isSuccess, banks }` or `{ isSuccess: false, error }`. |
+| `codes`, `failed` | variable | `collectAutoRefresh` | The list's valid codes, without repeats, and the call as logged when it failed. |
 | `stateChecker`, `pointCounts`, `pointKey`, `seenAt`, `banksByCode`, `locationQuality`, `qualityCounts` | variable | `collectDirectory` | The state-outline checker, banks per coordinate point, its key, the run time, rows by code, one bank's flag, and flag totals. |
 | `collectStates(stateCodes, { stopStartingAt, callDeadlineAt })` | function | `createCollector` | Saves each state: validates, uploads changed rows in full, updates the fetch time of the rest, and adds history. A state whose call or save fails is logged and skipped, and the sweep goes on. No state starts after `stopStartingAt`, and no call waits past `callDeadlineAt`; states not started are reported as skipped. Returns `{ isSuccess, statesSaved, statesFailed, statesSkipped, rowsChanged, sweep }`. |
 | `districtByCode`, `sweep`, `okCount`, `failedCount`, `rowsChanged`, `skippedCodes` | variable | `collectStates` | District per bank from the directory, the sweep summary, and the counts. |
@@ -650,6 +653,76 @@ Per-IP request limits, kept in server memory. The IP is read from `X-Forwarded-F
 | `recentHits` | variable | `checkRateLimit` | This caller's requests inside the window. |
 | `existingKey`, `hitTimes` | variable | `checkRateLimit` | One stored counter and its times, while expired ones are cleared out. |
 | `tooManyRequests(rateLimitResult)` | function | module | A 429 response with a `Retry-After` header. |
+
+### `src/lib/stockoutFeatures.js`
+The stock-out forecast's inputs and labels (`docs/PLANS/ML_system.md`, A2 and A4). Pure, with one import (`./stock.js`), so the Edge Function, scripts and tests build the same rows. A case is one bank × component × group at a grid time: 00:00, 06:00, 12:00 or 18:00 India time. Stock is rebuilt at the bank's own update times, carrying the last value forward. The Python dataset builder must give the same inputs (the parity test); the module's comments list each choice the summaries leave open.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `HOUR_MS`, `DAY_MS` | constant | module | An hour and a day in ms. |
+| `INDIA_OFFSET_MS`, `GRID_STEP_MS` | constant | module | UTC+05:30, and the grid's 6 hours. |
+| `HORIZONS_H` | constant | module | `[24, 48, 72]`: the forecast's horizons, the order of every probability and label array. |
+| `LOOKBACK_DAYS`, `MIN_DAYS_SEEN` | constant | module | 7 days of lookback; rates "per day seen" divide by at least 1 day. |
+| `DAYS_OF_SUPPLY_CAP` | constant | module | 30: days of supply when nothing was used, and its cap. |
+| `CLEARED_PAGE_MIN_UNITS` | constant | module | 10: a whole component falling from this many to zero in one update is a cleared page. |
+| `DEFAULT_COMPONENT`, `FORECAST_GROUPS` | constant | module | `PRBC`, and the 8 ABO and Rh groups (no Bombay groups). |
+| `DEFAULT_GAP_HOURS` | constant | module | 6.5: sweeps further apart than this leave a gap that drops a case's window. |
+| `INPUT_NAMES`, `CATEGORICAL_INPUTS` | constant | module | The 19 inputs in order, and the three that are categories (`ownership`, `stateCode`, `bloodGroup`). |
+| `toMs(time)` | function | module | A time as ms, from ms or an ISO string. |
+| `isGridTime(time)`, `latestGridTime(time)`, `gridTimesBetween(from, to)` | function | module | Whether a time is on the grid; the last grid time at or before it; every grid time in a range, both ends included. |
+| `seriesFromHistory(rows)` | function | module | `stock_history` rows or archive lines → Map of bank code → `[{ at, stock }]`, sorted, one per update time. |
+| `byBank`, `series` | variable | `seriesFromHistory` | Updates by bank and time, then the sorted lists. |
+| `groupUnits(stock, component, group)`, `componentUnits(stock, component)` | function | module | Units of one group, and of a whole component; anything missing is 0. |
+| `isClearedPage(previousStock, stock, component)` | function | module | Whether an update cleared a component from 10 units or more to zero. |
+| `indexAt(events, time)` | function | module | Binary search: the last event at or before a time, or −1. |
+| `ownershipOf(hospitalType)` | function | module | `blood_banks.hospital_type` as `govt`, `private`, `charitable`, `red_cross` or `other`. |
+| `isRhNegative(group)` | function | module | Whether a group name ends in `-Ve`. |
+| `buildInputs({ events, bank, group, asOf, component })` | function | module | The 19 inputs for one case, or `null` when it isn't scored (no update yet, no stock, or a dormant bank). |
+| `current`, `latest`, `units`, `bankUnits`, `groupsStocked`, `windowStart`, `daysSeen` | variable | `buildInputs` | The latest event at `asOf`, its stock, the lookback's start, and the days the rates divide by. |
+| `zeroDrops`, `decreases`, `increases`, `bankUse`, `updates`, `updates24h`, `isCleared` | variable | `buildInputs` | The lookback's counts, and whether the page stood cleared after the previous update. |
+| `isClearStep`, `isRestoreStep`, `before`, `after` | variable | `buildInputs` | One step: a cleared page, the update that ends one, and the group's units either side. |
+| `unitsBefore(hours)`, `units24h`, `units72h` | variable | `buildInputs` | The group's units that long before, or `null`. |
+| `buildCases({ series, banks, asOf, component, groups })` | function | module | Every scored case at one grid time: `[{ hospitalCode, group, asOf, inputs }]`. |
+| `findGaps(sweepTimes, maxGapHours)` | function | module | Pairs of consecutive sweeps further apart than the limit, as `[start, end]`. |
+| `labelCase({ events, group, asOf, dataEnd, component, horizons, gaps })` | function | module | The label rules: per horizon, `true` if the group reaches zero within it, `null` if a cleared page comes first or the window runs past the data or into a gap, else `false`. `null` overall when the case isn't scored. |
+| `firstZero` | variable | `labelCase` | When the group first reaches zero after `asOf`, and whether that was a cleared page. |
+
+### `src/lib/stockoutModel.js`
+Applies the forecast's exported JSON artifact and holds the daily jobs' maths (A2 to A4, A7). Pure. The artifact's format is described at the top of the file: per horizon, an intercept, terms (an input, a transform, mean, scale and coefficient, or a dummy's level) and Platt parameters.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `ARTIFACT_FORMAT`, `TRANSFORMS` | constant | module | `bloodlink-stockout/1`; `identity`, `log1p`, `slog` (signed log) and `dummy`. |
+| `KILL_FALSE_ALERTS`, `KILL_FALSE_ALERT_DAYS`, `CALIBRATION_RANGE`, `KILL_FAILED_RUNS` | constant | module | The kill switch: above 1.5 false alerts per bank per week for 3 days, a calibration ratio outside 0.8 to 1.25, or the last 2 runs failed. *Assumptions.* |
+| `SHADOW_FALSE_ALERTS`, `SHADOW_CLEAN_DAYS` | constant | module | Shadow mode's exit: at most 1.2 false alerts, and no failed run for 7 days. |
+| `ALERT_BUDGET` | constant | module | 1 false alert per bank per week, the cut-off's limit. |
+| `FORECAST_OVERDUE_HOURS`, `RUN_STALE_MINUTES` | constant | module | 7: the admin overview's limit since the last finished scoring run; 30: a run that never finished counts as failed after this long. |
+| `FORECAST_FLAGS` | constant | module | The flags the kill switch turns off; `admin_events` isn't one. |
+| `sigmoid(x)`, `logit(p)` | function | module | The logistic function, computed stably, and its inverse. |
+| `isFiniteNumber(value)` | function | module | Whether a value is a finite number. |
+| `validateArtifact(artifact)` | function | module | `{ artifact }` or `{ error }`: the format, a logistic kind, a short id, and every horizon's intercept, Platt parameters and terms (known inputs, known transforms, dummies for categories, a positive scale). |
+| `withCalibration(artifact, plattByHorizon)` | function | module | A copy with some horizons' Platt parameters replaced: the daily calibration. |
+| `termValue(term, inputs)` | function | module | One term's value: 1 or 0 for a dummy, else (transform(input) − mean) ÷ scale. Throws on a missing number. |
+| `horizonLogit(horizon, inputs)` | function | module | The logit and each term's contribution (coefficient × value). |
+| `scoreCase(artifact, inputs, { reasonHorizon, reasonCount })` | function | module | `{ logits, pRaw, p, reasons }` in `HORIZONS_H` order; `p` is calibrated, and `reasons` explain the 48-hour risk. |
+| `topReasons(contributions, inputs, count)` | function | module | The inputs with the largest positive contributions, summed per input, each with `text`. |
+| `plural(count, word)`, `round1(value)`, `round2(value)` | function | module | Wording and rounding helpers. |
+| `describeInput(input, inputs)` | function | module | One input as a plain-language reason, such as "only 2 units left". |
+| `fitPlatt(scores, labels, { maxIterations })` | function | module | Platt scaling by Newton's method with a backtracking line search (Lin, Lin and Weng, 2007), with Platt's smoothed targets: `{ a, b, iterations, isConverged }`, for `sigmoid(a · logit + b)`. scikit-learn's A and B are −a and −b. |
+| `targets`, `A`, `B`, `objective`, `value`, `h11`, `h22`, `h21`, `g1`, `g2`, `dA`, `dB`, `gd`, `step` | variable | `fitPlatt` | The smoothed targets, Platt's parameters, the loss, the Hessian and gradient, the Newton step and the line search. |
+| `indiaDay(time)` | function | module | India's date of a time, `YYYY-MM-DD`. |
+| `caseKey(entry)`, `bankDays(cases)` | function | module | Bank, group and day as one key; the number of banks and days among cases. |
+| `alertMetrics(cases, cutOff)` | function | module | `{ falseAlerts, falseAlertsPerBankWeek, recall }` for alerts above the cut-off, one false alert at most per bank, group and day. |
+| `chooseCutOff(cases, { budget })` | function | module | The lowest cut-off whose false alerts fit the budget: `{ cutOff, allowedFalseAlerts, … }`. 0 when every negative fits. |
+| `highestNegative`, `allowed`, `sorted` | variable | `chooseCutOff` | Each key's highest negative score, the false alerts allowed, and those scores from the top. |
+| `averagePrecision(scores, labels)` | function | module | PR-AUC as scikit-learn's `average_precision_score`, ties included; `null` without a positive. |
+| `calibrationRatio(probabilities, labels)` | function | module | Mean prediction ÷ observed rate; `null` without a positive. |
+| `forecastMetrics(cases, cutOff)` | function | module | One day's `forecast_daily_metrics` for one horizon: cases, positives, PR-AUC, calibration ratio, the cut-off, recall and false alerts at it, and lift by group. |
+| `isFailedRun(run, now)` | function | module | A `forecast_runs` row with an error, or unfinished after 30 minutes. |
+| `inRange(value, range)` | function | module | Whether a value lies in a closed range. |
+| `evaluateKillSwitch({ metrics, runs, now })` | function | module | `{ shouldStop, reasons }` from one horizon's daily metrics (oldest first) and the scoring runs (newest first). |
+| `evaluateShadowExit({ metrics, runs, isParityPassed, now })` | function | module | `{ canExit, blockers }`: A7's four conditions. |
+| `forecastOverdue(lastFinishedAt, now)` | function | module | `{ isOverdue, hoursSince, limitHours }` for the admin overview. |
 
 ### `src/lib/supabase/client.js` and `src/lib/supabase/server.js`
 
@@ -1244,10 +1317,31 @@ Every signed-in person can reach it, whatever their profile's state, so anyone c
 | `stockRow(hospitalCode, entrydate, quantities)` | function | module | A test eRaktKosh row with red-cell stock. |
 | `fakeDb({ previous, directory, recentRun, failOn })` | function | module | A stand-in for the pg session: records every statement, answers the collector's reads, and throws on statements matching `failOn`. |
 | `queries`, `statements(pattern)` | variable | `fakeDb` | Every statement sent, and those matching a pattern. |
-| `fakeFetch(answers)` | function | module | A stand-in for `fetch`, answering by `stateCode` (or `nearest`) with rows, an HTTP status or a network error. |
+| `fakeFetch(answers)` | function | module | A stand-in for `fetch`, answering by `stateCode` (or `nearest` for the directory, `refresh` for the auto-refresh list) with rows, an HTTP status or a network error. |
 | `makeCollector(options)` | function | module | A collector over the fakes, with the archive, errors and called URLs captured. |
 | `archived`, `errors`, `urls` | variable | `makeCollector` | What it archived, logged as errors, and fetched. |
 | `SECRET` | constant | request-checks tests | A 40-character test secret. |
+
+### `tests/stockout-features.test.js`
+The grid, the series rebuild, the cleared-page rule, the 19 inputs on a hand-worked series, the label rules (horizons, quick refills, cleared pages, the end of the data and gaps) and `findGaps`.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `HOUR`, `DAY`, `T` | constant | module | An hour and a day in ms, and 12:00 India time on 4 November 2026, a grid time. |
+| `event(offsetMs, groups)` | function | module | One update at `T` plus the offset, with that red-cell stock (none when omitted). |
+| `events`, `bank` | constant | the inputs tests | A bank's series over 10 days, and its attributes. |
+| `before`, `label(later, options)` | variable | the labels tests | The update before `T`, and `labelCase` with later updates added. |
+
+### `tests/stockout-model.test.js`
+The artifact's checks and scoring, the reasons, parity with scikit-learn (`tests/fixtures/stockout_sklearn.json`: Platt to 6 decimal places, average precision to 12), the cut-off, the metrics, the kill switch, the shadow exit and the overdue rule.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `HOUR`, `NOW` | constant | module | An hour in ms, and the test clock. |
+| `horizon(intercept, platt)`, `artifact`, `inputs` | function, constant | module | A small artifact with five terms, and one case's inputs. |
+| `sklearn` | constant | module | The fixture: seeded scores and labels, scikit-learn's Platt parameters and calibrated values, and its average precision. |
+| `cases` | constant | the cut-off tests | 14 banks on one day, two of them stock-outs, and a second negative case for one key. |
+| `day(falseAlertsPerBankWeek, calibrationRatio)`, `run(hoursAgo, error, finished)` | function | the kill-switch tests | A daily metrics row, and a `forecast_runs` row. |
 
 ### `tests/compatibility.test.js`
 
@@ -1348,6 +1442,26 @@ Runs on the project in `SUPABASE_DB_URL` inside one transaction that is always r
 | `due(batch, interval)` | function | module | `collector_due`'s answer. |
 | `moveLastSweep(ago)` | function | module | Moves the newest sweep's start into the past, since `now()` is fixed inside the transaction. |
 | `first`, `second`, `jobs`, `tick`, `pruned`, `left`, `bucket` | variable | module | The values each check reads. |
+
+### `scripts/check-forecast-schema.mjs`: checks the forecast's schema
+Runs on the project in `SUPABASE_DB_URL` inside one transaction that is always rolled back. Applies the `*_stockout_forecast.sql` migration first if the project lacks it. Writes nothing to the auth schema: the admin checks borrow an existing admin's id, and are skipped when there is none.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `migrationFile`, `isLocal` | constant | module | The migration's file name, and whether the database is on this machine (no TLS), for testing the script itself. |
+| `check`, `one`, `errorCode` | function | module | As in `check-cloud-collector.mjs`. |
+| `asUser(userId)` | function | module | Switches to `authenticated` with that user's claims, as the Data API would. |
+| `GRID`, `forecastRow(asOf, p)`, `model(id, status)` | constant, function | module | 12:00 India time a day ago, and inserts of a forecast and of a model version. |
+| `flags`, `stopped`, `after`, `admin`, `bucket` | variable | module | The values each check reads. |
+
+### `ml/make_parity_fixtures.py`: scikit-learn's reference values
+Writes `tests/fixtures/stockout_sklearn.json`: four seeded cases (over-confident, rare, scores beyond 30, ties) with scikit-learn's Platt parameters (`_sigmoid_calibration`, what `CalibratedClassifierCV(method="sigmoid")` calls), calibrated values at probe scores, and `average_precision_score`. Inputs are rounded to 6 decimals first so JS and Python fit the same numbers. Run `python -I ml/make_parity_fixtures.py` from `bloodlink/` with `ml/requirements.txt` installed; the output is the same every run.
+
+| Name | Kind | Inside | What it is / does |
+|---|---|---|---|
+| `OUT` | constant | module | The fixture's path. |
+| `case(name, scores, labels, probe)` | function | module | One fixture case. |
+| `main()` | function | module | Draws the four cases with seed 20261104 and writes the file with the library versions. |
 
 ### `scripts/setup-cloud-collector.mjs`: sets up, deploys, schedules
 With no flag: a new random secret, stored as the function secret `COLLECTOR_SECRET` and in Vault as `collector_secret`, with the function's URL as `collector_url`; then deploys `collect-stock` with JWT verification off. Re-running rotates the secret. `--deploy-only` redeploys; `--schedule [interval] [--region r | --no-region]` and `--unschedule` run the scheduling functions.
@@ -1514,7 +1628,7 @@ Called by the cron jobs with `x-collector-secret`. Deployed with JWT verificatio
 | `archiveBucket()` | function | module | The Storage bucket, with the `default` key from `SUPABASE_SECRET_KEYS`. Used for nothing but uploads. |
 | `upload(path, body, contentType, upsert)` | function | module | One upload; throws on failure. |
 | `stampName(time, batch)` | function | module | `2026-11-10/0535-b1`: the UTC day, start time and batch, which name the batch's files. |
-| (handler) | handler | module | Checks the method and the secret, parses the body, connects with `SUPABASE_DB_URL` and runs `set role bloodlink_ingest`, then runs the batch, the directory or the prune, each recorded in `collector_runs` and refused (409) if it ran within 50 minutes. A batch uploads its changed rows to `history/<name>.ndjson.gz` and its summary to `sweeps/<name>.json`; the directory uploads `directory/<day>.json.gz`. |
+| (handler) | handler | module | Checks the method and the secret, parses the body, connects with `SUPABASE_DB_URL` and runs `set role bloodlink_ingest`, then runs the batch, the directory (whose answer includes `autoRefresh`) or the prune, each recorded in `collector_runs` and refused (409) if it ran within 50 minutes. A batch uploads its changed rows to `history/<name>.ndjson.gz` and its summary to `sweeps/<name>.json`; the directory uploads `directory/<day>.json.gz`. |
 | `receivedAt`, `job`, `historyLines`, `directoryAnswer`, `client`, `finishOnError` | variable | handler | When the call came in (the time budget starts there), the parsed request, what the archive hooks buffered, the Postgres connection, and the hook that records a fatal error against the job in progress. |
 | `collector`, `results`, `status`, `refuse(name)` | variable | handler | The shared collector with runner `edge`, the answer, its HTTP status, and a helper for a refused job. |
 | `run`, `outcome`, `name`, `archived`, `errors`, `summary` | variable | handler | One job's row and outcome, the file name, the archive fields for `finishRun`, upload errors, and the batch summary. |
@@ -1523,7 +1637,7 @@ Called by the cron jobs with `x-collector-secret`. Deployed with JWT verificatio
 
 ## Database
 
-Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stock_store.sql`, `20261023000300_blood_bank_locations.sql`, `20261024000100_wrong_state_locations.sql`, `20261026000100_ingest_prune_grant.sql`, `20261026000200_review_and_india_dates.sql`, `20261026000300_privacy_consent_and_account_deletion.sql` and `20261103000100_cloud_collector.sql`. All are applied to the live project (Mumbai, since 2026-11-03), so changes go in a new migration file, never into an applied one. SQL uses `snake_case`. Function parameters start with `p_` and local variables with `v_`.
+Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stock_store.sql`, `20261023000300_blood_bank_locations.sql`, `20261024000100_wrong_state_locations.sql`, `20261026000100_ingest_prune_grant.sql`, `20261026000200_review_and_india_dates.sql`, `20261026000300_privacy_consent_and_account_deletion.sql`, `20261103000100_cloud_collector.sql` and `20261104000100_stockout_forecast.sql`. All but the last are applied to the live project (Mumbai, since 2026-11-03), so changes go in a new migration file, never into an applied one. The last is not applied yet; until it is, it may still be edited. SQL uses `snake_case`. Function parameters start with `p_` and local variables with `v_`.
 
 ### Tables and columns
 
@@ -1563,6 +1677,7 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | | `latitude`, `longitude`, `location_quality` | Position, flagged `ok`, `shared` (same point as another bank), `wrong_state` (outside its own state), `outside_india` or `missing`. |
 | | `location` | A PostGIS `geography(Point, 4326)` generated from latitude and longitude. Null for missing, wrong-state or outside-India positions. |
 | | `bank_type`, `hospital_type`, `stock_source`, `camp_source` | eRaktKosh's own fields. |
+| | `auto_refresh` | Whether eRaktKosh refreshes the bank's stock automatically, from the weekly directory run; null until the first one. A forecast input. |
 | | `first_seen_at`, `last_seen_at` | When the directory first and last listed the bank. |
 | `bank_stock_latest` | `hospital_code`, `state_code`, `district_id` | The bank, its state, and its district from `blood_banks`. |
 | | `row` | The validated eRaktKosh row, the same shape as a live one. |
@@ -1582,6 +1697,23 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | | `states_saved`, `states_failed`, `states_skipped`, `rows_changed` | How the states went, and history rows written. |
 | | `archive_path`, `archive_day`, `rows_archived` | The `stock-archive` file it wrote, the UTC day its lines belong to, and how many. Only Storage files count; laptop runs leave them empty. |
 | | `result`, `error` | The directory's flags or the prune's report, and any error. |
+| `feature_flags` | `name` | `forecast_badge`, `forecast_ranking`, `forecast_appeals` or `admin_events`. |
+| | `is_enabled`, `disabled_reason` | On or off (all start off), and why the kill switch turned it off. |
+| | `updated_by`, `updated_at` | The admin who last changed it (null for the kill switch), and when. |
+| `model_versions` | `id`, `kind` | Such as `stockout-logit-2027-01-04`; `logistic` or `gbm`. |
+| | `artifact_path`, `artifact_sha256` | The artifact in the `ml-models` bucket, and its SHA-256. |
+| | `trained_from`, `trained_to`, `evaluation` | The training dates, and the promotion rule's metrics. |
+| | `status`, `created_at` | `shadow`, `live` (at most one) or `retired`. |
+| `stock_forecasts` | `hospital_code`, `component_id`, `blood_group_code`, `as_of`, `model_version` | The key: one bank, component and group (eRaktKosh codes) at one grid time, by one model. |
+| | `p_raw`, `p` | P(stock-out) at 24, 48 and 72 h, raw and calibrated, each in 0 to 1. |
+| | `reasons` | The top three inputs pushing the 48-hour risk up, in words. |
+| `forecast_outcomes` | `hospital_code`, `component_id`, `blood_group_code`, `as_of` | The case. |
+| | `stockout` | What happened at 24, 48 and 72 h; null where the label rules leave it out. |
+| | `had_appeal`, `labelled_at` | Whether an approved appeal covered the window (reported apart), and when it was labelled. |
+| `forecast_runs` | `id`, `job`, `as_of`, `model_version` | One `score` run at a grid time, or one `daily` run of outcomes and calibration. |
+| | `started_at`, `finished_at`, `rows_scored`, `result`, `error` | How it went; the daily run's cut-offs and kill-switch decision. |
+| `forecast_daily_metrics` | `day`, `horizon_h`, `model_version` | The key. |
+| | `cases`, `positives`, `pr_auc`, `calibration_ratio`, `platt_a`, `platt_b`, `cut_off`, `recall_at_cut_off`, `false_alerts_per_bank_week`, `lift_by_group` | That day's calibration, cut-off and metrics. |
 
 ### Functions and triggers
 
@@ -1613,6 +1745,15 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | `upstream_stats` | view | eRaktKosh calls in the last 24 hours per endpoint and state: calls, success %, median and 95th-percentile ms, last good call. Runs with the caller's rights, so only admins see rows. |
 | `bloodlink_ingest` | role | No login. The collector switches to it with `set role`; it may write only the stock tables. On `upstream_calls` it may insert and delete, and read only `called_at`. On `collector_runs` it may read, insert and update; `collector_sweeps` and the scheduling functions are closed to it. |
 | `pg_cron`, `pg_net` | extension | Added by the cloud collector migration, in `pg_catalog` and `extensions`. |
+| `is_forecast_grid_time(p_time)` | function | Immutable: whether a time is 00:00, 06:00, 12:00 or 18:00 India time. Used by the forecast tables' checks. |
+| `set_feature_flag(p_name, p_enabled)` | function | Admins only (security definer). Turns a flag on or off, clearing the kill switch's reason when on, and writes `feature_flag.changed` to the audit log. Raises 42501, 22023 or P0002. |
+| `v_was` | variable | Inside `set_feature_flag`: the flag before the change. |
+| `stop_forecast_flags(p_reason)` | function | `bloodlink_ml` only (security definer). The kill switch: turns `forecast_badge`, `forecast_ranking` and `forecast_appeals` off with the reason, never `admin_events`, writes `feature_flag.kill_switch` with no actor, and returns how many it stopped. |
+| `v_names` | variable | Inside `stop_forecast_flags`: the flags it turned off. |
+| `prune_forecasts(p_days)` | function | `bloodlink_ml` only, with its rights. Deletes forecasts and outcomes older than 60 days; returns `forecasts_deleted` and `outcomes_deleted`. |
+| `v_forecasts`, `v_outcomes` | variable | Inside `prune_forecasts`. |
+| `bloodlink_ml` | role | No login. The forecast's scoring job (phase 2). Reads the stock store and `collector_runs`; writes only `stock_forecasts`, `forecast_outcomes`, `forecast_runs` and `forecast_daily_metrics`; reads `feature_flags` and `model_versions`; runs `stop_forecast_flags` and `prune_forecasts`. |
+| `ml-models` | Storage bucket | Private, with no policies: `<model id>.json`, the exported artifacts. |
 | `stock-archive` | Storage bucket | Private, with no policies, so only a secret key reaches it. `history/D/HHMM-bN.ndjson.gz` (a cloud batch's changes), `history/D.ndjson.gz` (a laptop day), `sweeps/D/HHMM-bN.json`, `sweeps.ndjson.gz`, `directory/D.json.gz`; D is a UTC date. |
 | `profiles_before_write`, `donor_screening_before_write`, `organizations_set_updated_at` | trigger | Run those functions before each write. |
 | `on_auth_user_created`, `on_auth_user_email_changed` | trigger | Run `handle_new_user` and `handle_user_email_change` on `auth.users`. |
@@ -1640,3 +1781,8 @@ Schema is in `supabase/migrations/20261023000100_init.sql`, `20261023000200_stoc
 | `collector_runs_ingest` | `bloodlink_ingest` may write `collector_runs`. |
 | `collector_sweeps_started_at`, `collector_runs_started_at`, `collector_runs_archive_day` | Indexes for the tick, the admin overview and the prune. |
 | `collector_runs_upload_path` | Unique partial index on `archive_path` for `upload` runs: re-uploading a file replaces its row, so the prune never counts it twice. |
+| `upstream_calls_endpoint_check` | Now also allows `master/portal-refresh-hospitals`. |
+| `model_versions_one_live` | Unique partial index: at most one live model. |
+| `stock_forecasts_as_of`, `forecast_outcomes_as_of`, `forecast_runs_started_at` | Indexes for the latest scores, the daily job and the admin overview. |
+| `*_select_admin` on `feature_flags`, `model_versions`, `stock_forecasts`, `forecast_outcomes`, `forecast_runs`, `forecast_daily_metrics` | Only admins can read them. |
+| `*_ml` and `*_ml_read` | `bloodlink_ml` may write the four forecast tables and read the flags, the models, `blood_banks`, `bank_stock_latest`, `stock_history` and `collector_runs`. |

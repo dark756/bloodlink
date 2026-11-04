@@ -1,6 +1,6 @@
 # Plan: the ML system, from the stock-out forecast to donor suggestions
 
-**Status: PLAN, not started.** Nothing here is built. The design, settings and dates are proposals with reasons; every value marked *assumption* is set in simulation or shadow mode before anyone relies on it.
+**Status: phase 0 in progress, since 4 November 2026.** Part A's groundwork is in code (see [Phase 0 so far](#phase-0-so-far)); nothing scores, shows or sends anything yet, and Parts B and C wait for the donor network. The design, settings and dates are proposals with reasons; every value marked *assumption* is set in simulation or shadow mode before anyone relies on it.
 
 - Paths are relative to `bloodlink/` unless they start with `../`.
 - **It builds on:**
@@ -21,7 +21,7 @@
 8. [Privacy, safety and fairness](#privacy-safety-and-fairness)
 9. [Measuring it](#measuring-it)
 10. [Testing and simulation](#testing-and-simulation)
-11. [Rollout, with dates](#rollout-with-dates)
+11. [Rollout, with dates](#rollout-with-dates), and [phase 0 so far](#phase-0-so-far)
 12. [Decisions and alternatives](#decisions-and-alternatives)
 13. [Risks](#risks)
 14. [Open questions](#open-questions)
@@ -473,6 +473,24 @@ They appear on the admin overview, next to the collector's card, and in the cent
 | **4 · Suggestions in shadow** | With the donor network's phase 2 | A partner centre with `accepts_forecast_appeals`; drafts and approvals; matching with the donor network's score, logged, not sent. Drills prompt test accounts end to end | 2 weeks; the centre's staff find the drafts and choices sensible; simulation settings chosen |
 | **5 · Suggestions live** | With the donor network's phase 3, one centre | In-app, push and email; daytime only; manual appeals at the partner centre | 30 appeals closed with outcomes; no eligibility or safety incident; fatigue ≤ 2% |
 | **Later** | 2027 | Auto-approval for centres that want it; whole blood and platelets; the public list | — |
+
+### Phase 0 so far
+
+Started on 4 November 2026, on `supabase-migration`. Each item names its file.
+
+| Item | Status | Where |
+|---|---|---|
+| Part A's tables and flags | **Written, not applied.** `feature_flags` (all four off), `model_versions` (one `live` at a time), `stock_forecasts` (grid times only, three probabilities in 0 to 1), `forecast_outcomes`, `forecast_runs` (a `score` or `daily` job), `forecast_daily_metrics` (with each day's Platt parameters), the private `ml-models` bucket, and the `bloodlink_ml` role. Admins read everything; nobody else reads anything yet | `supabase/migrations/20261104000100_stockout_forecast.sql` |
+| Flags through functions | `set_feature_flag()` for admins, audited; `stop_forecast_flags()` for the kill switch, as `bloodlink_ml`, which never touches `admin_events`; `prune_forecasts()` at 60 days | The same migration |
+| Its checks | 25 checks in a rolled-back transaction: the grid and range constraints, every role's reads and refusals, the kill switch, an admin's flag change and its audit entry. All passed on a local Postgres 16 with stand-ins for `auth` and `storage`; **not yet run on the live project** | `scripts/check-forecast-schema.mjs` |
+| `blood_banks.auto_refresh` | The weekly directory run now also calls `master/portal-refresh-hospitals` (a JSON list of bank codes, checked on 4 November) and sets the column for every bank. A failed or empty list keeps last week's values. Needs the migration first, then `--deploy-only` | `src/lib/collector.js`, `collectAutoRefresh` |
+| The 19 inputs and the label rules in JS | Done, with 17 tests. Each choice the summaries leave open is written down in the module: "per day seen" is from the first update, at least 1 and at most 7 days; a cleared page's step is no drop, no use and no refill; a change with no earlier update is 0; days of supply is capped at 30; a seen drop counts across a gap | `src/lib/stockoutFeatures.js`, `tests/stockout-features.test.js` |
+| The scorer and the daily jobs' maths | Done, with 28 tests: the artifact's format and checks, scoring with plain-language reasons, Platt fitting, the cut-off at 1 false alert per bank per week (one per bank, group and day), PR-AUC, the calibration ratio, lift by group, the kill switch (A4), the shadow exit (A7) and the 7-hour overdue rule | `src/lib/stockoutModel.js`, `tests/stockout-model.test.js` |
+| Parity with scikit-learn | Platt scaling and average precision match scikit-learn 1.9.1 to within 1e-8 on four seeded cases, ties and scores beyond 30 included | `ml/make_parity_fixtures.py`, `tests/fixtures/stockout_sklearn.json` |
+| `ml/` with the dataset builder | **Not started.** The scripts are in `../rough_work/ML/`, outside git, so they move on the laptop. The builder must then match `stockoutFeatures.js` on fixtures of real history, or the JS changes to match `walk_forward_check.py`: the open choices above are what to compare first | — |
+| The parity test on the interim model | **Waiting** for `ml/dataset.py` and an exported artifact (`ml/export.py`) | — |
+
+Next in phase 0: move `walk_forward_check.py`'s dataset code into `ml/dataset.py`, export today's interim logistic model in `stockoutModel.js`'s format, and add a parity fixture of one real week. Then apply the migration as its `CLAUDE.md` entry says. The `score-stock` Edge Function and the admin overview's forecast card are phase 2.
 
 **Needs:**
 - from the donor network: phases 0 to 3, with consent, `donor_areas`, `donor_status` and its eligibility parity test, the outbox, and shadow mode;

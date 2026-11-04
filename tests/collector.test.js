@@ -45,14 +45,17 @@ function fakeDb({ previous = {}, directory = [], recentRun = false, failOn = nul
   };
 }
 
-// A stand-in for fetch: answers by stateCode (or for the directory call), with a
-// row list, an HTTP status, or a thrown network error.
+// A stand-in for fetch: answers by stateCode (or nearest for the directory call, or
+// refresh for the auto-refresh list), with a row list, an HTTP status, or a thrown
+// network error.
 function fakeFetch(answers) {
   const urls = [];
   const fetch = async (url) => {
     urls.push(url);
-    const params = new URL(url).searchParams;
-    const answer = answers[params.get("stateCode") ?? "nearest"];
+    const { pathname, searchParams: params } = new URL(url);
+    const answer = pathname.endsWith("/portal-refresh-hospitals")
+      ? answers.refresh
+      : answers[params.get("stateCode") ?? "nearest"];
     if (answer === "network") throw new TypeError("fetch failed");
     const status = typeof answer === "number" ? answer : 200;
     const body = typeof answer === "number" ? "error" : JSON.stringify(answer);
@@ -208,6 +211,41 @@ describe("the directory run", () => {
     );
     expect(flags).toEqual(["ok", "wrong_state", "shared", "shared", "missing"]);
     expect(archived.directory).toHaveLength(1);
+  });
+
+  it("saves the auto-refresh list after the directory", async () => {
+    const { collector, db } = makeCollector({
+      answers: {
+        nearest: [
+          { hospitalCode: 1, name: "Bank", stateCode: 30, latitude: 15.49, longitude: 73.83 },
+        ],
+        refresh: ["23162", "4050", "4050", "bad", 18295],
+      },
+    });
+    const outcome = await collector.collectDirectory();
+    expect(outcome.autoRefresh).toEqual({ isSuccess: true, banks: 3 });
+    const [update] = db.statements(/update public\.blood_banks set auto_refresh/);
+    expect(update.params).toEqual([["23162", "4050", "18295"]]);
+    const logged = db.statements(/insert into public\.upstream_calls/).map(({ params }) => params);
+    expect(logged.map((params) => [params[0], params[2], params[6]])).toEqual([
+      ["bloodbank/nearest", true, 1],
+      ["master/portal-refresh-hospitals", true, 3],
+    ]);
+  });
+
+  it("keeps last week's auto-refresh values when the list fails or is empty", async () => {
+    for (const refresh of [503, [], ["x"]]) {
+      const { collector, db, errors } = makeCollector({
+        answers: { nearest: [{ hospitalCode: 1, name: "Bank", stateCode: 30 }], refresh },
+      });
+      const outcome = await collector.collectDirectory();
+      expect(outcome.isSuccess).toBe(true);
+      expect(outcome.autoRefresh.isSuccess).toBe(false);
+      expect(db.statements(/set auto_refresh/)).toHaveLength(0);
+      const [, logged] = db.statements(/insert into public\.upstream_calls/);
+      expect(logged.params.slice(0, 3)).toEqual(["master/portal-refresh-hospitals", null, false]);
+      expect(errors.at(-1)).toMatch(/last values kept/);
+    }
   });
 
   it("refuses to run without the state outlines", async () => {

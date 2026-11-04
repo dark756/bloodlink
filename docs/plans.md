@@ -22,7 +22,7 @@ All the planned work for bloodLink, in order of priority: what each item involve
 | 10 | [Panels](#10--panels) | [`PLANS/plan_panels.md`](PLANS/plan_panels.md) | Not started | Phases A to C, about a month | Phase A |
 | 11 | [Threat model](#11--threat-model) | — | Not started | Half a day | Write the page |
 | 12 | [Donor network](#12--donor-network) | [`PLANS/plan_donor_network.md`](PLANS/plan_donor_network.md) | Not started | Phases 0 to 2, about a month, plus the legal review | Phase 0's prerequisites |
-| 13 | [The ML system: forecast in the app and donor suggestions](#13--the-ml-system-forecast-in-the-app-and-donor-suggestions) | [`PLANS/ML_system.md`](PLANS/ML_system.md) | Not started | Phases 0 to 3, about 3 weeks beside item 4; phases 4 to 6 with item 12 | Phase 0, in November |
+| 13 | [The ML system: forecast in the app and donor suggestions](#13--the-ml-system-forecast-in-the-app-and-donor-suggestions) | [`PLANS/ML_system.md`](PLANS/ML_system.md) | Phase 0 started 4 November: migration (not applied), inputs, scorer, calibration and kill switch in JS | Phases 0 to 3, about 3 weeks beside item 4; phases 4 to 6 with item 12 | Phase 0, in November |
 | 14 | [Usability study](#14--usability-study) | — | Not started | 2 to 3 days | Needs the deployed demo (9) |
 | 15 | [Accessibility and language](#15--accessibility-and-language) | — | Not started | 2 to 4 days | The contrast fix |
 
@@ -175,6 +175,9 @@ All the planned work for bloodLink, in order of priority: what each item involve
   - 2 also adds drills of the mark; 3 shows the forecast in February.
   - 4 and 5, the suggestions, need item 12's phases 2 and 3 and a partner centre.
 - **Needs:** item 12 (consent, donor areas, `donor_status` and its eligibility parity test, the outbox); item 10's F1, F3, F5, F6 and F8; the project guide's sign-off on proactive suggestions.
+- **Phase 0 so far** (4 November; the plan's "Phase 0 so far" has the details):
+  - written: the migration `20261104000100_stockout_forecast.sql` with its rolled-back checks (`scripts/check-forecast-schema.mjs`), the auto-refresh column in the weekly directory run, `src/lib/stockoutFeatures.js` (the 19 inputs and the labels) and `src/lib/stockoutModel.js` (scoring, Platt, the cut-off, the metrics, the kill switch), with 47 tests and a scikit-learn parity fixture;
+  - left: apply the migration and redeploy the collector; move the dataset builder from `../rough_work/ML/` into `ml/` and pass the parity test on a week of real history.
 
 ## 14 · Usability study
 

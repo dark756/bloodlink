@@ -35,8 +35,9 @@ Edit only `bloodlink/`. Older copies of the app exist elsewhere in the workspace
 | `bloodlink/` | **The active app.** Git repo, remote `github.com/dark756/bloodlink`. The default branch, `supabase-migration`, holds the Supabase app. `master` holds the last MongoDB version, which tag `mongodb-final` also marks. |
 | `supabase/migrations/` | Database schema, applied with `npm run db:migrate`. The only place schema changes go. |
 | `supabase/functions/` | Edge Functions: `collect-stock`, the cloud collector (#35). It imports `src/lib/` and `assets/` directly. |
-| `scripts/` | `migrate.mjs`, `make-admin.mjs` and `snapshot.mjs` run with Node against `SUPABASE_DB_URL`. `copy-project.mjs` copies every table into the new Mumbai project (#28); delete it once Tokyo is deleted. The cloud collector's scripts (#35): `check-cloud-collector.mjs` (its SQL, rolled back), `setup-cloud-collector.mjs` (secret, Vault, deploy, schedule), `upload-archive.mjs` and `sync-archive.mjs` (the archive bucket). `measure-search.mjs` times a running server. `benchmark-geo.mjs` compares spatial search methods, and `ranking-sensitivity.mjs` tests the weights. `build-traffic-profiles.mjs` and `build-state-boundaries.mjs` rebuild the traffic and state-outline assets. |
-| `tests/` | Vitest unit tests for the pure modules in `src/lib/` and the eRaktKosh client. |
+| `scripts/` | `migrate.mjs`, `make-admin.mjs` and `snapshot.mjs` run with Node against `SUPABASE_DB_URL`. `copy-project.mjs` copies every table into the new Mumbai project (#28); delete it once Tokyo is deleted. The cloud collector's scripts (#35): `check-cloud-collector.mjs` (its SQL, rolled back), and `check-forecast-schema.mjs` the forecast's tables the same way, `setup-cloud-collector.mjs` (secret, Vault, deploy, schedule), `upload-archive.mjs` and `sync-archive.mjs` (the archive bucket). `measure-search.mjs` times a running server. `benchmark-geo.mjs` compares spatial search methods, and `ranking-sensitivity.mjs` tests the weights. `build-traffic-profiles.mjs` and `build-state-boundaries.mjs` rebuild the traffic and state-outline assets. |
+| `tests/` | Vitest unit tests for the pure modules in `src/lib/` and the eRaktKosh client. `tests/fixtures/stockout_sklearn.json` holds scikit-learn's reference values, written by `ml/make_parity_fixtures.py`. |
+| `ml/` | The forecast's Python side (`docs/PLANS/ML_system.md`, A2), with pinned `requirements.txt`. So far only `make_parity_fixtures.py`; the dataset builder and training move here from `../rough_work/ML/` in phase 5.1. |
 | `../redundant_bloodlink/bloodlink/` | April 2026 prototype: Next + TypeScript, Supabase, Expo, FastAPI. Abandoned. |
 | `../redundant_bloodlink/bloodlink-borade/` | A teammate's Sept 2026 Supabase fork with dashboard scaffolds, request flows and notification adapters. Reference only; much of it falls back to mock data. |
 | `../redundant_bloodlink/` top-level files | data.gov.in download scripts and dumps. `all_gov_data.json` holds about 2,800 blood banks. |
@@ -58,13 +59,15 @@ npm start                            # serve the build
 npm run lint                         # ESLint 9; passes with zero errors and warnings
 npm run format                       # Prettier 3: rewrite files in the house style
 npm run format:check                 # Prettier: list files that need formatting
-npm test                             # Vitest; 153 tests in tests/ (the ETA bench's 46: npx vitest run in ../rough_work/eta_benchmarks/)
+npm test                             # Vitest; 200 tests in tests/ (the ETA bench's 46: npx vitest run in ../rough_work/eta_benchmarks/)
 npm run db:migrate                   # apply pending supabase/migrations/*.sql
 node scripts/migrate.mjs --status    # list applied and pending migrations
 npm run db:make-admin -- a@b.com     # make an existing account the first admin
 npm run snapshot -- --all --archive ../blood_data/eraktkosh   # a sweep from the laptop, by hand only: the cloud collects
 npm run snapshot -- --directory --prune                       # the directory and the prune, from the laptop
 node scripts/check-cloud-collector.mjs   # check the cloud collector's SQL in a rolled-back transaction
+node scripts/check-forecast-schema.mjs   # check the forecast's tables, role and flags the same way
+python -I ml/make_parity_fixtures.py     # rewrite scikit-learn's reference values (pip install -r ml/requirements.txt)
 node scripts/setup-cloud-collector.mjs [--deploy-only | --schedule | --unschedule]   # cloud collector setup
 npm run archive:upload [-- --check | --from-db YYYY-MM-DD]   # laptop archive into the bucket; compare per day
 npm run archive:sync                 # download the cloud archive into ../blood_data/eraktkosh/
@@ -163,6 +166,8 @@ Variables live in `.env.local`, kept out of git by the `.env*` rule. `.env.examp
 | `format.js` | Display helpers: `formatDate`, `formatDateTime`, `hoursSince`, `formatTimeAgo`, `capitalize`, `getInitials`. |
 | `profileStore.js` | Maps the page's `details` object to and from the `profiles` and `donor_screening` rows. |
 | `rateLimit.js` | Per-IP in-memory rate limits for the search routes. The IP comes from `X-Forwarded-For` only behind trusted proxies (`TRUSTED_PROXY_HOPS`); otherwise all callers share one limit. |
+| `stockoutFeatures.js` | The forecast's 19 inputs and its labels (`docs/PLANS/ML_system.md`, A2 and A4), from `stock_history` rebuilt at the banks' own update times on the 6-hourly India-time grid. Pure; the Python dataset builder must match it. |
+| `stockoutModel.js` | Applies the exported JSON artifact (a dot product, then Platt scaling), with plain-language reasons; fits Platt scaling, sets the alert cut-off at 1 false alert per bank per week, computes the daily metrics, and decides the kill switch and the shadow exit. Platt and PR-AUC match scikit-learn (the fixture). Pure. |
 
 ### Location search and ranking
 
@@ -273,7 +278,7 @@ How the saved copy is collected, in Supabase since 2026-11-03 (#35; the design, 
 
 ### Data model and security
 
-Schema is in eight migrations in `supabase/migrations/`, all applied to the live project:
+Schema is in nine migrations in `supabase/migrations/`. The first eight are applied to the live project; the ninth is not yet:
 - `20261023000100_init.sql`: people and organizations;
 - `20261023000200_stock_store.sql`: saved eRaktKosh data;
 - `20261023000300_blood_bank_locations.sql`: PostGIS;
@@ -282,6 +287,7 @@ Schema is in eight migrations in `supabase/migrations/`, all applied to the live
 - `20261026000200_review_and_india_dates.sql`: India's date in the "no future dates" triggers (#46), and the admin case in `review_organization()` (#42);
 - `20261026000300_privacy_consent_and_account_deletion.sql`: agreement to the privacy note on `profiles`, and `delete_my_account()` (#18);
 - `20261103000100_cloud_collector.sql`: `pg_cron` and `pg_net`, `collector_sweeps` and `collector_runs`, the private `stock-archive` bucket, the tick and scheduling functions, and a prune that deletes a day of history only once the archive holds it (#35). It schedules nothing.
+- `20261104000100_stockout_forecast.sql`: the forecast's phase 0 (`docs/PLANS/ML_system.md`): `blood_banks.auto_refresh`, the auto-refresh call in `upstream_calls`, `feature_flags` (all off), `model_versions`, `stock_forecasts`, `forecast_outcomes`, `forecast_runs`, `forecast_daily_metrics`, the private `ml-models` bucket, the `bloodlink_ml` role, `set_feature_flag()`, `stop_forecast_flags()` and `prune_forecasts()`. **Not applied yet:** run `node scripts/check-forecast-schema.mjs`, then `npm run db:migrate`, then `node scripts/setup-cloud-collector.mjs --deploy-only`, in that order, since the redeployed collector writes `auto_refresh`.
 
 | Table | Contents | Who can read | Who can write |
 |---|---|---|---|
@@ -295,6 +301,10 @@ Schema is in eight migrations in `supabase/migrations/`, all applied to the live
 | `upstream_calls` | One row per collector call: endpoint, state, ok, status, time, bytes, rows, failure kind, validation counts | Admins (`is_admin()`), plus the `upstream_stats` view | `bloodlink_ingest` only |
 | `collector_sweeps` | One row per cloud sweep: start time, interval, batches sent | Admins | The tick functions only |
 | `collector_runs` | One row per collector job (cloud or laptop): batch, times, states saved, failed and skipped, rows changed, and the archive file with its UTC day and line count | Admins | `bloodlink_ingest` only |
+| `feature_flags` | The forecast's uses (`forecast_badge`, `forecast_ranking`, `forecast_appeals`) and `admin_events`, each off, with the kill switch's reason | Admins | `set_feature_flag()` (admins, audited); `stop_forecast_flags()` (`bloodlink_ml`, the kill switch, never `admin_events`) |
+| `model_versions` | Each exported model: kind, artifact path and SHA-256 in `ml-models`, training dates, evaluation, `shadow`, `live` (one at a time) or `retired` | Admins | The owner only, from the laptop |
+| `stock_forecasts` | Raw and calibrated P(stock-out) at 24, 48 and 72 h per bank, component, group, grid time and model, with the top three reasons | Admins | `bloodlink_ml` only |
+| `forecast_outcomes`, `forecast_runs`, `forecast_daily_metrics` | What happened (by the label rules, with `had_appeal`), each scoring or daily job, and each day's calibration, cut-off and metrics per horizon | Admins | `bloodlink_ml` only |
 
 - **Row-level security** is on for every table. Grants are explicit and column-level, so the dashboard's "expose new tables" setting doesn't matter.
 - **Constraints:** CHECK constraints and triggers enforce the same value rules as `src/lib/profile.js` and `src/lib/organization.js`, plus "no future dates", judged by India's date.
@@ -304,6 +314,7 @@ Schema is in eight migrations in `supabase/migrations/`, all applied to the live
 - **`bloodlink_ingest`** is a no-login role. The collector connects with `SUPABASE_DB_URL` and runs `set role bloodlink_ingest`, so its session can touch only the stock tables. `prune_stock_store()` is executable only by it, and runs with its rights.
   - On `upstream_calls` it may insert and delete, and read only `called_at`, which the prune's `DELETE … WHERE` needs.
   - Postgres requires SELECT on every column an `UPDATE` or `DELETE` reads in its `WHERE`, so a new job role needs those grants too.
+- **`bloodlink_ml`** is the forecast's no-login role, for the `score-stock` job (phase 2, not built). It reads the stock store and `collector_runs`, writes only the forecast tables, and may run `stop_forecast_flags()` and `prune_forecasts()`. It can't change a flag, or register a model, any other way.
 
 ## eRaktKosh API reference
 
@@ -388,6 +399,7 @@ Blood-group codes: A+ 11, A- 12, B+ 13, B- 14, O+ 15, O- 16, AB+ 17, AB- 18, Bom
   - Add `TRUSTED_PROXY_HOPS=1` when a script sends many searches.
   - `docs/SUMMARIES/data_quality.md` (point 3.1, Results) and `docs/data_integrity.md` have the reference results.
 - **Collector:** `npm run snapshot -- --prune --log ../blood_data/eraktkosh/collector.log` must log a `pruned:` line, and `npm run snapshot -- --states 999` must stop with "Unknown state code" before any call. Neither calls eRaktKosh. The cloud runs the deployed copy of `collector.js`: after changing it or the function, run `node scripts/setup-cloud-collector.mjs --deploy-only`, then check the next sweep's four `collector_runs` rows. A laptop prune counts toward the repeat guard, so don't run one in the 50 minutes before the Monday 03:20 job.
+- **Forecast schema:** `node scripts/check-forecast-schema.mjs` must pass all its checks (it rolls everything back). On 2026-11-04 all 25 passed on a local Postgres 16 with the earlier migrations and stand-ins for `auth` and `storage`; it hasn't run on the live project yet.
 - **Cloud collector:** `node scripts/check-cloud-collector.mjs` must pass all its checks (it rolls everything back), and `npx deno@2.5.6 check --no-lock --node-modules-dir=none supabase/functions/collect-stock/index.ts` must report no errors.
 - **Performance:** `npm run measure` against a fresh server started with `TRUSTED_PROXY_HOPS=1`; compare with the table in `docs/SUMMARIES/performance_testing.md`.
 - **Schema changes:** run a new migration and its checks inside one transaction that is rolled back before applying it. On 2026-10-26, `delete_my_account()` and the consent trigger were checked that way with a throwaway user.
@@ -438,7 +450,7 @@ None open.
 ### P2 · soon
 
 **#20 · Medium · No CI and no committed end-to-end tests.**
-- 153 unit tests run with `npm test`; the ETA bench's 46 run with `npx vitest run` in `../rough_work/eta_benchmarks/`. Response times and the failure drill are measured by hand; see `docs/SUMMARIES/performance_testing.md` and `docs/data_integrity.md`.
+- 200 unit tests run with `npm test`; the ETA bench's 46 run with `npx vitest run` in `../rough_work/eta_benchmarks/`. Response times and the failure drill are measured by hand; see `docs/SUMMARIES/performance_testing.md` and `docs/data_integrity.md`.
 - Add a GitHub Actions job for lint, test and build.
 - Add an end-to-end suite that runs against a local or staging Supabase project, never production.
 
@@ -480,10 +492,10 @@ None open.
      - The reasons are in `docs/SUMMARIES/ml_models.md`, and the tables, input tests and sources in `../rough_work/ML/SUMMARY.md`. It decides nothing; the December backtest does.
    - Two suggestions wait for approval (`docs/plans.md`, item 4): the alert budget in the decision rule, before the December test weeks are collected, and per-group lift. Camps were checked and left out.
    - Run `npm run archive:sync` before any model run, since `../blood_data/eraktkosh/` can be a week behind the cloud. Then `python -I blood_data/scripts/validate_history.py blood_data` from the workspace root (the folder above `bloodlink/`).
-   - Next is phase 5.1 in November: the labels and the 19 core inputs the dry run chose. ETS and SARIMA run on 6-hour values now, and switch to daily values with a weekly season once two weeks exist. Around late December 2026, at about 8 weeks of history, run the walk-forward backtest once and apply the decision rule as written.
+   - Next is phase 5.1 in November: the labels and the 19 core inputs the dry run chose. `src/lib/stockoutFeatures.js` already builds them in JS, with each open choice written down; the Python builder in `ml/` must match it, or the JS changes to match `walk_forward_check.py`, before the parity test can pass. ETS and SARIMA run on 6-hour values now, and switch to daily values with a weekly season once two weeks exist. Around late December 2026, at about 8 weeks of history, run the walk-forward backtest once and apply the decision rule as written.
 5. **Write to eRaktKosh's team** about the misplaced banks, and ask for the monthly issue data.
 6. **CI and route tests** (#20).
-7. Then bank locations (#33, #34; `docs/PLANS/plan_bank_locations.md`), the ETA bench (`docs/SUMMARIES/eta_benchmark.md`: the Google and operational runs are done, and M3 wins with 65.0; next purging Google's answers by 3 December, the team's agreement of the rubric, and the timed trips), deployment readiness, the panels (`docs/PLANS/plan_panels.md`), the donor network (`docs/PLANS/plan_donor_network.md`), and the ML system, the forecast in the app with donor suggestions (`docs/PLANS/ML_system.md`: its groundwork runs beside phases 5.1 and 5.2, the forecast's shadow mode in January 2027, and the suggestions after the donor network's phase 2).
+7. Then bank locations (#33, #34; `docs/PLANS/plan_bank_locations.md`), the ETA bench (`docs/SUMMARIES/eta_benchmark.md`: the Google and operational runs are done, and M3 wins with 65.0; next purging Google's answers by 3 December, the team's agreement of the rubric, and the timed trips), deployment readiness, the panels (`docs/PLANS/plan_panels.md`), the donor network (`docs/PLANS/plan_donor_network.md`), and the ML system, the forecast in the app with donor suggestions (`docs/PLANS/ML_system.md`: its groundwork, phase 0, was started on 4 November, with the migration, the two JS modules and the auto-refresh column; it runs beside phases 5.1 and 5.2, the forecast's shadow mode in January 2027, and the suggestions after the donor network's phase 2).
 
 Details to keep for the later items:
 - **Donor network.** Donor location as a PostGIS `geography` point with a GiST index: the benchmark in `docs/SUMMARIES/geospatial_benchmark.md` shows an index is 75 to 300 times faster than a scan at 100,000 points and more. `blood_requests` and `request_responses` tables with row-level security. Matching with the existing compatibility, eligibility and ranking modules, with contact details masked until both sides accept. Notifications in-app first, then email, then SMS; the fork has MSG91, Fast2SMS and Twilio adapters.
