@@ -6,8 +6,9 @@ import { createStateChecker } from "./stateBounds.js";
 // collect-stock Edge Function in Supabase (docs/SUMMARIES/data_quality.md.
 // For each state it fetches the stock, validates it with stockQuality.js, uploads
 // the rows whose update time changed, refreshes the fetch time of the rest, adds
-// history and logs the call. The weekly run saves the directory and flags banks
-// outside their own state. Meant to run hourly or less often.
+// history and logs the call. The weekly run saves the directory, flags banks
+// outside their own state and saves the auto-refresh list. Meant to run hourly or
+// less often.
 //
 // The caller passes in what differs between Node and Deno:
 // - db: { query(text, params) -> { rows } } on one session already switched to
@@ -23,6 +24,9 @@ export const STATE_GAP_MS = 1_000;
 const BATCH_SIZE = 400;
 // One call from central India with a 5,000 km radius returns every bank with coordinates.
 export const DIRECTORY_QUERY = { latitude: 22, longitude: 79, radius: 5_000_000 };
+// The banks whose stock eRaktKosh refreshes automatically, in batches: a list of
+// bank codes as strings. An input of the stock-out forecast (docs/PLANS/ML_system.md, A1).
+export const AUTO_REFRESH_ENDPOINT = "master/portal-refresh-hospitals";
 // Archive lines carry their format version; lines without one are version 1.
 export const ARCHIVE_VERSION = 1;
 // A batch or weekly job that ran this recently is refused, so no schedule or leaked
@@ -397,7 +401,32 @@ export function createCollector({
     await logCall("bloodbank/nearest", null, call, rows.length, qualityCounts);
     await archive?.directory?.(call.data, seenAt);
     log(`directory: ${rows.length} banks in ${call.durationMs} ms`, qualityCounts);
-    return { isSuccess: true, banks: rows.length, qualityCounts };
+    const autoRefresh = await collectAutoRefresh();
+    return { isSuccess: true, banks: rows.length, qualityCounts, autoRefresh };
+  }
+
+  // Saves blood_banks.auto_refresh from eRaktKosh's auto-refresh list: true for the
+  // banks on it, false for the rest. A failed call, or a list with no valid code,
+  // keeps the last week's values. Returns { isSuccess, banks } or { isSuccess, error }.
+  async function collectAutoRefresh() {
+    const call = await callEraktkosh(AUTO_REFRESH_ENDPOINT, {});
+    const codes = call.ok
+      ? [...new Set(call.data.map((code) => digitsOrNull(code, 10)).filter(Boolean))]
+      : [];
+    if (!call.ok || codes.length === 0) {
+      const failed = call.ok ? { ...call, ok: false, failureKind: "shape" } : call;
+      await logCall(AUTO_REFRESH_ENDPOINT, null, failed, call.ok ? 0 : null, null);
+      logError(`auto-refresh list: failed (${failed.failureKind}); last values kept`);
+      return { isSuccess: false, error: `auto-refresh: ${failed.failureKind}` };
+    }
+    await db.query(
+      `update public.blood_banks set auto_refresh = (hospital_code = any($1::text[]))
+       where auto_refresh is distinct from (hospital_code = any($1::text[]))`,
+      [codes],
+    );
+    await logCall(AUTO_REFRESH_ENDPOINT, null, call, codes.length, null);
+    log(`auto-refresh list: ${codes.length} banks in ${call.durationMs} ms`);
+    return { isSuccess: true, banks: codes.length };
   }
 
   // Saves each state's stock. A state whose call or save fails is logged and skipped,
@@ -575,6 +604,7 @@ export function createCollector({
     startRun,
     finishRun,
     collectDirectory,
+    collectAutoRefresh,
     collectStates,
     prune,
   };

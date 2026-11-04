@@ -3,5 +3,7 @@
 /assets/
 /public/
 /supabase/
+# Written by ml/make_parity_fixtures.py; kept exactly as Python writes it.
+/tests/fixtures/
 package-lock.json
 *.md

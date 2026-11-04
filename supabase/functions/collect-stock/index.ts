@@ -167,7 +167,12 @@ Deno.serve(async (request) => {
         }
         await collector.finishRun(run, { result: outcome.qualityCounts ?? null, error });
         finishOnError = null;
-        results.directory = { banks: outcome.banks ?? null, flags: outcome.qualityCounts, error };
+        results.directory = {
+          banks: outcome.banks ?? null,
+          flags: outcome.qualityCounts,
+          autoRefresh: outcome.autoRefresh ?? null,
+          error,
+        };
         if (error) status = 500;
       }
     }
