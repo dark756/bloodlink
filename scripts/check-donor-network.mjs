@@ -6,7 +6,10 @@
 // supabase/migrations/*_donor_requests.sql, blood_compatibility against src/lib/compatibility.js
 // and create_request(), match_wave(), advance_requests(), request_wave_summary(),
 // cancel_request() and the cron helpers, run as throwaway organization members and donors
-// plus match_wave() against planWave(), the advisory lock and the request statuses. Throwaway users are inserted
+// plus match_wave() against planWave(), the advisory lock and the request statuses; and, from
+// supabase/migrations/*_donor_live.sql, live requests end to end (cards, respond, check-in, centre
+// actions, contacts, hold timeouts, expiry, abuse reports, suspension) and the donor_card_signals
+// proofs of S35. Throwaway users are inserted
 // into auth.users inside the transaction; the rollback removes them. Applies the migration
 // first if the project doesn't have them yet. Every case in tests/fixtures/eligibility_parity.json
 // is also run through the database's eligibility window and compared with the expected dates, so
@@ -25,8 +28,11 @@ if (!databaseUrl) {
   process.exit(1);
 }
 const FIXTURE_FILE = path.join("tests", "fixtures", "eligibility_parity.json");
-const migrationFiles = ["_donor_network.sql", "_donor_requests.sql"].map((suffix) =>
-  fs.readdirSync(path.join("supabase", "migrations")).find((fileName) => fileName.endsWith(suffix)),
+const migrationFiles = ["_donor_network.sql", "_donor_requests.sql", "_donor_live.sql"].map(
+  (suffix) =>
+    fs
+      .readdirSync(path.join("supabase", "migrations"))
+      .find((fileName) => fileName.endsWith(suffix)),
 );
 const isLocal = ["localhost", "127.0.0.1"].includes(new URL(databaseUrl).hostname);
 const client = new pg.Client({
@@ -128,6 +134,10 @@ try {
   await client.query("begin");
   await client.query("set local lock_timeout = '5s'");
   await client.query("set local statement_timeout = '60s'");
+  // The job may already be scheduled on a project where the requests migration is live.
+  const jobsAtStart = Number(
+    (await one("select count(*) as n from cron.job where jobname = 'advance-requests'")).n,
+  );
   for (const migrationFile of migrationFiles) {
     const version = migrationFile.split("_")[0];
     const { rows: applied } = await client.query(
@@ -1297,10 +1307,10 @@ try {
   // Row-level security and grants.
   await asUser(nearDonors[0]);
   check(
-    "a donor, though asked, sees no request, wave or response",
+    "a donor, though asked, sees no request or wave, and can't select request_responses (42501)",
     (await count("select count(*) as n from public.blood_requests")) === 0 &&
       (await count("select count(*) as n from public.request_waves")) === 0 &&
-      (await count("select count(*) as n from public.request_responses")) === 0,
+      (await errorCode("select count(*) from public.request_responses")) === "42501",
   );
   await asUser(bankMember);
   check(
@@ -1309,7 +1319,7 @@ try {
       (await count("select count(*) as n from public.request_waves where request_id = $1", [
         r1,
       ])) === 2 &&
-      (await count("select count(*) as n from public.request_responses")) === 0,
+      (await errorCode("select count(*) from public.request_responses")) === "42501",
   );
   await asUser(hospitalMember);
   check(
@@ -1321,14 +1331,12 @@ try {
   );
   await asUser(admin);
   check(
-    "an admin sees the request, its waves and its 7 responses",
+    "an admin sees the request and its waves, and its 7 responses through admin_request_responses()",
     (await count("select count(*) as n from public.blood_requests where id = $1", [r1])) === 1 &&
       (await count("select count(*) as n from public.request_waves where request_id = $1", [
         r1,
       ])) === 2 &&
-      (await count("select count(*) as n from public.request_responses where request_id = $1", [
-        r1,
-      ])) === 7,
+      (await count("select count(*) as n from public.admin_request_responses($1)", [r1])) === 7,
   );
   await asUser(bankMember);
   check(
@@ -1532,7 +1540,11 @@ try {
   const wasScheduled = await count(
     "select count(*) as n from cron.job where jobname = 'advance-requests'",
   );
-  check("the migration itself schedules nothing", wasScheduled === 0, `${wasScheduled} jobs`);
+  check(
+    "the migrations themselves schedule nothing",
+    wasScheduled === jobsAtStart,
+    `${wasScheduled} jobs, ${jobsAtStart} before`,
+  );
   const scheduled = (await one("select public.schedule_donor_requests() as j")).j;
   const job = await one(
     "select schedule, command from cron.job where jobname = 'advance-requests'",
@@ -2661,6 +2673,1447 @@ try {
   );
   await client.query("delete from public.blood_requests where id = $1", [doneId]);
 
+  // ── live requests, in-app only (20261118000100_donor_live.sql, S19 to S35) ──
+  const LIVE_BANK = "9999990003";
+  await client.query(
+    `insert into public.blood_banks
+       (hospital_code, name, address, phone, latitude, longitude, location_quality)
+     values ($1, 'Check Live Bank', '7 Live Road, Nowhere', '+919876543210', 9.5, 71.0, 'ok')`,
+    [LIVE_BANK],
+  );
+  const hospitalOrg = (
+    await one("select organization_id as id from public.profiles where id = $1", [hospitalMember])
+  ).id;
+  // Fresh donors near the live bank (about 1.5 km), so no earlier donor is asked.
+  const newDonors = async (n, latitude = 9.51, longitude = 71.01) => {
+    const ids = [];
+    for (let index = 0; index < n; index += 1)
+      ids.push(await makeRequestDonor(latitude, longitude));
+    return ids;
+  };
+  const seq = async (list, fn) => {
+    const out = [];
+    for (const item of list) out.push(await fn(item));
+    return out;
+  };
+  const cardsOf = async (userId) => {
+    await asUser(userId);
+    const rows = (await client.query("select * from public.my_request_cards()")).rows;
+    await asPostgres();
+    return rows;
+  };
+  const callAs = async (userId, sql, params) => {
+    await asUser(userId);
+    const code = await errorCode(sql, params);
+    await asPostgres();
+    return code;
+  };
+  const respOf = (requestId, donorId) =>
+    one(
+      `select id, status, hold_until, check_in_code, share_phone, deferral_reason
+       from public.request_responses where request_id = $1 and donor_id = $2`,
+      [requestId, donorId],
+    );
+  const statusesOf = async (requestId, donors) =>
+    (await seq(donors, (id) => respOf(requestId, id))).map((row) => row?.status);
+  const dstat = (id) =>
+    one(
+      `select asks_total, accepts_total, shows_total, ignored_in_a_row, last_asked_at,
+              (select snoozed_until from public.donor_settings where user_id = $1) as snoozed_until
+       from public.donor_status where user_id = $1`,
+      [id],
+    );
+  const signalMap = async () =>
+    Object.fromEntries(
+      (
+        await client.query("select donor_id, changed_at::text as at from public.donor_card_signals")
+      ).rows.map((row) => [row.donor_id, row.at]),
+    );
+  const advance = () => client.query("select public.advance_requests()");
+  const requestState = (id) =>
+    one(
+      "select status, mode, paused_at, waves_sent, units_donated, closed_at from public.blood_requests where id = $1",
+      [id],
+    );
+  const dueNow = (id) =>
+    client.query(
+      "update public.blood_requests set next_wave_at = now() - interval '1 minute' where id = $1",
+      [id],
+    );
+  const raiseLive = (changes) => raiseAs(bankMember, { bank: LIVE_BANK, ...changes });
+
+  // The mode follows the flag (S19).
+  const offId = await raiseLive({ units: 1 });
+  check("with the flag off, a request is shadow", (await requestState(offId)).mode === "shadow");
+  await client.query("delete from public.blood_requests where id = $1", [offId]);
+  check(
+    "a donor can't set an organization live (42501)",
+    (await callAs(bankMember, "select public.set_organization_live($1, true)", [bankOrg])) ===
+      "42501" &&
+      (await callAs(nearDonors[0], "select public.set_organization_live($1, true)", [bankOrg])) ===
+        "42501",
+  );
+  await asAnon();
+  check(
+    "anon can't call set_organization_live (42501)",
+    (await errorCode("select public.set_organization_live($1, true)", [bankOrg])) === "42501",
+  );
+  await asUser(admin);
+  check(
+    "an unknown organization is P0002 and a null choice 22023",
+    (await errorCode("select public.set_organization_live(gen_random_uuid(), true)")) === "P0002" &&
+      (await errorCode("select public.set_organization_live($1, null)", [bankOrg])) === "22023",
+  );
+  check(
+    "an admin turns it on for an approved organization",
+    (await errorCode("select public.set_organization_live($1, true)", [bankOrg])) === null,
+  );
+  await asPostgres();
+  check(
+    "which is stored and audited",
+    (await count(
+      "select count(*) as n from public.organization_live_flags where organization_id = $1 and is_live",
+      [bankOrg],
+    )) === 1 &&
+      (await count(
+        "select count(*) as n from public.audit_log where action = 'organization.live_on' and target_id = $1",
+        [bankOrg.toString()],
+      )) === 1,
+  );
+  await asUser(bankMember);
+  check(
+    "a member can't read the flags table directly",
+    (await count("select count(*) as n from public.organization_live_flags")) === 0,
+  );
+  await asPostgres();
+  check(
+    "the mode check allows only shadow and live (23514)",
+    (await errorCode("update public.blood_requests set mode = 'bogus' where id = $1", [r1])) ===
+      "23514",
+  );
+
+  // ── S30: the pilot hours, on the real functions with explicit instants ──
+  const windowAt = async (urgency, instant) =>
+    (
+      await one("select public.live_wave_allowed_now($1, $2, $3::timestamptz) as ok", [
+        urgency,
+        bankOrg,
+        instant,
+      ])
+    ).ok;
+  check(
+    "a live wave may run from 09:00 to 20:00 India time and not outside it",
+    (await windowAt("urgent", "2026-11-18T03:30:00Z")) === true && // 09:00
+      (await windowAt("urgent", "2026-11-18T14:29:59Z")) === true && // 19:59:59
+      (await windowAt("routine", "2026-11-18T06:30:00Z")) === true &&
+      (await windowAt("urgent", "2026-11-18T02:29:59Z")) === false && // 07:59:59
+      (await windowAt("urgent", "2026-11-18T14:30:00Z")) === false && // 20:00
+      (await windowAt("routine", "2026-11-18T20:30:00Z")) === false, // 02:00
+  );
+  check(
+    "a critical request is exempt only when the organization's flag allows it",
+    (await windowAt("critical", "2026-11-18T20:30:00Z")) === false,
+  );
+  const nextWindow = async (instant) =>
+    (
+      await one(
+        "select (public.next_live_window_start($1::timestamptz) at time zone 'Asia/Kolkata')::text as t",
+        [instant],
+      )
+    ).t;
+  check(
+    "outside the window the next wave moves to the next 09:00 India time",
+    (await nextWindow("2026-11-18T02:00:00Z")) === "2026-11-18 09:00:00" && // 07:30 IST
+      (await nextWindow("2026-11-18T14:30:00Z")) === "2026-11-19 09:00:00" && // 20:00 IST
+      (await nextWindow("2026-11-18T20:30:00Z")) === "2026-11-19 09:00:00" && // 02:00 IST next day
+      (await nextWindow("2026-11-18T18:29:00Z")) === "2026-11-19 09:00:00", // 23:59 IST
+  );
+
+  // From here the checks run at a fixed noon India time, so the live lifecycles don't depend on
+  // the hour the script runs; the window's own checks below move the clock with a setting.
+  await client.query(`
+    create or replace function public.live_wave_allowed_now(
+      p_urgency text, p_organization_id uuid, p_at timestamptz default now()
+    ) returns boolean language sql stable set search_path = '' as $$
+      with t as (
+        select (coalesce(nullif(current_setting('bloodlink_test.at', true), '')::timestamptz,
+                  (date_trunc('day', now() at time zone 'Asia/Kolkata') + interval '12 hours')
+                  at time zone 'Asia/Kolkata') at time zone 'Asia/Kolkata')::time as t
+      )
+      select (select t from t) >= time '09:00' and (select t from t) < time '20:00'
+        or (p_urgency = 'critical' and coalesce((
+              select f.critical_outside_hours from public.organization_live_flags f
+              where f.organization_id = p_organization_id), false))
+    $$`);
+  await client.query(`
+    create or replace function public.next_live_window_start(p_from timestamptz default now())
+    returns timestamptz language sql stable set search_path = '' as $$
+      select (date_trunc('day', coalesce(nullif(current_setting('bloodlink_test.at', true), '')::timestamptz,
+                                         p_from) at time zone 'Asia/Kolkata')
+              + case when (coalesce(nullif(current_setting('bloodlink_test.at', true), '')::timestamptz,
+                                    p_from) at time zone 'Asia/Kolkata')::time < time '09:00'
+                     then interval '9 hours' else interval '1 day 9 hours' end)
+             at time zone 'Asia/Kolkata'
+    $$`);
+  const setClock = (hourIst) =>
+    client.query(
+      "select set_config('bloodlink_test.at', ((date_trunc('day', now() at time zone 'Asia/Kolkata') + make_interval(hours => $1)) at time zone 'Asia/Kolkata')::text, true)",
+      [hourIst],
+    );
+  const clearClock = () => client.query("select set_config('bloodlink_test.at', '', true)");
+
+  // ── L1: one request from notified to donated ──
+  const D = await newDonors(7);
+  D.push((await newDonors(1, 9.61, 71.01))[0]); // about 12 km out
+  await client.query(
+    "insert into public.consents (user_id, purpose, notice_version) values ($1, 'share_phone_with_centre', $2)",
+    [D[2], NOTICE],
+  );
+  const asksBefore = await dstat(D[0]);
+  const l1 = await raiseLive({ units: 2, reference: "CHK-LIVE-1" });
+  const l1State = await requestState(l1);
+  check(
+    "with the flag on, the request is live",
+    l1State.mode === "live" && l1State.status === "open",
+  );
+  check(
+    "its first wave asked all 8 donors, every response notified",
+    (await count("select count(*) as n from public.request_responses where request_id = $1", [
+      l1,
+    ])) === 8 && (await statusesOf(l1, D)).every((s) => s === "notified"),
+  );
+  const asksAfter = await dstat(D[0]);
+  check(
+    "a live ask moves asks_total and last_asked_at",
+    asksAfter.asks_total === asksBefore.asks_total + 1 &&
+      asksBefore.last_asked_at === null &&
+      asksAfter.last_asked_at !== null,
+  );
+  check(
+    "and gives each asked donor a signal row",
+    (await count("select count(*) as n from public.donor_card_signals where donor_id = any($1)", [
+      D,
+    ])) === 8,
+  );
+
+  // The shadow proof (S35): a shadow wave moves no signal and no counter.
+  const signalsBeforeShadow = await signalMap();
+  const countersBeforeShadow = JSON.stringify(await seq(D, dstat));
+  await asUser(hospitalMember);
+  const shadowId = (await one(CREATE_SQL, requestArgs({ bank: LIVE_BANK }))).id;
+  await asPostgres();
+  check(
+    "a hospital's request, flag off, is shadow",
+    (await requestState(shadowId)).mode === "shadow",
+  );
+  check(
+    "its wave asked the same donors in shadow",
+    (await count("select count(*) as n from public.request_responses where request_id = $1", [
+      shadowId,
+    ])) === 8,
+  );
+  check(
+    "a shadow wave leaves every changed_at unchanged",
+    JSON.stringify(await signalMap()) === JSON.stringify(signalsBeforeShadow),
+  );
+  check("and every donor counter", JSON.stringify(await seq(D, dstat)) === countersBeforeShadow);
+  check(
+    "a donor's cards list only the live request, never the shadow one",
+    (await cardsOf(D[0])).length === 1,
+  );
+  await client.query("delete from public.blood_requests where id = $1", [shadowId]);
+
+  // Cards (S31, S34).
+  const card = (await cardsOf(D[0]))[0];
+  check(
+    "my_request_cards() returns exactly the specified columns, no patient reference",
+    JSON.stringify(Object.keys(card)) ===
+      JSON.stringify([
+        "request_id",
+        "response_status",
+        "urgency",
+        "blood_group_code",
+        "component_id",
+        "centre_name",
+        "distance_band",
+        "needed_by",
+        "hold_until",
+        "centre_address",
+        "centre_phone",
+        "centre_latitude",
+        "centre_longitude",
+        "check_in_code",
+      ]) && !JSON.stringify(card).includes("CHK-LIVE-1"),
+  );
+  check(
+    "a notified card has the group, centre, band, urgency and needed_by",
+    card.response_status === "notified" &&
+      card.urgency === "critical" &&
+      card.blood_group_code === "15" &&
+      card.centre_name === "Check Live Bank" &&
+      card.distance_band === "5" &&
+      card.needed_by instanceof Date,
+    JSON.stringify(card),
+  );
+  check(
+    "and no address, phone, position or code before accepting",
+    card.centre_address === null &&
+      card.centre_phone === null &&
+      card.centre_latitude === null &&
+      card.centre_longitude === null &&
+      card.check_in_code === null &&
+      card.hold_until === null,
+  );
+  check("a donor 12 km out is in the 15 km band", (await cardsOf(D[7]))[0]?.distance_band === "15");
+  check("a donor who wasn't asked has no cards", (await cardsOf(nearDonors[3])).length === 0);
+  await asSignedOut();
+  check(
+    "signed out, my_request_cards() is refused (42501)",
+    (await errorCode("select * from public.my_request_cards()")) === "42501",
+  );
+  await asAnon();
+  check(
+    "anon can't call it (42501)",
+    (await errorCode("select * from public.my_request_cards()")) === "42501",
+  );
+  await asPostgres();
+
+  // mark_card_seen (S31).
+  const signalsBeforeSeen = await signalMap();
+  await asUser(D[1]);
+  await client.query("select public.mark_card_seen($1)", [l1]);
+  await asPostgres();
+  const signalsAfterSeen = await signalMap();
+  check(
+    "marking a card seen moves the response to seen",
+    (await respOf(l1, D[1])).status === "seen" &&
+      (await cardsOf(D[1]))[0].response_status === "seen",
+  );
+  check(
+    "and moves exactly that donor's changed_at",
+    Object.keys(signalsAfterSeen).every(
+      (id) => (signalsAfterSeen[id] !== signalsBeforeSeen[id]) === (id === D[1]),
+    ),
+  );
+  check(
+    "the other donors' responses stay notified",
+    (await statusesOf(l1, [D[0], D[2], D[7]])).every((s) => s === "notified"),
+  );
+  check(
+    "marking a card nobody asked you about does nothing, without an error",
+    (await callAs(nearDonors[3], "select public.mark_card_seen($1)", [l1])) === null,
+  );
+  await asSignedOut();
+  check(
+    "mark_card_seen signed out is refused (42501)",
+    (await errorCode("select public.mark_card_seen($1)", [l1])) === "42501",
+  );
+  await asPostgres();
+
+  // respond (S21, S24).
+  await asSignedOut();
+  check(
+    "respond signed out is refused (42501)",
+    (await errorCode("select public.respond($1, true)", [l1])) === "42501",
+  );
+  await asUser(nearDonors[3]);
+  check(
+    "a donor who wasn't asked gets P0002",
+    (await errorCode("select public.respond($1, true)", [l1])) === "P0002",
+  );
+  await asUser(D[0]);
+  check(
+    "a null answer is 22023",
+    (await errorCode("select public.respond($1, null)", [l1])) === "22023",
+  );
+  check(
+    "an unknown request is P0002",
+    (await errorCode("select public.respond(-1, true)")) === "P0002",
+  );
+  await asPostgres();
+  for (const index of [0, 2, 4, 5, 6]) {
+    await asUser(D[index]);
+    await client.query("select public.respond($1, true)", [l1]);
+  }
+  await asPostgres();
+  const accepted0 = await respOf(l1, D[0]);
+  check(
+    "five donors accept",
+    (await statusesOf(l1, [D[0], D[2], D[4], D[5], D[6]])).every((s) => s === "accepted"),
+  );
+  check(
+    "a critical hold runs to the estimated minutes plus 60",
+    (
+      await one(
+        `select hold_until = now() + make_interval(mins => ceil(est_minutes)::integer + 60) as ok
+         from public.request_responses where request_id = $1 and donor_id = $2`,
+        [l1, D[0]],
+      )
+    ).ok === true,
+  );
+  check(
+    "the code is 6 characters",
+    /^[0-9A-F]{6}$/.test(accepted0.check_in_code),
+    accepted0.check_in_code,
+  );
+  check(
+    "accepting adds one accept and keeps the ask",
+    (await dstat(D[0])).accepts_total === 1 && (await dstat(D[0])).asks_total === 1,
+  );
+  check(
+    "share_phone follows the donor's consent",
+    (await respOf(l1, D[2])).share_phone === true && accepted0.share_phone === false,
+  );
+  const accepted = (await cardsOf(D[0]))[0];
+  check(
+    "the accepted card shows the centre's address, phone, position, code and hold",
+    accepted.response_status === "accepted" &&
+      accepted.centre_address === "7 Live Road, Nowhere" &&
+      accepted.centre_phone === "+919876543210" &&
+      accepted.centre_latitude !== null &&
+      Math.abs(accepted.centre_latitude - 9.5) < 1e-6 &&
+      Math.abs(accepted.centre_longitude - 71.0) < 1e-6 &&
+      accepted.check_in_code === accepted0.check_in_code &&
+      accepted.hold_until instanceof Date,
+  );
+  await asUser(D[0]);
+  check(
+    "accepting again is quiet and changes nothing",
+    (await errorCode("select public.respond($1, true)", [l1])) === null,
+  );
+  check(
+    "declining after accepting is 22023",
+    (await errorCode("select public.respond($1, false)", [l1])) === "22023",
+  );
+  await asPostgres();
+  check("and the accept count stays 1", (await dstat(D[0])).accepts_total === 1);
+
+  await client.query("update public.donor_status set ignored_in_a_row = 2 where user_id = $1", [
+    D[3],
+  ]);
+  await asUser(D[3]);
+  await client.query("select public.respond($1, false)", [l1]);
+  await asPostgres();
+  check(
+    "a decline is final, takes the card away and resets ignored_in_a_row",
+    (await respOf(l1, D[3])).status === "declined" &&
+      (await cardsOf(D[3])).length === 0 &&
+      (await dstat(D[3])).ignored_in_a_row === 0,
+  );
+  check("and doesn't add an accept", (await dstat(D[3])).accepts_total === 0);
+  await asUser(D[3]);
+  check(
+    "accepting after declining is 22023",
+    (await errorCode("select public.respond($1, true)", [l1])) === "22023",
+  );
+  await asPostgres();
+
+  // cancel_response.
+  await asUser(D[3]);
+  check(
+    "cancelling a declined response is 22023",
+    (await errorCode("select public.cancel_response($1)", [l1])) === "22023",
+  );
+  await asUser(nearDonors[3]);
+  check(
+    "cancel_response for a card never asked is P0002",
+    (await errorCode("select public.cancel_response($1)", [l1])) === "P0002",
+  );
+  await asSignedOut();
+  check(
+    "cancel_response signed out is refused (42501)",
+    (await errorCode("select public.cancel_response($1)", [l1])) === "42501",
+  );
+  await asUser(D[4]);
+  await client.query("select public.cancel_response($1)", [l1]);
+  check(
+    "cancelling twice is quiet",
+    (await errorCode("select public.cancel_response($1)", [l1])) === null,
+  );
+  await asPostgres();
+  check(
+    "a cancelled place is cancelled and the card is gone",
+    (await respOf(l1, D[4])).status === "cancelled" && (await cardsOf(D[4])).length === 0,
+  );
+
+  // check_in (S24).
+  await asUser(D[0]);
+  check(
+    "a wrong code is 22023",
+    (await errorCode("select public.check_in($1, 'ZZZZZZ')", [l1])) === "22023" &&
+      (await errorCode("select public.check_in($1, null)", [l1])) === "22023",
+  );
+  await asPostgres();
+  check("and leaves the place accepted", (await respOf(l1, D[0])).status === "accepted");
+  await asUser(D[0]);
+  check(
+    "the right code, in any case and with spaces, checks in",
+    (await errorCode("select public.check_in($1, $2)", [
+      l1,
+      ` ${accepted0.check_in_code.toLowerCase()} `,
+    ])) === null,
+  );
+  check(
+    "checking in twice is quiet",
+    (await errorCode("select public.check_in($1, 'ZZZZZZ')", [l1])) === null,
+  );
+  await asUser(D[3]);
+  check(
+    "a donor who declined can't check in (22023)",
+    (await errorCode("select public.check_in($1, 'ABCDEF')", [l1])) === "22023",
+  );
+  await asUser(D[4]);
+  check(
+    "nor one who cancelled (22023)",
+    (await errorCode("select public.check_in($1, 'ABCDEF')", [l1])) === "22023",
+  );
+  await asSignedOut();
+  check(
+    "check_in signed out is refused (42501)",
+    (await errorCode("select public.check_in($1, 'ABCDEF')", [l1])) === "42501",
+  );
+  await asPostgres();
+  check("D0 is arrived", (await respOf(l1, D[0])).status === "arrived");
+  await asUser(D[0]);
+  check(
+    "an arrived donor can't cancel (22023)",
+    (await errorCode("select public.cancel_response($1)", [l1])) === "22023",
+  );
+  await asPostgres();
+  await client.query(
+    "update public.request_responses set hold_until = now() - interval '1 minute' where request_id = $1 and donor_id = $2",
+    [l1, D[5]],
+  );
+  const code5 = (await respOf(l1, D[5])).check_in_code;
+  await asUser(D[5]);
+  check(
+    "a hold that has run out can't be checked into (22023)",
+    (await errorCode("select public.check_in($1, $2)", [l1, code5])) === "22023",
+  );
+  await asPostgres();
+  await client.query(
+    "update public.request_responses set hold_until = now() + interval '1 hour' where request_id = $1 and donor_id = $2",
+    [l1, D[5]],
+  );
+  await asUser(D[5]);
+  await client.query("select public.check_in($1, $2)", [l1, code5]);
+  await asPostgres();
+
+  // Centre actions (S22).
+  const resp0 = (await respOf(l1, D[0])).id;
+  const resp5 = (await respOf(l1, D[5])).id;
+  const resp2 = (await respOf(l1, D[2])).id;
+  const resp7 = (await respOf(l1, D[7])).id;
+  check(
+    "confirm_donation by another organization's member, an outsider, a donor or a suspended member is 42501",
+    (await callAs(hospitalMember, "select public.confirm_donation($1, 'whole_blood')", [resp0])) ===
+      "42501" &&
+      (await callAs(outsider, "select public.confirm_donation($1, 'whole_blood')", [resp0])) ===
+        "42501" &&
+      (await callAs(D[0], "select public.confirm_donation($1, 'whole_blood')", [resp0])) ===
+        "42501" &&
+      (await callAs(suspendedMember, "select public.confirm_donation($1, 'whole_blood')", [
+        resp0,
+      ])) === "42501",
+  );
+  check(
+    "defer_donor by them is 42501 too",
+    (await callAs(hospitalMember, "select public.defer_donor($1, 'low haemoglobin')", [resp5])) ===
+      "42501" &&
+      (await callAs(D[5], "select public.defer_donor($1, 'low haemoglobin')", [resp5])) === "42501",
+  );
+  await asAnon();
+  check(
+    "anon can't call either (42501)",
+    (await errorCode("select public.confirm_donation($1, 'whole_blood')", [resp0])) === "42501" &&
+      (await errorCode("select public.defer_donor($1, 'x')", [resp5])) === "42501",
+  );
+  await asUser(bankMember);
+  check(
+    "a bad kind is 22023, an unknown response P0002",
+    (await errorCode("select public.confirm_donation($1, 'blood')", [resp0])) === "22023" &&
+      (await errorCode("select public.confirm_donation(-1, 'whole_blood')")) === "P0002" &&
+      (await errorCode("select public.defer_donor(-1, 'x')")) === "P0002",
+  );
+  check(
+    "a blank reason is 22023",
+    (await errorCode("select public.defer_donor($1, '  ')", [resp5])) === "22023",
+  );
+  check(
+    "a notified donor can't be confirmed or deferred (22023)",
+    (await errorCode("select public.confirm_donation($1, 'whole_blood')", [resp7])) === "22023",
+  );
+  await asPostgres();
+  await asUser(bankMember);
+  await client.query("select public.confirm_donation($1, 'whole_blood')", [resp0]);
+  await client.query("select public.defer_donor($1, 'low haemoglobin')", [resp5]);
+  await asPostgres();
+  check(
+    "confirming a donation makes the donations row",
+    (await count(
+      `select count(*) as n from public.donations
+       where donor_id = $1 and request_id = $2 and kind = 'whole_blood' and organization_id = $3
+         and donated_on = (now() at time zone 'Asia/Kolkata')::date`,
+      [D[0], l1, bankOrg],
+    )) === 1,
+  );
+  check(
+    "and moves the response to donated, adds a show and a unit",
+    (await respOf(l1, D[0])).status === "donated" &&
+      (await dstat(D[0])).shows_total === 1 &&
+      (await requestState(l1)).units_donated === 1,
+  );
+  check(
+    "the donation closes the donor's eligibility window (trigger)",
+    (await statusOf(D[0])).eligible_from !== null &&
+      (
+        await one(
+          "select eligible_from > (now() at time zone 'Asia/Kolkata')::date as ok from public.donor_status where user_id = $1",
+          [D[0]],
+        )
+      ).ok === true,
+  );
+  check(
+    "a deferral sets deferred with the reason and counts as a show",
+    (await respOf(l1, D[5])).status === "deferred" &&
+      (await respOf(l1, D[5])).deferral_reason === "low haemoglobin" &&
+      (await dstat(D[5])).shows_total === 1,
+  );
+  await asUser(bankMember);
+  check(
+    "confirming twice, or deferring a donated donor, is 22023",
+    (await errorCode("select public.confirm_donation($1, 'whole_blood')", [resp0])) === "22023" &&
+      (await errorCode("select public.defer_donor($1, 'again')", [resp0])) === "22023",
+  );
+  await asPostgres();
+
+  // Contacts (S25).
+  check(
+    "a donor, another organization and an outsider can't see contacts (42501)",
+    (await callAs(D[2], "select * from public.request_donor_contacts($1)", [l1])) === "42501" &&
+      (await callAs(hospitalMember, "select * from public.request_donor_contacts($1)", [l1])) ===
+        "42501" &&
+      (await callAs(outsider, "select * from public.request_donor_contacts($1)", [l1])) === "42501",
+  );
+  await asAnon();
+  check(
+    "anon can't (42501)",
+    (await errorCode("select * from public.request_donor_contacts($1)", [l1])) === "42501",
+  );
+  await asUser(bankMember);
+  check(
+    "an unknown request is P0002",
+    (await errorCode("select * from public.request_donor_contacts(-1)")) === "P0002",
+  );
+  const contacts = (await client.query("select * from public.request_donor_contacts($1)", [l1]))
+    .rows;
+  await asPostgres();
+  check(
+    "the contacts are the two donors on hold, name always, phone only with consent",
+    contacts.length === 2 &&
+      contacts.find((row) => row.response_id === resp2)?.phone === "+911234567890" &&
+      contacts.find((row) => row.response_id === resp2)?.phone_shared === true &&
+      contacts.find((row) => row.response_id !== resp2)?.phone === null &&
+      contacts.every((row) => row.donor_name === "Check Donor" && row.status === "accepted"),
+    JSON.stringify(contacts.map((row) => [row.phone, row.phone_shared])),
+  );
+  check(
+    "each reveal is logged, with whether the phone was shared and who looked",
+    (await count(
+      `select count(*) as n from public.contact_reveals
+       where request_id = $1 and revealed_by = $2 and ((phone_shared and response_id = $3)
+                                                        or (not phone_shared and response_id <> $3))`,
+      [l1, bankMember, resp2],
+    )) === 2,
+  );
+  await asUser(bankMember);
+  await client.query("select * from public.request_donor_contacts($1)", [l1]);
+  await asPostgres();
+  check(
+    "a second look is logged again",
+    (await count("select count(*) as n from public.contact_reveals where request_id = $1", [
+      l1,
+    ])) === 4,
+  );
+  await asUser(D[2]);
+  check(
+    "a donor sees only the reveals about them",
+    (await count("select count(*) as n from public.contact_reveals")) === 2,
+  );
+  check(
+    "and can't write the log (42501)",
+    (await errorCode(
+      "insert into public.contact_reveals (request_id, response_id, donor_id, phone_shared) values ($1, $2, $3, false)",
+      [l1, resp2, D[2]],
+    )) === "42501" && (await errorCode("delete from public.contact_reveals")) === "42501",
+  );
+  await asUser(D[6]);
+  check(
+    "another donor sees none of them",
+    (await count("select count(*) as n from public.contact_reveals where donor_id = $1", [
+      D[2],
+    ])) === 0,
+  );
+  await asUser(admin);
+  check(
+    "an admin reads the whole log",
+    (await count("select count(*) as n from public.contact_reveals where request_id = $1", [
+      l1,
+    ])) === 4,
+  );
+  await asUser(D[2]);
+  await client.query("select public.withdraw_consent('share_phone_with_centre')");
+  await asUser(bankMember);
+  const contactsAfter = (
+    await client.query("select * from public.request_donor_contacts($1)", [l1])
+  ).rows;
+  await asPostgres();
+  check(
+    "once the donor withdraws the sharing consent the phone is hidden at once",
+    contactsAfter.every((row) => row.phone === null && row.phone_shared === false),
+  );
+
+  // Covered, no_show and back to open, fulfilled (Step 4).
+  await advance();
+  check(
+    "with two on hold of the 2 wanted, advance_requests() covers the request",
+    (await requestState(l1)).status === "covered",
+  );
+  check(
+    "the unanswered cards become not_needed, which never counts against a donor",
+    (await statusesOf(l1, [D[1], D[7]])).every((s) => s === "not_needed") &&
+      (await dstat(D[1])).ignored_in_a_row === 0 &&
+      (await cardsOf(D[1])).length === 0,
+  );
+  check(
+    "a covered request still shows its card to a donor on hold",
+    (await cardsOf(D[2])).length === 1 && (await cardsOf(D[6])).length === 1,
+  );
+  await client.query(
+    "update public.request_responses set hold_until = now() - interval '1 minute' where request_id = $1 and donor_id = $2",
+    [l1, D[6]],
+  );
+  await advance();
+  check(
+    "a hold that runs out is no_show, and the request goes back to open",
+    (await respOf(l1, D[6])).status === "no_show" &&
+      (await requestState(l1)).status === "open" &&
+      (await requestState(l1)).closed_at === null,
+  );
+  check(
+    "a no_show keeps the accept and adds no show",
+    (await dstat(D[6])).accepts_total === 1 && (await dstat(D[6])).shows_total === 0,
+  );
+  check(
+    "no further wave ran while the next one wasn't due",
+    (await requestState(l1)).waves_sent === 1,
+  );
+  await asUser(bankMember);
+  await client.query("select public.confirm_donation($1, 'whole_blood')", [resp2]);
+  await asPostgres();
+  await advance();
+  const l1End = await requestState(l1);
+  check(
+    "the last unit makes the request fulfilled and closed",
+    l1End.status === "fulfilled" && l1End.closed_at !== null && l1End.units_donated === 2,
+  );
+  check(
+    "the final statuses of the eight donors",
+    JSON.stringify(await statusesOf(l1, D)) ===
+      JSON.stringify([
+        "donated",
+        "not_needed",
+        "donated",
+        "declined",
+        "cancelled",
+        "deferred",
+        "no_show",
+        "not_needed",
+      ]),
+    JSON.stringify(await statusesOf(l1, D)),
+  );
+  check(
+    "no donor has a card for a closed request",
+    (await seq(D, cardsOf)).every((rows) => rows.length === 0),
+  );
+
+  // ── L2: the organization cancels ──
+  const E = await newDonors(4);
+  const l2 = await raiseLive({ units: 1 });
+  await asUser(E[0]);
+  await client.query("select public.respond($1, true)", [l2]);
+  await asUser(E[1]);
+  await client.query("select public.mark_card_seen($1)", [l2]);
+  await asUser(E[3]);
+  await client.query("select public.respond($1, false)", [l2]);
+  await asPostgres();
+  const signalsBeforeCancel = await signalMap();
+  await asUser(bankMember);
+  await client.query("select public.cancel_request($1, 'no longer needed')", [l2]);
+  await asPostgres();
+  const signalsAfterCancel = await signalMap();
+  check(
+    "a cancelled request makes every open response not_needed, accepted ones too",
+    JSON.stringify(await statusesOf(l2, E)) ===
+      JSON.stringify(["not_needed", "not_needed", "not_needed", "declined"]),
+    JSON.stringify(await statusesOf(l2, E)),
+  );
+  check(
+    "the cards leave at once, and only those donors' signals moved",
+    (await seq(E, cardsOf)).every((rows) => rows.length === 0) &&
+      Object.keys(signalsAfterCancel).every(
+        (id) =>
+          (signalsAfterCancel[id] !== signalsBeforeCancel[id]) === [E[0], E[1], E[2]].includes(id),
+      ),
+  );
+  check(
+    "and none of it counts against a donor",
+    (await seq(E, dstat)).every((s) => s.ignored_in_a_row === 0),
+  );
+  await asUser(E[0]);
+  check(
+    "a closed request can't be answered (P0002 or 22023)",
+    ["P0002", "22023"].includes(await errorCode("select public.respond($1, true)", [l2])),
+  );
+  await asPostgres();
+
+  // ── L3: waves, ignored_in_a_row and the snooze ──
+  const F = await newDonors(3);
+  const l3 = await raiseLive({ units: 1 });
+  check(
+    "L3's first wave asked 3 donors",
+    (await count("select count(*) as n from public.request_responses where request_id = $1", [
+      l3,
+    ])) === 3,
+  );
+  await asUser(F[0]);
+  await client.query("select public.mark_card_seen($1)", [l3]);
+  await asUser(F[2]);
+  await client.query("select public.mark_card_seen($1)", [l3]);
+  await asPostgres();
+  await client.query("update public.donor_status set ignored_in_a_row = 2 where user_id = $1", [
+    F[2],
+  ]);
+  const G = await newDonors(2);
+  await dueNow(l3);
+  await advance();
+  check(
+    "wave 2 ran and asked the two new donors, not the old ones",
+    (await requestState(l3)).waves_sent === 2 &&
+      (await statusesOf(l3, G)).every((s) => s === "notified") &&
+      (await dstat(G[0])).asks_total === 1,
+  );
+  check(
+    "earlier waves' cards stay notified or seen, never expired, and count for nothing yet",
+    (await respOf(l3, F[0])).status === "seen" &&
+      (await respOf(l3, F[1])).status === "notified" &&
+      (await respOf(l3, F[2])).status === "seen" &&
+      (await dstat(F[0])).ignored_in_a_row === 0 &&
+      (await dstat(F[2])).ignored_in_a_row === 2,
+  );
+  check(
+    "and they stay on the donors' cards",
+    (await seq(F, cardsOf)).every((rows) => rows.length === 1),
+  );
+  await asUser(F[1]);
+  check(
+    "an earlier wave's donor can still answer",
+    (await errorCode("select public.respond($1, false)", [l3])) === null,
+  );
+  await asPostgres();
+  check(
+    "the new wave's cards are untouched",
+    (await seq(G, cardsOf)).every((rows) => rows.length === 1),
+  );
+  await asUser(G[0]);
+  await client.query("select public.mark_card_seen($1)", [l3]);
+  await asPostgres();
+  await client.query(
+    "update public.blood_requests set needed_by = now() - interval '1 minute' where id = $1",
+    [l3],
+  );
+  await asUser(G[0]);
+  check(
+    "past needed_by a card leaves the list and can't be answered, before the request is even closed",
+    (await cardsOf(G[0])).length === 0 &&
+      (await errorCode("select public.respond($1, true)", [l3])) === "22023",
+  );
+  await asPostgres();
+  await advance();
+  const snoozed = await dstat(F[2]);
+  check(
+    "at needed_by the request expires and every unanswered card expires",
+    (await requestState(l3)).status === "expired" &&
+      (await respOf(l3, F[0])).status === "expired" &&
+      (await respOf(l3, F[2])).status === "expired" &&
+      (await statusesOf(l3, G)).every((s) => s === "expired"),
+  );
+  check(
+    "only the seen, unanswered cards count as ignored; unseen ones never do",
+    (await dstat(F[0])).ignored_in_a_row === 1 &&
+      (await dstat(G[0])).ignored_in_a_row === 1 &&
+      (await dstat(G[1])).ignored_in_a_row === 0,
+  );
+  check(
+    "the third ignored request in a row snoozes the donor for 30 days and resets the count",
+    snoozed.ignored_in_a_row === 0 &&
+      snoozed.snoozed_until !== null &&
+      (
+        await one(
+          "select snoozed_until = now() + interval '30 days' as ok from public.donor_settings where user_id = $1",
+          [F[2]],
+        )
+      ).ok === true,
+  );
+
+  // ── L4: the other holds ──
+  const H = await newDonors(1);
+  const l4 = await raiseLive({ urgency: "urgent", units: 1 });
+  await asUser(H[0]);
+  await client.query("select public.respond($1, true)", [l4]);
+  await asPostgres();
+  check(
+    "an urgent hold is the estimated minutes plus 2 hours",
+    (
+      await one(
+        `select hold_until = now() + make_interval(mins => ceil(est_minutes)::integer) + interval '2 hours' as ok
+         from public.request_responses where request_id = $1`,
+        [l4],
+      )
+    ).ok === true,
+  );
+  const I = await newDonors(1);
+  const l5 = await raiseLive({ urgency: "routine", units: 1 });
+  await dueNow(l5);
+  await advance();
+  await asUser(I[0]);
+  await client.query("select public.respond($1, true)", [l5]);
+  await asPostgres();
+  check(
+    "a routine hold is needed_by",
+    (
+      await one(
+        `select r.hold_until = b.needed_by as ok from public.request_responses r
+         join public.blood_requests b on b.id = r.request_id where r.request_id = $1`,
+        [l5],
+      )
+    ).ok === true,
+  );
+  await client.query("delete from public.blood_requests where id = any($1)", [[l4, l5]]);
+
+  // ── S30: the pilot hours in create_request() and advance_requests() ──
+  const wavesAndNext = (id) =>
+    one(
+      `select waves_sent, mode,
+              (next_wave_at at time zone 'Asia/Kolkata')::text as next_ist,
+              (next_wave_at > now()) as in_future
+       from public.blood_requests where id = $1`,
+      [id],
+    );
+  const tomorrowNine = (
+    await one(
+      "select ((date_trunc('day', now() at time zone 'Asia/Kolkata') + interval '1 day 9 hours'))::text as t",
+    )
+  ).t;
+  const todayNine = (
+    await one(
+      "select ((date_trunc('day', now() at time zone 'Asia/Kolkata') + interval '9 hours'))::text as t",
+    )
+  ).t;
+  await setClock(12);
+  const w1 = await raiseLive({ urgency: "urgent", units: 1 });
+  check(
+    "inside the hours an urgent live request runs its first wave at once",
+    (await wavesAndNext(w1)).waves_sent === 1,
+  );
+  await setClock(22);
+  const w2 = await raiseLive({ urgency: "urgent", units: 1 });
+  const w2State = await wavesAndNext(w2);
+  check(
+    "outside the hours an urgent live request waits: no wave, next_wave_at at the next 09:00 India time",
+    w2State.mode === "live" && w2State.waves_sent === 0 && w2State.next_ist === tomorrowNine,
+    JSON.stringify(w2State),
+  );
+  await dueNow(w2);
+  await advance();
+  const w2Again = await wavesAndNext(w2);
+  check(
+    "when due outside the hours it still runs no wave and moves to the next 09:00",
+    w2Again.waves_sent === 0 && w2Again.next_ist === tomorrowNine && w2Again.in_future,
+  );
+  await setClock(10);
+  await dueNow(w2);
+  await advance();
+  check("and runs inside the hours", (await wavesAndNext(w2)).waves_sent === 1);
+  await setClock(22);
+  await dueNow(w2);
+  await advance();
+  const w2Later = await wavesAndNext(w2);
+  check(
+    "a later wave outside the hours waits as well",
+    w2Later.waves_sent === 1 && w2Later.next_ist === tomorrowNine && w2Later.in_future,
+  );
+  await setClock(7);
+  const w3 = await raiseLive({ urgency: "routine", units: 1 });
+  check(
+    "a live routine request raised before 09:00 starts at 09:00 that day",
+    (await wavesAndNext(w3)).next_ist === todayNine,
+  );
+  await setClock(22);
+  const w4 = await raiseLive({ urgency: "critical", units: 1 });
+  const w4State = await wavesAndNext(w4);
+  check(
+    "a critical live request outside the hours waits too while the flag is off",
+    w4State.waves_sent === 0 && w4State.next_ist === tomorrowNine,
+  );
+  await asUser(bankMember);
+  check(
+    "a member can't set the critical flag (42501)",
+    (await errorCode("select public.set_organization_live($1, true, true)", [bankOrg])) === "42501",
+  );
+  await asUser(admin);
+  await client.query("select public.set_organization_live($1, true, true)", [bankOrg]);
+  await asPostgres();
+  check(
+    "the admin function sets critical_outside_hours",
+    (await count(
+      "select count(*) as n from public.organization_live_flags where organization_id = $1 and is_live and critical_outside_hours",
+      [bankOrg],
+    )) === 1,
+  );
+  const w5 = await raiseLive({ urgency: "critical", units: 1 });
+  const w6 = await raiseLive({ urgency: "urgent", units: 1 });
+  check(
+    "with the flag on a critical request runs its wave outside the hours, an urgent one does not",
+    (await wavesAndNext(w5)).waves_sent === 1 && (await wavesAndNext(w6)).waves_sent === 0,
+  );
+  await dueNow(w4);
+  await advance();
+  check(
+    "and an earlier critical request waiting outside the hours then runs",
+    (await wavesAndNext(w4)).waves_sent === 1,
+  );
+  await asUser(admin);
+  await client.query("select public.set_organization_live($1, true)", [bankOrg]);
+  await asPostgres();
+  check(
+    "turning live on again without a choice leaves the critical flag as it was",
+    (await count(
+      "select count(*) as n from public.organization_live_flags where organization_id = $1 and critical_outside_hours",
+      [bankOrg],
+    )) === 1,
+  );
+  await asUser(admin);
+  await client.query("select public.set_organization_live($1, true, false)", [bankOrg]);
+  await asPostgres();
+  check(
+    "and false turns it off",
+    (await count(
+      "select count(*) as n from public.organization_live_flags where organization_id = $1 and critical_outside_hours",
+      [bankOrg],
+    )) === 0,
+  );
+  // Shadow behaviour is unchanged: a shadow urgent request runs its first wave at any hour.
+  await asUser(admin);
+  await client.query("select public.set_organization_live($1, false)", [bankOrg]);
+  await asPostgres();
+  const w7 = await raiseLive({ urgency: "urgent", units: 1 });
+  check(
+    "a shadow urgent request still runs its first wave outside the hours",
+    (await wavesAndNext(w7)).mode === "shadow" && (await wavesAndNext(w7)).waves_sent === 1,
+  );
+  await asUser(admin);
+  await client.query("select public.set_organization_live($1, true)", [bankOrg]);
+  await asPostgres();
+  await client.query("delete from public.blood_requests where id = any($1)", [
+    [w1, w2, w3, w4, w5, w6, w7],
+  ]);
+  await clearClock();
+
+  // ── abuse reports and suspension (S29) ──
+  const J = await newDonors(3);
+  const l6 = await raiseLive({ units: 1 });
+  const outsiderDonor = (await newDonors(1))[0];
+  await asUser(J[0]);
+  check(
+    "a donor reports a request they were asked for",
+    (await errorCode(
+      "insert into public.abuse_reports (reporter_id, request_id, kind, details) values ($1, $2, 'money', 'Asked me for money')",
+      [J[0], l6],
+    )) === null,
+  );
+  await asPostgres();
+  check(
+    "a money report pauses the request, and its cards go",
+    (await requestState(l6)).paused_at !== null && (await cardsOf(J[1])).length === 0,
+  );
+  await dueNow(l6);
+  await advance();
+  check("a paused request runs no wave", (await requestState(l6)).waves_sent === 1);
+  await asUser(J[0]);
+  check(
+    "a second report by the same donor is refused with its own code (BL001)",
+    (await errorCode(
+      "insert into public.abuse_reports (reporter_id, request_id, kind) values ($1, $2, 'other')",
+      [J[0], l6],
+    )) === "BL001",
+  );
+  check(
+    "a donor can't answer a paused request",
+    (await errorCode("select public.respond($1, true)", [l6])) === "22023",
+  );
+  await asUser(outsiderDonor);
+  check(
+    "a donor never asked can't report it (42501)",
+    (await errorCode(
+      "insert into public.abuse_reports (reporter_id, request_id, kind) values ($1, $2, 'other')",
+      [outsiderDonor, l6],
+    )) === "42501",
+  );
+  await asUser(J[1]);
+  check(
+    "a report in another donor's name is refused (42501)",
+    (await errorCode(
+      "insert into public.abuse_reports (reporter_id, request_id, kind) values ($1, $2, 'other')",
+      [J[2], l6],
+    )) === "42501",
+  );
+  check(
+    "a bad kind is refused (23514)",
+    (await errorCode(
+      "insert into public.abuse_reports (reporter_id, request_id, kind) values ($1, $2, 'spam')",
+      [J[1], l6],
+    )) === "23514",
+  );
+  check(
+    "a donor can't set the status or edit a report (42501)",
+    (await errorCode(
+      "insert into public.abuse_reports (reporter_id, request_id, kind, status) values ($1, $2, 'other', 'upheld')",
+      [J[1], l6],
+    )) === "42501" &&
+      (await errorCode("update public.abuse_reports set status = 'dismissed'")) === "42501" &&
+      (await errorCode("delete from public.abuse_reports")) === "42501",
+  );
+  check(
+    "a donor reads only their own reports",
+    (await count("select count(*) as n from public.abuse_reports")) === 0,
+  );
+  await asUser(J[0]);
+  check(
+    "the reporter reads theirs",
+    (await count("select count(*) as n from public.abuse_reports")) === 1,
+  );
+  await asAnon();
+  check(
+    "anon can't read or write reports (42501)",
+    (await errorCode("select * from public.abuse_reports")) === "42501" &&
+      (await errorCode(
+        "insert into public.abuse_reports (reporter_id, request_id, kind) values ($1, $2, 'other')",
+        [J[0], l6],
+      )) === "42501",
+  );
+  await asUser(admin);
+  check(
+    "an admin reads every report",
+    (await count("select count(*) as n from public.abuse_reports where request_id = $1", [l6])) ===
+      1,
+  );
+  const reportId = (await one("select id from public.abuse_reports where request_id = $1", [l6]))
+    .id;
+  check(
+    "a non-admin can't review (42501)",
+    (await callAs(J[0], "select public.review_abuse_report($1, 'dismissed', null)", [reportId])) ===
+      "42501" &&
+      (await callAs(bankMember, "select public.review_abuse_report($1, 'dismissed', null)", [
+        reportId,
+      ])) === "42501",
+  );
+  await asUser(admin);
+  check(
+    "a bad decision is 22023, an unknown report P0002",
+    (await errorCode("select public.review_abuse_report($1, 'maybe', null)", [reportId])) ===
+      "22023" &&
+      (await errorCode("select public.review_abuse_report(-1, 'dismissed', null)")) === "P0002",
+  );
+  await client.query("select public.review_abuse_report($1, 'dismissed', 'a misunderstanding')", [
+    reportId,
+  ]);
+  check(
+    "reviewing twice is 22023",
+    (await errorCode("select public.review_abuse_report($1, 'upheld', null)", [reportId])) ===
+      "22023",
+  );
+  await asPostgres();
+  check(
+    "dismissing lifts the pause and the cards return",
+    (await requestState(l6)).paused_at === null && (await cardsOf(J[1])).length === 1,
+  );
+  check(
+    "the review is audited",
+    (await count(
+      "select count(*) as n from public.audit_log where action = 'abuse_report.dismissed' and target_id = $1",
+      [String(reportId)],
+    )) === 1,
+  );
+  await asUser(J[1]);
+  await client.query(
+    "insert into public.abuse_reports (reporter_id, request_id, kind) values ($1, $2, 'money')",
+    [J[1], l6],
+  );
+  await asUser(admin);
+  const report2 = (await one("select id from public.abuse_reports where reporter_id = $1", [J[1]]))
+    .id;
+  await client.query("select public.review_abuse_report($1, 'upheld', null)", [report2]);
+  await asPostgres();
+  check(
+    "an upheld money report cancels the request and settles its responses",
+    (await requestState(l6)).status === "cancelled" &&
+      (await statusesOf(l6, J)).every((s) => s === "not_needed") &&
+      (await cardsOf(J[2])).length === 0,
+  );
+
+  // Suspension.
+  const K = (await newDonors(1))[0];
+  check(
+    "a non-admin can't suspend a user (42501)",
+    (await callAs(bankMember, "select public.set_user_suspended($1, true, 'x')", [K])) ===
+      "42501" &&
+      (await callAs(K, "select public.set_user_suspended($1, true, 'x')", [K])) === "42501",
+  );
+  await asAnon();
+  check(
+    "anon can't (42501)",
+    (await errorCode("select public.set_user_suspended($1, true, 'x')", [K])) === "42501",
+  );
+  await asUser(admin);
+  check(
+    "an admin can't suspend themselves, give no reason or name an unknown user",
+    (await errorCode("select public.set_user_suspended($1, true, 'x')", [admin])) === "22023" &&
+      (await errorCode("select public.set_user_suspended($1, true, ' ')", [K])) === "22023" &&
+      (await errorCode("select public.set_user_suspended(gen_random_uuid(), true, 'x')")) ===
+        "P0002",
+  );
+  await client.query("select public.set_user_suspended($1, true, 'asked for money')", [K]);
+  await asPostgres();
+  check(
+    "suspending takes the donor out of the network and sets the flag",
+    (await statusOf(K)).is_in_network === false &&
+      (await one("select is_suspended from public.profiles where id = $1", [K])).is_suspended ===
+        true &&
+      (await count(
+        "select count(*) as n from public.audit_log where action = 'user.suspended' and target_id = $1",
+        [K],
+      )) === 1,
+  );
+  await asUser(admin);
+  await client.query("select public.set_user_suspended($1, false, 'cleared')", [K]);
+  await asPostgres();
+  check(
+    "reinstating puts them back",
+    (await statusOf(K)).is_in_network === true &&
+      (await count(
+        "select count(*) as n from public.audit_log where action = 'user.reinstated' and target_id = $1",
+        [K],
+      )) === 1,
+  );
+
+  // ── the signal table and the grants (S20, S35) ──
+  await asUser(D[2]);
+  check(
+    "a donor reads only their own signal row",
+    (await count("select count(*) as n from public.donor_card_signals")) === 1 &&
+      (await count("select count(*) as n from public.donor_card_signals where donor_id = $1", [
+        D[0],
+      ])) === 0,
+  );
+  check(
+    "and can't write it (42501)",
+    (await errorCode(
+      "insert into public.donor_card_signals (donor_id, changed_at) values ($1, now())",
+      [D[2]],
+    )) === "42501" &&
+      (await errorCode("update public.donor_card_signals set changed_at = now()")) === "42501" &&
+      (await errorCode("delete from public.donor_card_signals")) === "42501",
+  );
+  check(
+    "no donor can select request_responses or any column of it (42501)",
+    (await errorCode("select status from public.request_responses")) === "42501" &&
+      (await errorCode("select score from public.request_responses")) === "42501" &&
+      (await errorCode("select check_in_code from public.request_responses")) === "42501",
+  );
+  await asPostgres();
+  const responseColumns = await columnsOf("request_responses");
+  const columnGrants = (
+    await client.query(
+      `select count(*) filter (where has_column_privilege(role, 'public.request_responses', c, 'select')
+                                 or has_column_privilege(role, 'public.request_responses', c, 'update')
+                                 or has_column_privilege(role, 'public.request_responses', c, 'insert')) as n
+       from unnest($1::text[]) c cross join (values ('authenticated'), ('anon')) r (role)`,
+      [responseColumns],
+    )
+  ).rows[0].n;
+  check(
+    "authenticated and anon hold no privilege on any column of request_responses",
+    Number(columnGrants) === 0 &&
+      responseColumns.includes("check_in_code") &&
+      responseColumns.includes("hold_until") &&
+      responseColumns.includes("share_phone"),
+    `${responseColumns.length} columns`,
+  );
+  check(
+    "an admin reads the responses through admin_request_responses() only",
+    (await callAs(admin, "select * from public.request_responses")) === "42501" &&
+      (await callAs(admin, "select * from public.admin_request_responses($1)", [l1])) === null &&
+      (await callAs(D[0], "select * from public.admin_request_responses($1)", [l1])) === "42501",
+  );
+  const publication = await count(
+    "select count(*) as n from pg_publication where pubname = 'supabase_realtime'",
+  );
+  if (publication === 1) {
+    check(
+      "donor_card_signals is in the realtime publication and request_responses is not",
+      (await count(
+        "select count(*) as n from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'donor_card_signals'",
+      )) === 1 &&
+        (await count(
+          "select count(*) as n from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'request_responses'",
+        )) === 0,
+    );
+  }
+  const liveTables = [
+    "organization_live_flags",
+    "donor_card_signals",
+    "contact_reveals",
+    "abuse_reports",
+  ];
+  check(
+    "the four new tables have row-level security and no anon grant",
+    (await count(
+      "select count(*) as n from pg_class where relnamespace = 'public'::regnamespace and relname = any($1) and relrowsecurity",
+      [liveTables],
+    )) === 4 &&
+      (await count(
+        "select count(*) as n from information_schema.role_table_grants where table_schema = 'public' and table_name = any($1) and grantee = 'anon'",
+        [liveTables],
+      )) === 0,
+  );
+  const clientFunctions = [
+    "was_asked_for_request(bigint)",
+    "is_request_member(bigint)",
+    "set_organization_live(uuid, boolean, boolean)",
+    "set_user_suspended(uuid, boolean, text)",
+    "review_abuse_report(bigint, text, text)",
+    "admin_request_responses(bigint)",
+    "my_request_cards()",
+    "mark_card_seen(bigint)",
+    "respond(bigint, boolean)",
+    "cancel_response(bigint)",
+    "check_in(bigint, text)",
+    "confirm_donation(bigint, text)",
+    "defer_donor(bigint, text)",
+    "request_donor_contacts(bigint)",
+  ];
+  const internalFunctions = [
+    "touch_card_signals(uuid[])",
+    "bump_ignored(uuid[])",
+    "request_responses_after_write()",
+    "blood_requests_live_status_change()",
+    "abuse_reports_after_insert()",
+    "advance_requests()",
+  ];
+  const privilege = async (role, signature) =>
+    (
+      await one(
+        "select has_function_privilege($1, ('public.' || $2)::regprocedure, 'execute') as ok",
+        [role, signature],
+      )
+    ).ok;
+  let wrongGrants = [];
+  for (const signature of clientFunctions) {
+    if ((await privilege("authenticated", signature)) !== true)
+      wrongGrants.push(`auth ${signature}`);
+    if ((await privilege("anon", signature)) !== false) wrongGrants.push(`anon ${signature}`);
+  }
+  for (const signature of internalFunctions) {
+    if ((await privilege("authenticated", signature)) !== false)
+      wrongGrants.push(`auth ${signature}`);
+    if ((await privilege("anon", signature)) !== false) wrongGrants.push(`anon ${signature}`);
+  }
+  check(
+    "every client function is for signed-in users only and every internal one for nobody",
+    wrongGrants.length === 0,
+    wrongGrants.join("; "),
+  );
+  const unsafe = (
+    await client.query(
+      `select p.proname from pg_proc p
+       where p.pronamespace = 'public'::regnamespace
+         and p.proname = any($1)
+         and not (p.prosecdef and exists (select 1 from unnest(p.proconfig) c where c like 'search_path=%'))`,
+      [[...clientFunctions, ...internalFunctions].map((signature) => signature.split("(")[0])],
+    )
+  ).rows;
+  check(
+    "all of them are security definer with an empty search_path",
+    unsafe.length === 0,
+    unsafe.map((row) => row.proname).join(", "),
+  );
+  check(
+    "create_request keeps its grant (signed-in only)",
+    (await privilege(
+      "authenticated",
+      "create_request(text, text, text, integer, text, timestamptz, boolean, text, text, numeric, numeric, numeric)",
+    )) === true &&
+      (await privilege(
+        "anon",
+        "create_request(text, text, text, integer, text, timestamptz, boolean, text, text, numeric, numeric, numeric)",
+      )) === false,
+  );
+
+  // delete_my_account() for a donor with a signal row, responses, a donation and reveals.
+  check(
+    "the donor has a signal row, responses, reveals and a donation first",
+    (await count("select count(*) as n from public.donor_card_signals where donor_id = $1", [
+      D[2],
+    ])) === 1 &&
+      (await count("select count(*) as n from public.request_responses where donor_id = $1", [
+        D[2],
+      ])) === 1 &&
+      (await count("select count(*) as n from public.contact_reveals where donor_id = $1", [
+        D[2],
+      ])) > 0 &&
+      (await count("select count(*) as n from public.donations where donor_id = $1", [D[2]])) === 1,
+  );
+  await asUser(D[2]);
+  check(
+    "delete_my_account() still works for them",
+    (await errorCode("select public.delete_my_account()")) === null,
+  );
+  await asPostgres();
+  check(
+    "and nothing of theirs is left, signal row included",
+    (await count(
+      `select (select count(*) from public.donor_card_signals where donor_id = $1)
+            + (select count(*) from public.request_responses where donor_id = $1)
+            + (select count(*) from public.contact_reveals where donor_id = $1)
+            + (select count(*) from public.donations where donor_id = $1)
+            + (select count(*) from public.donor_status where user_id = $1) as n`,
+      [D[2]],
+    )) === 0,
+  );
+  await asUser(J[0]);
+  check(
+    "delete_my_account() works for a donor who filed an abuse report",
+    (await errorCode("select public.delete_my_account()")) === null,
+  );
+  await asPostgres();
+  check(
+    "and the report goes with them",
+    (await count("select count(*) as n from public.abuse_reports where reporter_id = $1", [
+      J[0],
+    ])) === 0,
+  );
+
   // ── delete_my_account() ──
   const leaver = await makeUser();
   await client.query(
@@ -2716,6 +4169,70 @@ try {
       nearDonors[1],
     ])) === 0,
   );
+  check(
+    "donations.request_id and the three person columns are foreign keys, all ON DELETE SET NULL",
+    (await count(
+      `select count(*) as n from pg_constraint
+       where contype = 'f' and confdeltype = 'n' and conname in (
+         'donations_request_id_fkey', 'contact_reveals_revealed_by_fkey',
+         'abuse_reports_reviewed_by_fkey', 'organization_live_flags_updated_by_fkey')`,
+    )) === 4,
+  );
+  // The foreign keys that name a person: deleting them nulls the reference and keeps the row.
+  const reviewer = await makeUser();
+  const survivor = (await newDonors(1))[0];
+  const fkRequest = (
+    await one(
+      "select id from public.blood_requests where organization_id = $1 order by id limit 1",
+      [bankOrg],
+    )
+  ).id;
+  const fkResponse = await one(
+    "select id, donor_id from public.request_responses where request_id = $1 limit 1",
+    [fkRequest],
+  );
+  await client.query(
+    "update public.organization_live_flags set updated_by = $2 where organization_id = $1",
+    [bankOrg, reviewer],
+  );
+  await client.query(
+    `insert into public.contact_reveals (request_id, response_id, donor_id, revealed_by, phone_shared)
+     values ($1, $2, $3, $4, false)`,
+    [fkRequest, fkResponse.id, fkResponse.donor_id, reviewer],
+  );
+  await client.query(
+    `insert into public.abuse_reports (reporter_id, request_id, kind, status, reviewed_by, reviewed_at)
+     values ($1, $2, 'other', 'dismissed', $3, now())`,
+    [survivor, fkRequest, reviewer],
+  );
+  await asUser(reviewer);
+  check(
+    "delete_my_account() works for someone named by a live flag, a reveal and a reviewed report",
+    (await errorCode("select public.delete_my_account()")) === null,
+  );
+  await asPostgres();
+  check(
+    "the rows stay and the person's reference is null",
+    (await count(
+      "select count(*) as n from public.organization_live_flags where organization_id = $1 and updated_by is null",
+      [bankOrg],
+    )) === 1 &&
+      (await count(
+        "select count(*) as n from public.contact_reveals where response_id = $1 and revealed_by is null",
+        [fkResponse.id],
+      )) === 1 &&
+      (await count(
+        "select count(*) as n from public.abuse_reports where reporter_id = $1 and status = 'dismissed' and reviewed_by is null",
+        [survivor],
+      )) === 1,
+  );
+  const fkDonation = (
+    await one(
+      `insert into public.donations (donor_id, organization_id, donated_on, kind, request_id)
+     values ($1, $2, '2026-03-01', 'whole_blood', $3) returning id`,
+      [survivor, bankOrg, fkRequest],
+    )
+  ).id;
   await asUser(bankMember);
   check(
     "delete_my_account() works for the member who raised requests",
@@ -2730,6 +4247,13 @@ try {
       (await count("select count(*) as n from public.request_responses where request_id = $1", [
         r1,
       ])) === 0,
+  );
+  check(
+    "an applicant's deletion succeeds with a donation naming their request, and the donation survives with the references null",
+    (await count(
+      "select count(*) as n from public.donations where id = $1 and request_id is null and organization_id is null",
+      [fkDonation],
+    )) === 1,
   );
 } catch (error) {
   check("the checks ran to the end", false, error.message);

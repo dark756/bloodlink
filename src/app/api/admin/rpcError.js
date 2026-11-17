@@ -17,6 +17,9 @@ export function rpcErrorResponse(error) {
         "This person already has a pending or approved application. Reject or suspend it first.",
         409,
       );
+    // A donor reporting the same request twice (abuse_reports_before_insert()).
+    case "BL001":
+      return jsonError("You have already reported this request.", 409);
     default:
       console.error("rpc failed:", error.code, error.message);
       return jsonError("The action failed. Please try again.", 500);

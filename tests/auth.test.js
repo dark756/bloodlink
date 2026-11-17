@@ -34,6 +34,14 @@ describe("rpcErrorResponse", () => {
     expect(response.status).toBe(409);
     expect((await response.json()).error).toMatch(/pending or approved application/);
   });
+  it("maps a repeated abuse report to its own plain 409", async () => {
+    const response = rpcErrorResponse({
+      code: "BL001",
+      message: "You have already reported this request",
+    });
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe("You have already reported this request.");
+  });
   it("keeps the codes the admin functions raise", () => {
     expect(rpcErrorResponse({ code: "42501", message: "Only admins" }).status).toBe(403);
     expect(rpcErrorResponse({ code: "22023", message: "Bad decision" }).status).toBe(400);
