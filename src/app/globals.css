@@ -99,6 +99,30 @@ body {
   cursor: pointer;
 }
 
+/* Mobile number with a fixed +91 in front */
+.phone-field {
+  display: flex;
+  align-items: stretch;
+}
+
+.phone-prefix {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  background: #f3f3f3;
+  border: 1px solid var(--border);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+  user-select: none;
+}
+
+.phone-input {
+  border-radius: 0 6px 6px 0;
+}
+
 .check-row {
   display: flex;
   align-items: flex-start;

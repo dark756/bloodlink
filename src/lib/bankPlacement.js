@@ -1,7 +1,7 @@
 import { haversineMeters } from "./geo.js";
 
 // Pure helpers for scripts/place-banks.mjs, which finds positions for the banks
-// location search can't place (docs/PLANS/plan_bank_locations.md, Part A). Kept here
+// location search can't place (docs/SUMMARIES/data_quality.md, "Bank locations in full", Part A). Kept here
 // so they can be unit-tested; the app itself never geocodes banks.
 //
 // Precision comes before recall: a bank placed in the wrong town is worse than a bank

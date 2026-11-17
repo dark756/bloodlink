@@ -1,5 +1,5 @@
 // What search and the donor suggestions do with the stock-out forecast and with
-// admins' stock-out events (docs/PLANS/ML_system.md, A6 and Parts B and C): the
+// admins' stock-out events (docs/PLANS/plan_ml_system.md, A6 and Parts B and C): the
 // "may run low soon" mark, the ranking factor, the "flagged by bloodLink's team" mark,
 // and the suggestions to eligible donors nearby. Pure; src/lib/forecastStore.js
 // fetches the answer of forecast_marks(), and the routes apply it.
@@ -12,9 +12,11 @@
 export const FORECAST_COMPONENT_ID = "12";
 export const FORECAST_GROUP_CODES = new Set(["11", "12", "13", "14", "15", "16", "17", "18"]);
 
-// The horizon a request's ranking reads: P24 when blood is needed now, P48 for a
-// planned (routine) request.
-export const rankingHorizonFor = (urgency) => (urgency === "routine" ? 48 : 24);
+// The ranking factor applies only to planned (routine) requests, at 48 hours. In an
+// emergency the nearest bank with stock ranks as it would without the forecast, and
+// its "may run low" mark is the warning (decided on 4 November; the plan's S16).
+export const RANKING_URGENCIES = new Set(["routine"]);
+export const RANKING_HORIZON_H = 48;
 const HORIZON_INDEX = { 24: 0, 48: 1, 72: 2 };
 
 // Whether a search asks about something the model forecasts.
@@ -179,10 +181,10 @@ export function forecastForBank(status, hospitalCode, units) {
   };
 }
 
-// The risk the ranking factor uses for a bank, or null when it doesn't apply: the
-// flag is off, or the bank wasn't scored.
+// The risk the ranking factor uses for a bank, P48, or null when it doesn't apply:
+// the flag is off, the request isn't routine, or the bank wasn't scored.
 export function rankingRiskFor(status, hospitalCode, urgency) {
-  if (!status.useInRanking) return null;
+  if (!status.useInRanking || !RANKING_URGENCIES.has(urgency)) return null;
   const mark = status.marks.get(String(hospitalCode));
-  return mark ? mark.p[HORIZON_INDEX[rankingHorizonFor(urgency)]] : null;
+  return mark ? mark.p[HORIZON_INDEX[RANKING_HORIZON_H]] : null;
 }

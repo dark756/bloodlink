@@ -5,7 +5,6 @@ import {
   forecastForBank,
   isForecastable,
   parseForecastStatus,
-  rankingHorizonFor,
   rankingRiskFor,
   suggestionGate,
 } from "@/lib/forecastMarks";
@@ -67,13 +66,13 @@ describe("the forecast in search", () => {
     expect(forecastForBank({ ...status, showBadge: false }, "101", 3)).toBeNull();
   });
 
-  it("gives the ranking P24 when blood is needed now, and P48 for a routine request", () => {
+  it("gives the ranking P48 for a routine request only, never in an emergency", () => {
     const status = parseForecastStatus(answer);
-    expect(rankingHorizonFor("critical")).toBe(24);
-    expect(rankingRiskFor(status, "101", "urgent")).toBe(0.2);
     expect(rankingRiskFor(status, "101", "routine")).toBe(0.4);
-    expect(rankingRiskFor(status, "404", "urgent")).toBeNull();
-    expect(rankingRiskFor({ ...status, useInRanking: false }, "101", "urgent")).toBeNull();
+    expect(rankingRiskFor(status, "101", "urgent")).toBeNull();
+    expect(rankingRiskFor(status, "101", "critical")).toBeNull();
+    expect(rankingRiskFor(status, "404", "routine")).toBeNull();
+    expect(rankingRiskFor({ ...status, useInRanking: false }, "101", "routine")).toBeNull();
   });
 
   it("scales coverage and surplus by (1 - risk) in the ranking, and says so", () => {

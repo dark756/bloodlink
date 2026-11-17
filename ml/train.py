@@ -1,4 +1,4 @@
-"""Train, backtest and export the interim stock-out model (docs/PLANS/ML_system.md, A2;
+"""Train, backtest and export the interim stock-out model (docs/PLANS/plan_ml_system.md, A2;
 phase 0).
 
 The model is the one the walk-forward dry run of 4 November chose

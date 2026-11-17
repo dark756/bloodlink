@@ -13,8 +13,8 @@
 //
 // When the saved sets carry the stock-out forecast (each result's forecast.p24 and
 // p48, as the search returns them while the badge is on), it also ranks every set
-// with the forecast's factor, coverage and surplus × (1 − P), at full and at half
-// strength (P24, or P48 for routine), and reports the same two measures against the
+// with the forecast's factor, coverage and surplus × (1 − P48), at full and at half
+// strength, for routine requests, the only ones the app applies it to, and reports the same two measures against the
 // ranking without it, with the sets whose first choice the factor moves.
 //
 // The ETA bench, ../rough_work/eta_benchmarks/eta-bench.mjs, reuses PLACES and the
@@ -23,6 +23,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { RANKING_URGENCIES } from "../src/lib/forecastMarks.js";
 import { URGENCY_LEVELS, WEIGHTS, rankSources } from "../src/lib/ranking.js";
 
 export const PLACES = [
@@ -183,8 +184,9 @@ function analyseForecastFactor(sets) {
   if (withForecast.length === 0) return null;
   const byUrgency = {};
   const movedTops = [];
-  for (const urgency of URGENCY_LEVELS) {
-    const horizon = urgency === "routine" ? "p48" : "p24";
+  // The app applies the factor to routine requests only, at P48 (forecastMarks.js).
+  for (const urgency of URGENCY_LEVELS.filter((level) => RANKING_URGENCIES.has(level))) {
+    const horizon = "p48";
     byUrgency[urgency] = {};
     for (const scale of RISK_SCALES) {
       const rows = [];

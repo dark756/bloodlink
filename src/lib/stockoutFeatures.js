@@ -1,6 +1,6 @@
 import { DORMANT_DAYS, GROUP_NAMES } from "./stock.js";
 
-// Inputs and labels for the stock-out forecast (docs/PLANS/ML_system.md, A2 and A4;
+// Inputs and labels for the stock-out forecast (docs/PLANS/plan_ml_system.md, A2 and A4;
 // docs/SUMMARIES/ml_models.md, phase 5.1). Pure: the caller reads stock_history and
 // blood_banks and passes them in, so the score-stock Edge Function, the Node scripts
 // and the tests build the same rows. The explicit ".js" import lets Deno load it.

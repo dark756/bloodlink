@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchAvailability, parseAvailabilityQuery } from "@/lib/eraktkosh";
 import { checkRateLimit, tooManyRequests } from "@/lib/rateLimit";
+import { loadBankPositions } from "@/lib/stockStore";
 
 // Region search: stock for every blood bank in a state, optionally one district.
 // Accepts stateCode, districtId (or districtCode), componentId (or ComponentId), bloodGroupId.
@@ -21,7 +22,12 @@ export async function GET(request) {
       "X-Data-Upstream": upstream,
     };
     if (stale) headers["X-Data-Stale"] = "1";
-    return NextResponse.json(data, { headers });
+    // eRaktKosh's stock rows carry no position; the Directions link needs one.
+    const positions = await loadBankPositions();
+    const rows = Array.isArray(data)
+      ? data.map((row) => ({ ...row, ...positions.get(String(row.hospitalCode)) }))
+      : data;
+    return NextResponse.json(rows, { headers });
   } catch (err) {
     console.error(err.message);
     return NextResponse.json(

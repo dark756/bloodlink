@@ -1,4 +1,4 @@
-// Sets up and runs the stock-out forecast in the cloud (docs/PLANS/ML_system.md,
+// Sets up and runs the stock-out forecast in the cloud (docs/PLANS/plan_ml_system.md,
 // Part A) on the project in SUPABASE_DB_URL. Needs `npx supabase login` once, the
 // forecast's migrations applied (npm run db:migrate), and, for --publish,
 // SUPABASE_SECRET_KEY in .env.local.

@@ -1,4 +1,4 @@
-// A dry run of the live stock-out forecast (docs/PLANS/ML_system.md, Part A) on the
+// A dry run of the live stock-out forecast (docs/PLANS/plan_ml_system.md, Part A) on the
 // project in SUPABASE_DB_URL, inside one transaction that is always rolled back, so
 // nothing is kept. It applies the forecast's migrations first if the project lacks
 // them, registers the artifact as the live model, and runs the real jobs of

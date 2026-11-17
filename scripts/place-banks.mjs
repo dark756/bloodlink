@@ -1,5 +1,5 @@
 // Finds positions for the stocked banks location search can't place (#33, #34;
-// docs/PLANS/plan_bank_locations.md, Part A), and measures how accurate each way of
+// docs/SUMMARIES/data_quality.md, "Bank locations in full", Part A), and measures how accurate each way of
 // finding them is before any result is trusted.
 //
 //   node scripts/place-banks.mjs --control          each step on 200 banks whose position

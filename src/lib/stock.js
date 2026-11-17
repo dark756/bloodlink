@@ -187,6 +187,8 @@ export function normalizeAvailabilityRow(row, filters = {}) {
     phone: extractPhone(row.hospitalcontact),
     type: row.hospitalType ?? null,
     entryDate: row.entrydate ?? null,
+    latitude: Number.isFinite(row.latitude) ? row.latitude : null,
+    longitude: Number.isFinite(row.longitude) ? row.longitude : null,
     stock: summarizeStock(row, filters),
   };
 }

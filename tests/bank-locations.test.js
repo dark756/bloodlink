@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   applyLocationFixes,
+  bankPositions,
+  fixCodesNearPin,
   locationFixesEnabled,
   locationVisibility,
+  suggestionBanksNearPin,
   toLocationFix,
 } from "@/lib/bankLocations";
 import {
@@ -130,6 +133,66 @@ describe("applyLocationFixes", () => {
   });
 });
 
+describe("donor suggestions with corrected positions (#63)", () => {
+  const row = (overrides = {}) => ({
+    hospitalCode: "1001",
+    name: "Test bank",
+    stateCode: "27",
+    latitude: 19.08,
+    longitude: 72.88,
+    locationQuality: "ok",
+    ...overrides,
+  });
+
+  it("offers a bank with no position, at its fixed position", () => {
+    const banks = suggestionBanksNearPin(
+      [row({ latitude: null, longitude: null, locationQuality: "missing" })],
+      [fix()],
+      ORIGIN,
+      15,
+    );
+    expect(banks).toHaveLength(1);
+    expect(banks[0].latitude).toBe(19.1);
+    expect(banks[0].distanceKm).toBeLessThan(15);
+  });
+
+  it("offers a bank eRaktKosh placed in another state, at its fixed position", () => {
+    const banks = suggestionBanksNearPin(
+      [row({ latitude: 28.6139, longitude: 77.209, locationQuality: "wrong_state" })],
+      [fix()],
+      ORIGIN,
+      15,
+    );
+    expect(banks.map((bank) => bank.hospitalCode)).toEqual(["1001"]);
+  });
+
+  it("leaves out a bank with an unusable point and no fix", () => {
+    const banks = suggestionBanksNearPin(
+      [row({ latitude: null, longitude: null, locationQuality: "missing" })],
+      [],
+      ORIGIN,
+      15,
+    );
+    expect(banks).toEqual([]);
+  });
+
+  it("drops a bank whose fixed position is outside the radius", () => {
+    const far = fix({ latitude: 28.6139, longitude: 77.209, reviewed_at: "2026-11-05" });
+    expect(suggestionBanksNearPin([row()], [far], ORIGIN, 15)).toEqual([]);
+  });
+
+  it("keeps eRaktKosh's usable point over an unreviewed machine fix", () => {
+    const banks = suggestionBanksNearPin([row()], [fix()], ORIGIN, 15);
+    expect(banks[0].latitude).toBe(19.08);
+  });
+
+  it("names the fixed banks the pin's box missed, and no others", () => {
+    const fixes = [fix(), fix({ hospital_code: "1002", latitude: 28.6, longitude: 77.2 })];
+    expect(fixCodesNearPin(fixes, new Set(), ORIGIN, 15)).toEqual(["1001"]);
+    expect(fixCodesNearPin(fixes, new Set(["1001"]), ORIGIN, 15)).toEqual([]);
+  });
+});
+
 describe("placing banks: names", () => {
   it("strips blood-bank words to leave the bank or its parent hospital", () => {
     expect(searchName("BSU, CHC Indukurpet")).toBe("CHC Indukurpet");
@@ -231,5 +294,44 @@ describe("placing banks: results and accuracy", () => {
     const items = [1, 2, 3, 4, 5, 6, 7, 8];
     expect(seededShuffle(items, 7)).toEqual(seededShuffle(items, 7));
     expect(seededShuffle(items, 7).sort()).toEqual(items);
+  });
+});
+
+describe("bankPositions", () => {
+  const row = (code, latitude, longitude, location_quality = "ok") => ({
+    hospital_code: code,
+    latitude,
+    longitude,
+    location_quality,
+  });
+  const fix = (code, isConfirmed) => ({
+    hospitalCode: code,
+    latitude: 1,
+    longitude: 2,
+    isConfirmed,
+  });
+
+  it("uses usable directory points and skips missing or misplaced ones", () => {
+    const map = bankPositions(
+      [
+        row("1", 19, 73),
+        row("2", null, null, "missing"),
+        row("3", 5, 5, "wrong_state"),
+        row("4", 8, 9, "shared"),
+      ],
+      [],
+    );
+    expect([...map.keys()]).toEqual(["1", "4"]);
+    expect(map.get("1")).toEqual({ latitude: 19, longitude: 73 });
+  });
+
+  it("lets a fix replace an unusable point, and a confirmed fix any point", () => {
+    const map = bankPositions(
+      [row("2", null, null, "missing"), row("1", 19, 73), row("5", 7, 7)],
+      [fix("2", false), fix("1", false), fix("5", true)],
+    );
+    expect(map.get("2")).toEqual({ latitude: 1, longitude: 2 });
+    expect(map.get("1")).toEqual({ latitude: 19, longitude: 73 });
+    expect(map.get("5")).toEqual({ latitude: 1, longitude: 2 });
   });
 });

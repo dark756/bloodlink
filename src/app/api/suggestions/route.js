@@ -10,11 +10,13 @@ import {
   buildSuggestions,
   suggestionGate,
 } from "@/lib/forecastMarks";
-import { haversineMeters } from "@/lib/geo";
+import { fixCodesNearPin, locationFixesEnabled, suggestionBanksNearPin } from "@/lib/bankLocations";
 import { rowsToDetails } from "@/lib/profileStore";
 import { checkRateLimit, tooManyRequests } from "@/lib/rateLimit";
+import { extractPhone } from "@/lib/stock";
+import { loadLocationFixes } from "@/lib/stockStore";
 
-// Suggestions to donate, for the signed-in person (docs/PLANS/ML_system.md, Part B,
+// Suggestions to donate, for the signed-in person (docs/PLANS/plan_ml_system.md, Part B,
 // as the closed beta runs it). Shown only to someone with a complete donor profile
 // whose eligibility is "eligible" today: blood banks within SUGGESTION_RADIUS_KM of the
 // pin they allow (rounded to about 110 m, never stored), or in their profile's
@@ -37,6 +39,40 @@ const toBank = (row, distanceKm) => ({
   longitude: row.longitude,
   distanceKm,
 });
+
+// The rows of fixed banks the pin's box did not return: blood_banks first, then, for a
+// bank with no directory row at all, its saved stock row (name, address, contact).
+async function loadFixedBankRows(supabase, codes) {
+  const { data: directoryRows } = await supabase
+    .from("blood_banks")
+    .select(`${BANK_FIELDS}, state_code, location_quality`)
+    .in("hospital_code", codes);
+  const rows = (directoryRows ?? []).map((row) => ({
+    ...row,
+    locationQuality: row.location_quality,
+  }));
+  const have = new Set(rows.map((row) => String(row.hospital_code)));
+  const missing = codes.filter((code) => !have.has(code));
+  if (missing.length) {
+    const { data: stockRows } = await supabase
+      .from("bank_stock_latest")
+      .select("hospital_code, state_code, row")
+      .in("hospital_code", missing);
+    for (const stock of stockRows ?? []) {
+      rows.push({
+        hospital_code: stock.hospital_code,
+        state_code: stock.state_code,
+        name: stock.row?.hospitalname || "Blood bank",
+        address: stock.row?.hospitaladd ?? null,
+        phone: extractPhone(stock.row?.hospitalcontact),
+        latitude: null,
+        longitude: null,
+        locationQuality: "missing",
+      });
+    }
+  }
+  return rows;
+}
 
 export async function GET(request) {
   const rateLimitResult = checkRateLimit(request, {
@@ -84,9 +120,33 @@ export async function GET(request) {
       .lte("longitude", coords.longitude + lngSpan)
       .limit(1000);
     if (banksError) return jsonError("Could not look up blood banks. Please try again.", 500);
-    banks = data
-      .map((row) => toBank(row, Math.round(haversineMeters(coords, row) / 100) / 10))
-      .filter((bank) => bank.distanceKm <= SUGGESTION_RADIUS_KM);
+
+    // Corrected positions (#63), as location search applies them: a bank placed by an
+    // accepted fix is offered by that position, including banks whose own point is
+    // missing or wrong and so are not in the box above. Never fails the request.
+    const fixes = locationFixesEnabled() ? await loadLocationFixes() : [];
+    const boxRows = data.map((row) => ({ ...row, locationQuality: row.location_quality }));
+    const fixedCodes = fixCodesNearPin(
+      fixes,
+      new Set(data.map((row) => String(row.hospital_code))),
+      coords,
+      SUGGESTION_RADIUS_KM,
+    );
+    const extraRows = fixedCodes.length ? await loadFixedBankRows(supabase, fixedCodes) : [];
+    banks = suggestionBanksNearPin(
+      [...boxRows, ...extraRows].map((row) => ({
+        ...row,
+        hospitalCode: String(row.hospital_code),
+        stateCode: row.state_code ?? null,
+      })),
+      fixes,
+      coords,
+      SUGGESTION_RADIUS_KM,
+    ).map((bank) => ({
+      ...toBank({ ...bank, hospital_code: bank.hospitalCode }, bank.distanceKm),
+      latitude: bank.latitude,
+      longitude: bank.longitude,
+    }));
     basis = "location";
   } else {
     if (!profile.district_code) {

@@ -1,4 +1,4 @@
-"""The model artifact: the JSON file src/lib/stockoutModel.js scores (docs/PLANS/ML_system.md, A2).
+"""The model artifact: the JSON file src/lib/stockoutModel.js scores (docs/PLANS/plan_ml_system.md, A2).
 
 Format "bloodlink-stockout/1", for each horizon:
 - a numeric term {input, transform, mean, scale, coef}: its value is

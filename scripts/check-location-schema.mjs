@@ -1,5 +1,5 @@
 // Checks the bank-location schema (supabase/migrations/*_bank_location_fixes.sql,
-// docs/PLANS/plan_bank_locations.md, Part B) on the project in SUPABASE_DB_URL, inside
+// docs/SUMMARIES/data_quality.md, "Bank locations in full", Part B) on the project in SUPABASE_DB_URL, inside
 // one transaction that is always rolled back, so nothing is kept. Applies the migration
 // first if the project doesn't have it yet. The checks: what bloodlink_ingest, anon and
 // a signed-in non-admin may and may not do, and review_bank_location() as an admin,

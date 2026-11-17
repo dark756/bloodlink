@@ -5,7 +5,7 @@ import { getBloodGroupName } from "@/lib/constants";
 import { formatDateTime } from "@/lib/format";
 import { roundPinCoordinate } from "@/lib/geo";
 
-// Where the person's blood may be needed soon (docs/PLANS/ML_system.md, Part B, in
+// Where the person's blood may be needed soon (docs/PLANS/plan_ml_system.md, Part B, in
 // the closed beta): blood banks nearby whose red cells of their group may run low, by
 // an admin's event or by the forecast. /api/suggestions decides who may see them
 // (a complete donor profile, eligible today). Uses the profile's district until the

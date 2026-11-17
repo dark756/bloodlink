@@ -1,6 +1,6 @@
 """Phase 5.1's dataset builder: the stock-out forecast's 19 inputs and its labels.
 
-docs/PLANS/ML_system.md, A2: training stays in Python, scoring runs in JS, and the two
+docs/PLANS/plan_ml_system.md, A2: training stays in Python, scoring runs in JS, and the two
 must build the same inputs. This module is the Python twin of src/lib/stockoutFeatures.js:
 every definition below matches a line there, and tests/stockout-parity.test.js checks
 the two on a real week of history (the fixture ml/make_week_fixture.py writes).
@@ -408,7 +408,7 @@ def build_dataset(archive, times=None, gaps=(), horizons=HORIZONS_H, threshold=0
     """Cases for every bank at every grid time (from the first complete sweep to the cut,
     unless `times` is given). Labels use the cut as the end of the data and the event
     is falling to `threshold` units or below; `gaps` are collection gaps to censor,
-    none by default (see docs/PLANS/ML_system.md, phase 0)."""
+    none by default (see docs/PLANS/plan_ml_system.md, phase 0)."""
     if times is None:
         times = grid_times_between(archive.full_sweeps[0], archive.cutoff)
     times = np.asarray(times, dtype=np.int64)

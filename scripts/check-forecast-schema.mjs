@@ -1,5 +1,5 @@
 // Checks the stock-out forecast's schema (supabase/migrations/*_stockout_forecast.sql,
-// docs/PLANS/ML_system.md phase 0) on the project in SUPABASE_DB_URL, inside one
+// docs/PLANS/plan_ml_system.md phase 0) on the project in SUPABASE_DB_URL, inside one
 // transaction that is always rolled back, so nothing is kept. Applies the migration
 // first if the project doesn't have it yet. It writes nothing to the auth schema: the
 // admin checks borrow an existing admin's id, and are skipped when there is none.

@@ -1,6 +1,6 @@
 import { haversineMeters } from "./geo.js";
 
-// Corrected bank positions (#33, #34; docs/PLANS/plan_bank_locations.md, Part C).
+// Corrected bank positions (#33, #34; docs/SUMMARIES/data_quality.md, "Bank locations in full", Part C).
 // eRaktKosh's nearest call gives no position for some stocked banks and a wrong one
 // for others, so location search can't see them. bank_location_fixes holds positions
 // found for them, and applyLocationFixes merges the accepted ones into a nearest
@@ -128,6 +128,96 @@ export function applyLocationFixes(nearbyBanks, fixes, { origin, radiusM, stateC
     }
   }
   return { banks, relocated, added };
+}
+
+const UNUSABLE_QUALITIES = new Set(["missing", "wrong_state", "outside_india"]);
+
+/**
+ * One position per bank, for a region search's Directions link, which has no nearest
+ * call to take it from. eRaktKosh's own point is used while it is usable; a fix a
+ * person confirmed, or any accepted fix when the point is unusable, takes its place
+ * (the rule of applyLocationFixes). A bank with no usable position is left out.
+ * @param {{ hospital_code: string, latitude: number|null, longitude: number|null,
+ *   location_quality?: string }[]} directoryRows blood_banks rows
+ * @param {ReturnType<typeof toLocationFix>[]} fixes accepted fixes
+ * @returns {Map<string, { latitude: number, longitude: number }>} by hospital code
+ */
+export function bankPositions(directoryRows, fixes) {
+  const positions = new Map();
+  for (const row of directoryRows) {
+    const latitude = Number(row.latitude);
+    const longitude = Number(row.longitude);
+    const hasPoint =
+      row.latitude !== null &&
+      row.longitude !== null &&
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude);
+    if (hasPoint && !UNUSABLE_QUALITIES.has(row.location_quality)) {
+      positions.set(String(row.hospital_code), { latitude, longitude });
+    }
+  }
+  for (const fix of fixes.filter(Boolean)) {
+    if (fix.isConfirmed || !positions.has(fix.hospitalCode)) {
+      positions.set(fix.hospitalCode, { latitude: fix.latitude, longitude: fix.longitude });
+    }
+  }
+  return positions;
+}
+
+/**
+ * The accepted fixes that put a bank within radiusKm of a pin, among the banks the
+ * pin's box query did not return. Their rows are fetched by code (#63).
+ * @param {ReturnType<typeof toLocationFix>[]} fixes
+ * @param {Set<string>} boxCodes hospital codes the box query returned
+ * @param {{ latitude: number, longitude: number }} origin
+ * @param {number} radiusKm
+ */
+export function fixCodesNearPin(fixes, boxCodes, origin, radiusKm) {
+  return fixes
+    .filter(Boolean)
+    .filter((fix) => !boxCodes.has(fix.hospitalCode))
+    .filter((fix) => haversineMeters(origin, fix) <= radiusKm * 1000)
+    .map((fix) => fix.hospitalCode);
+}
+
+/**
+ * The banks near a pin for donor suggestions, with corrected positions applied (#63),
+ * by the same rules as location search: a fix wins when a person confirmed it or
+ * when the bank's own point is unusable.
+ * @param {{ hospitalCode: string, locationQuality?: string | null,
+ *   latitude: number | null, longitude: number | null, stateCode?: string | null }[]} banks
+ *   rows from blood_banks: those the pin's box returned, then any fixed bank fetched by code
+ * @param {ReturnType<typeof toLocationFix>[]} fixes accepted fixes
+ * @param {{ latitude: number, longitude: number }} origin
+ * @param {number} radiusKm
+ * @returns {any[]} the banks within radiusKm, each with distanceKm (to 0.1 km)
+ */
+export function suggestionBanksNearPin(banks, fixes, origin, radiusKm) {
+  const radiusM = radiusKm * 1000;
+  const known = new Set(banks.map((bank) => String(bank.hospitalCode)));
+  const nearby = banks.map((bank) => {
+    const hasPoint = Number.isFinite(Number(bank.latitude)) && bank.latitude !== null;
+    return {
+      ...bank,
+      hospitalCode: String(bank.hospitalCode),
+      locationProblem:
+        UNUSABLE_QUALITIES.has(bank.locationQuality) || !hasPoint
+          ? (bank.locationQuality ?? "missing")
+          : null,
+      dist: hasPoint ? haversineMeters(origin, bank) : Infinity,
+    };
+  });
+  const { banks: merged } = applyLocationFixes(
+    nearby,
+    fixes.filter((fix) => fix && known.has(fix.hospitalCode)),
+    { origin, radiusM, stateChecker: { locationProblem: (bank) => bank.locationProblem ?? null } },
+  );
+  return merged
+    .filter(
+      (bank) =>
+        bank.locationSource === "fixed" || (bank.locationProblem === null && bank.dist <= radiusM),
+    )
+    .map((bank) => ({ ...bank, distanceKm: Math.round(bank.dist / 100) / 10 }));
 }
 
 // Whether the merge is on. BANK_LOCATION_FIXES=off skips it, for the paired

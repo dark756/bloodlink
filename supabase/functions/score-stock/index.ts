@@ -1,4 +1,4 @@
-// score-stock: the stock-out forecast's scheduled jobs (docs/PLANS/ML_system.md,
+// score-stock: the stock-out forecast's scheduled jobs (docs/PLANS/plan_ml_system.md,
 // A3 and A4). pg_cron posts { job: "score" } after each grid time and
 // { job: "daily" } once a day; see supabase/migrations/*_forecast_live.sql.
 //

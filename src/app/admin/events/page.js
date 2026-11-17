@@ -3,7 +3,7 @@ import { BLOOD_GROUPS, COMPONENTS, getBloodGroupName, getComponentName } from "@
 import { formatDateTime } from "@/lib/format";
 import { EndEventButton, FlagToggle, StockEventForm } from "../AdminActions";
 
-// Stock-out events an admin makes (docs/PLANS/ML_system.md, Part C, in the closed
+// Stock-out events an admin makes (docs/PLANS/plan_ml_system.md, Part C, in the closed
 // beta). An event is real: while it is active, search marks the bank "flagged by
 // bloodLink's team" and eligible donors nearby see it in their suggestions. It ends by
 // itself after its window, or at once with "End now". Everything is audited.

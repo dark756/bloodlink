@@ -17,10 +17,11 @@ import { parseEntryDate } from "./stock.js";
 //   freshness  100 when stock was updated within 6 h, falling linearly to 0
 //              at 72 h; 30 when the bank gives no update time
 // The total is a weighted sum; weights depend on urgency (they add up to 1).
-// When the stock-out forecast's ranking flag is on, a bank's stockoutRisk (the
-// forecast's chance that the group falls to its low-stock threshold within 24 h, or
-// 48 h for a routine request) scales its coverage and surplus by (1 - risk), as
-// report 3 proposed (docs/PLANS/ML_system.md, A6). Banks without one are unchanged.
+// When the stock-out forecast's ranking flag is on, a routine request's banks carry
+// a stockoutRisk (the forecast's chance that the group falls to its low-stock
+// threshold within 48 h), which scales coverage and surplus by (1 - risk), as report 3
+// proposed (docs/PLANS/plan_ml_system.md, A6). Emergencies and banks without one are
+// unchanged.
 //
 // Then buildResponsePlan() walks the ranked list and takes units from each bank
 // until the request is covered, so one request can be split across banks.

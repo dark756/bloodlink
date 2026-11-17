@@ -107,7 +107,7 @@ const percent = (value) =>
 const decimal = (value, digits = 2) =>
   value === null || value === undefined ? "—" : Number(value).toFixed(digits);
 
-// The stock-out forecast (docs/PLANS/ML_system.md, A3, A4 and A6): the live model, the
+// The stock-out forecast (docs/PLANS/plan_ml_system.md, A3, A4 and A6): the live model, the
 // last scoring and daily runs (red when no scoring run has finished for 7 hours), the
 // flags with their switches and the kill switch's reason, and the latest daily metrics.
 // Shows a note until the forecast's migration has added the tables.

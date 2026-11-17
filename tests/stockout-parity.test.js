@@ -10,7 +10,7 @@ import {
 import { scoreCase, thresholdOf, validateArtifact } from "@/lib/stockoutModel";
 import week from "./fixtures/stockout_week.json";
 
-// The parity test (docs/PLANS/ML_system.md, A2): on a real week of history, the
+// The parity test (docs/PLANS/plan_ml_system.md, A2): on a real week of history, the
 // Python dataset builder (ml/dataset.py) and stockoutFeatures.js build the same
 // inputs and labels, and scikit-learn and stockoutModel.js give the same
 // probabilities to 6 decimal places. ml/train.py writes the fixture and the artifact

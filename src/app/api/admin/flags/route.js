@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { jsonError, requireAdmin } from "@/lib/auth";
 import { rpcErrorResponse } from "../rpcError";
 
-// The flags an admin may switch (docs/PLANS/ML_system.md, A6 and Parts B and C):
+// The flags an admin may switch (docs/PLANS/plan_ml_system.md, A6 and Parts B and C):
 // the forecast's mark, its ranking factor and its suggestions to donors, and admins'
 // stock-out events.
 const SWITCHABLE_FLAGS = ["forecast_badge", "forecast_ranking", "forecast_appeals", "admin_events"];

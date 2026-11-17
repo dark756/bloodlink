@@ -1,0 +1,1690 @@
+{
+ "format": "bloodlink-stockout/1",
+ "id": "stockout-logit-t2-2026-11-16",
+ "kind": "logistic",
+ "component": "PRBC",
+ "trainedFrom": "2026-10-24",
+ "trainedTo": "2026-11-16",
+ "horizons": {
+  "24": {
+   "intercept": -4.839961180431142,
+   "terms": [
+    {
+     "input": "units",
+     "transform": "log1p",
+     "mean": 2.6861902475423247,
+     "scale": 1.0033651950907043,
+     "coef": -2.5209464852898344
+    },
+    {
+     "input": "bankUnits",
+     "transform": "log1p",
+     "mean": 4.511123300003784,
+     "scale": 0.966002608694679,
+     "coef": 0.047837977004753285
+    },
+    {
+     "input": "groupsStocked",
+     "transform": "identity",
+     "mean": 6.404849581947479,
+     "scale": 1.5006840435075461,
+     "coef": -0.20424548965164888
+    },
+    {
+     "input": "groupShare",
+     "transform": "identity",
+     "mean": 0.22028888097257743,
+     "scale": 0.16936009281154316,
+     "coef": 0.021307385038033533
+    },
+    {
+     "input": "zeroDropsPerDay",
+     "transform": "identity",
+     "mean": 0.005280286260521379,
+     "scale": 0.034530459877481684,
+     "coef": 0.0735132786938541
+    },
+    {
+     "input": "change24h",
+     "transform": "slog",
+     "mean": -0.09011227406259145,
+     "scale": 1.1067499980979327,
+     "coef": 0.18536414983524685
+    },
+    {
+     "input": "change72h",
+     "transform": "slog",
+     "mean": -0.1230925947242758,
+     "scale": 1.4489657728886087,
+     "coef": 0.13708697335318193
+    },
+    {
+     "input": "decreasesPerDay",
+     "transform": "log1p",
+     "mean": 0.5867637697272229,
+     "scale": 0.6476436359090999,
+     "coef": -0.1529353976543492
+    },
+    {
+     "input": "increasesPerDay",
+     "transform": "log1p",
+     "mean": 0.5051693316632555,
+     "scale": 0.6182414570060087,
+     "coef": 0.5507038225789676
+    },
+    {
+     "input": "daysOfSupply",
+     "transform": "log1p",
+     "mean": 2.884796807539059,
+     "scale": 0.7238820382382141,
+     "coef": -0.2594908851040216
+    },
+    {
+     "input": "bankUsePerDay",
+     "transform": "log1p",
+     "mean": 1.6700719632559369,
+     "scale": 0.9962746171766615,
+     "coef": 0.10009539573226335
+    },
+    {
+     "input": "updates24h",
+     "transform": "identity",
+     "mean": 0.9216568554568983,
+     "scale": 0.7622424843775558,
+     "coef": -0.09477115925263835
+    },
+    {
+     "input": "updatesPerDay",
+     "transform": "identity",
+     "mean": 0.9619802724667885,
+     "scale": 0.6412965308547475,
+     "coef": 0.13281611044810193
+    },
+    {
+     "input": "hoursSinceUpdate",
+     "transform": "log1p",
+     "mean": 2.7389837970883226,
+     "scale": 1.1237963931888284,
+     "coef": 0.05027366044449641
+    },
+    {
+     "input": "autoRefresh",
+     "transform": "identity",
+     "mean": 0.1095626521430932,
+     "scale": 0.3123438448189938,
+     "coef": 0.028929827653694458
+    },
+    {
+     "input": "rhNegative",
+     "transform": "identity",
+     "mean": 0.2148784464507337,
+     "scale": 0.4107379939821872,
+     "coef": 0.013837805853960735
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "govt",
+     "coef": -0.028869262672336075
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "private",
+     "coef": 0.003609700806977819
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "charitable",
+     "coef": 0.024517758836285094
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "red_cross",
+     "coef": 0.12244469078610921
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "other",
+     "coef": -0.052067607265404964
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "10",
+     "coef": 0.1666353334307224
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "11",
+     "coef": -1.5624464788748282
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "12",
+     "coef": 0.5548215363684815
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "13",
+     "coef": -3.4380264482738014
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "14",
+     "coef": -0.16452129382917186
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "15",
+     "coef": -0.7228461281543055
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "16",
+     "coef": 0.792192820806934
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "17",
+     "coef": 0.04716603344033012
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "18",
+     "coef": 0.008063762107650764
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "19",
+     "coef": 0.07523467044525556
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "20",
+     "coef": 0.188340485971003
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "21",
+     "coef": -0.11328365628004458
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "22",
+     "coef": -0.03236521201151299
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "23",
+     "coef": 0.06971374428597661
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "24",
+     "coef": -0.061973756080280884
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "25",
+     "coef": -0.10594635976445906
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "27",
+     "coef": 0.2680315087979825
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "28",
+     "coef": 0.1267261414779386
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "29",
+     "coef": 0.14114123294129072
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "30",
+     "coef": -0.34274033943713567
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "32",
+     "coef": -0.22954492420832426
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "33",
+     "coef": -0.08374261291722
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "34",
+     "coef": -0.22788229982872193
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "36",
+     "coef": -0.15410412281093833
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "37",
+     "coef": -1.04844187628478
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "91",
+     "coef": -0.10463780357575359
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "92",
+     "coef": 0.3077214276202
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "93",
+     "coef": 0.010372996423946726
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "94",
+     "coef": 0.17234114487688965
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "95",
+     "coef": 0.07205737730461034
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "96",
+     "coef": -0.025563373133288988
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "97",
+     "coef": 0.01481227953420645
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "98",
+     "coef": -0.05651671084817694
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "99",
+     "coef": -0.10442206322339467
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "A+Ve",
+     "coef": 0.04424422486164789
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "A-Ve",
+     "coef": 0.018326683768061902
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "B+Ve",
+     "coef": 0.046002621655389375
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "B-Ve",
+     "coef": -0.00030840737621273443
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "O+Ve",
+     "coef": -0.08615488567360369
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "O-Ve",
+     "coef": 0.02784964220480485
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "AB+Ve",
+     "coef": -0.04342706193355868
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "AB-Ve",
+     "coef": 0.15749662617036495
+    }
+   ],
+   "platt": {
+    "a": 0.9836253829030959,
+    "b": 0.018354189500082507
+   }
+  },
+  "48": {
+   "intercept": -4.036640742793742,
+   "terms": [
+    {
+     "input": "units",
+     "transform": "log1p",
+     "mean": 2.689432219405971,
+     "scale": 1.0049937665223225,
+     "coef": -2.4856605879059814
+    },
+    {
+     "input": "bankUnits",
+     "transform": "log1p",
+     "mean": 4.518106636935415,
+     "scale": 0.9662332153502351,
+     "coef": 0.07658392240318322
+    },
+    {
+     "input": "groupsStocked",
+     "transform": "identity",
+     "mean": 6.411889680264536,
+     "scale": 1.4981761876656112,
+     "coef": -0.20624135483557546
+    },
+    {
+     "input": "groupShare",
+     "transform": "identity",
+     "mean": 0.2197890046553984,
+     "scale": 0.16920003436227327,
+     "coef": 0.05114947093344883
+    },
+    {
+     "input": "zeroDropsPerDay",
+     "transform": "identity",
+     "mean": 0.005229695490740333,
+     "scale": 0.03446590718084461,
+     "coef": 0.08825107003790048
+    },
+    {
+     "input": "change24h",
+     "transform": "slog",
+     "mean": -0.08949274322618389,
+     "scale": 1.1052216668030446,
+     "coef": 0.1451987778878566
+    },
+    {
+     "input": "change72h",
+     "transform": "slog",
+     "mean": -0.11820519840888438,
+     "scale": 1.4447842258514452,
+     "coef": 0.1351067539596459
+    },
+    {
+     "input": "decreasesPerDay",
+     "transform": "log1p",
+     "mean": 0.5859894787598358,
+     "scale": 0.6490570782113129,
+     "coef": -0.10035325029233019
+    },
+    {
+     "input": "increasesPerDay",
+     "transform": "log1p",
+     "mean": 0.5059676168339227,
+     "scale": 0.6203721438212987,
+     "coef": 0.48217140952830945
+    },
+    {
+     "input": "daysOfSupply",
+     "transform": "log1p",
+     "mean": 2.8872989949738974,
+     "scale": 0.7233128380908808,
+     "coef": -0.2387041231284715
+    },
+    {
+     "input": "bankUsePerDay",
+     "transform": "log1p",
+     "mean": 1.669522334927956,
+     "scale": 0.9999444187875038,
+     "coef": 0.09826080941180451
+    },
+    {
+     "input": "updates24h",
+     "transform": "identity",
+     "mean": 0.9216423179097175,
+     "scale": 0.7627245522071154,
+     "coef": -0.08606830931532591
+    },
+    {
+     "input": "updatesPerDay",
+     "transform": "identity",
+     "mean": 0.9646946380660487,
+     "scale": 0.6397334527796447,
+     "coef": 0.12133085394993355
+    },
+    {
+     "input": "hoursSinceUpdate",
+     "transform": "log1p",
+     "mean": 2.7411329290778,
+     "scale": 1.1196187771682122,
+     "coef": 0.016374812542462043
+    },
+    {
+     "input": "autoRefresh",
+     "transform": "identity",
+     "mean": 0.10983785008521244,
+     "scale": 0.31268753856585463,
+     "coef": 0.029985466082453727
+    },
+    {
+     "input": "rhNegative",
+     "transform": "identity",
+     "mean": 0.21582882643260337,
+     "scale": 0.41139609151187584,
+     "coef": 0.00547028368919341
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "govt",
+     "coef": -0.0063205440156129285
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "private",
+     "coef": -0.010853165693349674
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "charitable",
+     "coef": 0.02497575446973186
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "red_cross",
+     "coef": 0.16323805459337132
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "other",
+     "coef": -0.07071709130986807
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "10",
+     "coef": 0.12698200364117165
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "11",
+     "coef": -1.7918841188223833
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "12",
+     "coef": 0.4494458931223909
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "13",
+     "coef": -3.8342947559185743
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "14",
+     "coef": -0.3770184462930448
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "15",
+     "coef": -0.7587755800333934
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "16",
+     "coef": 0.8648852642782794
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "17",
+     "coef": -0.04944729018700973
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "18",
+     "coef": -0.0074486263857692055
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "19",
+     "coef": 0.13547625992620796
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "20",
+     "coef": 0.2212104782836568
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "21",
+     "coef": -0.17355152380545297
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "22",
+     "coef": -0.02303009625424699
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "23",
+     "coef": 0.04138653154119538
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "24",
+     "coef": -0.06131793856874378
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "25",
+     "coef": -0.031302766338338985
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "27",
+     "coef": 0.272472915535325
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "28",
+     "coef": 0.1334328840629202
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "29",
+     "coef": 0.18213488324679541
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "30",
+     "coef": -0.37224652143522396
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "32",
+     "coef": -0.24017867220563266
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "33",
+     "coef": -0.1252829486466654
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "34",
+     "coef": -0.22102346877703746
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "36",
+     "coef": -0.16594317560421531
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "37",
+     "coef": -0.8551809537527973
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "91",
+     "coef": -0.11172335027179345
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "92",
+     "coef": 0.3855012566886891
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "93",
+     "coef": 0.031001164191102742
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "94",
+     "coef": 0.21149806467957666
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "95",
+     "coef": 0.11661320375486164
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "96",
+     "coef": -0.03258381001295521
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "97",
+     "coef": 0.04729620830186036
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "98",
+     "coef": -0.048893695483018654
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "99",
+     "coef": -0.11693836308134144
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "A+Ve",
+     "coef": 0.04079668690208688
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "A-Ve",
+     "coef": -0.007928822707795335
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "B+Ve",
+     "coef": 0.05195687574598187
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "B-Ve",
+     "coef": -0.011206818677335804
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "O+Ve",
+     "coef": -0.07810493633127359
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "O-Ve",
+     "coef": 0.02037533158016546
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "AB+Ve",
+     "coef": -0.03136600815824626
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "AB-Ve",
+     "coef": 0.1076207500747887
+    }
+   ],
+   "platt": {
+    "a": 0.9597947719169139,
+    "b": 0.07638265601073882
+   }
+  },
+  "72": {
+   "intercept": -3.4975650152421487,
+   "terms": [
+    {
+     "input": "units",
+     "transform": "log1p",
+     "mean": 2.6924456965233254,
+     "scale": 1.0065576291648266,
+     "coef": -2.3707523500750387
+    },
+    {
+     "input": "bankUnits",
+     "transform": "log1p",
+     "mean": 4.524620251071853,
+     "scale": 0.9664972279230102,
+     "coef": 0.08424196963183732
+    },
+    {
+     "input": "groupsStocked",
+     "transform": "identity",
+     "mean": 6.417718981932292,
+     "scale": 1.4957731920413662,
+     "coef": -0.2140477492533265
+    },
+    {
+     "input": "groupShare",
+     "transform": "identity",
+     "mean": 0.21930600161840771,
+     "scale": 0.1689963609347526,
+     "coef": 0.06083241207612771
+    },
+    {
+     "input": "zeroDropsPerDay",
+     "transform": "identity",
+     "mean": 0.005201646269746524,
+     "scale": 0.034487131944543704,
+     "coef": 0.09364085612261469
+    },
+    {
+     "input": "change24h",
+     "transform": "slog",
+     "mean": -0.0870349215663826,
+     "scale": 1.1062034023757579,
+     "coef": 0.12319597057685784
+    },
+    {
+     "input": "change72h",
+     "transform": "slog",
+     "mean": -0.11336131147050549,
+     "scale": 1.441254056054102,
+     "coef": 0.13411253536206022
+    },
+    {
+     "input": "decreasesPerDay",
+     "transform": "log1p",
+     "mean": 0.5852764003117584,
+     "scale": 0.6506467310851932,
+     "coef": -0.08721743697107992
+    },
+    {
+     "input": "increasesPerDay",
+     "transform": "log1p",
+     "mean": 0.5069204115466244,
+     "scale": 0.6225786793863549,
+     "coef": 0.4453910243423145
+    },
+    {
+     "input": "daysOfSupply",
+     "transform": "log1p",
+     "mean": 2.889501106409723,
+     "scale": 0.7229688194187954,
+     "coef": -0.23463629500306207
+    },
+    {
+     "input": "bankUsePerDay",
+     "transform": "log1p",
+     "mean": 1.6688090134880218,
+     "scale": 1.0037867770634386,
+     "coef": 0.08618809662690924
+    },
+    {
+     "input": "updates24h",
+     "transform": "identity",
+     "mean": 0.9215898963971249,
+     "scale": 0.7620833874719519,
+     "coef": -0.08363189390856036
+    },
+    {
+     "input": "updatesPerDay",
+     "transform": "identity",
+     "mean": 0.9676686467416429,
+     "scale": 0.6378678766206526,
+     "coef": 0.1259998953658072
+    },
+    {
+     "input": "hoursSinceUpdate",
+     "transform": "log1p",
+     "mean": 2.742281455037964,
+     "scale": 1.117220393223444,
+     "coef": 0.0049820439307529515
+    },
+    {
+     "input": "autoRefresh",
+     "transform": "identity",
+     "mean": 0.11006988290913845,
+     "scale": 0.31297684225381056,
+     "coef": 0.03017582684273494
+    },
+    {
+     "input": "rhNegative",
+     "transform": "identity",
+     "mean": 0.2166955121477898,
+     "scale": 0.4119934066928734,
+     "coef": 0.010074253070120021
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "govt",
+     "coef": 0.007949878712861671
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "private",
+     "coef": -0.023011469019842558
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "charitable",
+     "coef": 0.025333017146989094
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "red_cross",
+     "coef": 0.18602021848823105
+    },
+    {
+     "input": "ownership",
+     "transform": "dummy",
+     "level": "other",
+     "coef": -0.07322394762783502
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "10",
+     "coef": 0.11321779374491922
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "11",
+     "coef": -1.973148309713585
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "12",
+     "coef": 0.0893843791446767
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "13",
+     "coef": -4.137913766675597
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "14",
+     "coef": -0.5840000522192657
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "15",
+     "coef": -0.7400985834545387
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "16",
+     "coef": 0.9095645357340814
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "17",
+     "coef": -0.21074616295785806
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "18",
+     "coef": -0.028579328879751495
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "19",
+     "coef": 0.16360766669601107
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "20",
+     "coef": 0.23420347534817032
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "21",
+     "coef": -0.21081210637008094
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "22",
+     "coef": -0.015773581175545965
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "23",
+     "coef": 0.002306082295656413
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "24",
+     "coef": -0.06444638177580213
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "25",
+     "coef": 0.0388369565269605
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "27",
+     "coef": 0.29450390407117466
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "28",
+     "coef": 0.14688410705008845
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "29",
+     "coef": 0.19719493550005418
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "30",
+     "coef": -0.35829702973728467
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "32",
+     "coef": -0.2567168793439419
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "33",
+     "coef": -0.15768046739254807
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "34",
+     "coef": -0.22893737737933748
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "36",
+     "coef": -0.17479831958123154
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "37",
+     "coef": -0.7672073107053928
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "91",
+     "coef": -0.09075980571943358
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "92",
+     "coef": 0.41479264851998254
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "93",
+     "coef": 0.06020986808840783
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "94",
+     "coef": 0.26463112721523085
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "95",
+     "coef": 0.1346661406228124
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "96",
+     "coef": -0.03209564431334686
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "97",
+     "coef": 0.04505818682616325
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "98",
+     "coef": -0.04598053670086762
+    },
+    {
+     "input": "stateCode",
+     "transform": "dummy",
+     "level": "99",
+     "coef": -0.1192105876873388
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "A+Ve",
+     "coef": 0.027245886132117543
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "A-Ve",
+     "coef": -0.002314375748192034
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "B+Ve",
+     "coef": 0.04291814829196985
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "B-Ve",
+     "coef": -0.0029394091539850426
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "O+Ve",
+     "coef": -0.08426589381013576
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "O-Ve",
+     "coef": 0.03247930596697435
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "AB+Ve",
+     "coef": -0.010206364305221111
+    },
+    {
+     "input": "bloodGroup",
+     "transform": "dummy",
+     "level": "AB-Ve",
+     "coef": 0.12003303497814706
+    }
+   ],
+   "platt": {
+    "a": 0.9385574055883564,
+    "b": 0.09591690560852752
+   }
+  }
+ },
+ "evaluation": {
+  "method": "walk forward by India day, expanding window, purged one horizon (dry-run harness)",
+  "decision_horizon_h": 48,
+  "threshold_units": 2,
+  "by_horizon": {
+   "24": {
+    "test_days": [
+     "2026-10-28",
+     "2026-10-29",
+     "2026-10-30",
+     "2026-10-31",
+     "2026-11-01",
+     "2026-11-02",
+     "2026-11-03",
+     "2026-11-04",
+     "2026-11-05",
+     "2026-11-06",
+     "2026-11-07",
+     "2026-11-08",
+     "2026-11-09",
+     "2026-11-10",
+     "2026-11-11",
+     "2026-11-12",
+     "2026-11-13",
+     "2026-11-14",
+     "2026-11-15"
+    ],
+    "cases": 1036881,
+    "stockouts": 46810,
+    "base_rate": 0.045145006996945646,
+    "pr_auc": 0.24739922540596126,
+    "pr_auc_by_day": {
+     "2026-10-28": 0.2509660549878352,
+     "2026-10-29": 0.26708035314798284,
+     "2026-10-30": 0.2685625249075186,
+     "2026-10-31": 0.2550361191085588,
+     "2026-11-01": 0.20297300803528656,
+     "2026-11-02": 0.23668940750963208,
+     "2026-11-03": 0.27592491403385877,
+     "2026-11-04": 0.2863955515394466,
+     "2026-11-05": 0.2577322862089691,
+     "2026-11-06": 0.23376966343313113,
+     "2026-11-07": 0.2424463156636104,
+     "2026-11-08": 0.23599290624348676,
+     "2026-11-09": 0.2443917642704762,
+     "2026-11-10": 0.24649626204765687,
+     "2026-11-11": 0.24047053582471165,
+     "2026-11-12": 0.27285100562948306,
+     "2026-11-13": 0.25542717170323004,
+     "2026-11-14": 0.2588669535479278,
+     "2026-11-15": 0.21233600281333972
+    },
+    "baseline_pr_auc": 0.14634034489992787,
+    "recall_at_1_false_alert": 0.22905362102114932,
+    "recall_at_2_false_alerts": 0.3854945524460585,
+    "calibration_ratio": 1.0609305194108092,
+    "brier": 0.03775450169151742,
+    "lift_by_group": {
+     "A+Ve": {
+      "cases": 203982,
+      "base_rate": 0.039983920149817144,
+      "pr_auc": 0.29295401684382877,
+      "lift": 7.326795765551481
+     },
+     "A-Ve": {
+      "cases": 52631,
+      "base_rate": 0.08707795785753643,
+      "pr_auc": 0.23368677391625686,
+      "lift": 2.683650141389159
+     },
+     "B+Ve": {
+      "cases": 223693,
+      "base_rate": 0.02811442468025374,
+      "pr_auc": 0.27686457994527713,
+      "lift": 9.847776829654775
+     },
+     "B-Ve": {
+      "cases": 74419,
+      "base_rate": 0.0779505233878445,
+      "pr_auc": 0.2307996189206287,
+      "lift": 2.9608475849774636
+     },
+     "O+Ve": {
+      "cases": 227031,
+      "base_rate": 0.023023287568658023,
+      "pr_auc": 0.2355371953765223,
+      "lift": 10.230389325335228
+     },
+     "O-Ve": {
+      "cases": 73622,
+      "base_rate": 0.08043791258047867,
+      "pr_auc": 0.23294988426728896,
+      "lift": 2.896021002959532
+     },
+     "AB+Ve": {
+      "cases": 162105,
+      "base_rate": 0.05292248851053329,
+      "pr_auc": 0.22577656489532336,
+      "lift": 4.266174385401142
+     },
+     "AB-Ve": {
+      "cases": 19398,
+      "base_rate": 0.11614599443241572,
+      "pr_auc": 0.2136700476024942,
+      "lift": 1.8396678133125532
+     }
+    },
+    "beats_baseline_by": 0.6905742949775104,
+    "carried": {
+     "test_days": [
+      "2026-10-30",
+      "2026-10-31",
+      "2026-11-01",
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08",
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14",
+      "2026-11-15"
+     ],
+     "cases": 920254,
+     "calibration_ratio_raw": 1.066127969753549,
+     "calibration_ratio": 1.0002839761474571,
+     "brier_raw": 0.03778174313712629,
+     "brier": 0.0378396538983034,
+     "false_alerts_per_bank_week": 0.9210074693950934,
+     "recall": 0.21368200534566206
+    },
+    "platt_day": "2026-11-14",
+    "cut_off": 0.23565112203505895,
+    "training": {
+     "rows": 1273883,
+     "stockouts": 56350,
+     "iterations": 28,
+     "artifact_vs_sklearn": 9.992007221626409e-16
+    }
+   },
+   "48": {
+    "test_days": [
+     "2026-10-29",
+     "2026-10-30",
+     "2026-10-31",
+     "2026-11-01",
+     "2026-11-02",
+     "2026-11-03",
+     "2026-11-04",
+     "2026-11-05",
+     "2026-11-06",
+     "2026-11-07",
+     "2026-11-08",
+     "2026-11-09",
+     "2026-11-10",
+     "2026-11-11",
+     "2026-11-12",
+     "2026-11-13",
+     "2026-11-14"
+    ],
+    "cases": 923410,
+    "stockouts": 74232,
+    "base_rate": 0.08038899297170271,
+    "pr_auc": 0.35765550071430363,
+    "pr_auc_by_day": {
+     "2026-10-29": 0.36805557924359195,
+     "2026-10-30": 0.3757558205644104,
+     "2026-10-31": 0.3358882095963598,
+     "2026-11-01": 0.32466776419714743,
+     "2026-11-02": 0.3599495161456657,
+     "2026-11-03": 0.40224715343176526,
+     "2026-11-04": 0.3930261556930486,
+     "2026-11-05": 0.35356376796643735,
+     "2026-11-06": 0.34439746698266926,
+     "2026-11-07": 0.34087113629782967,
+     "2026-11-08": 0.34321077669613864,
+     "2026-11-09": 0.36533941804151504,
+     "2026-11-10": 0.3521180497068452,
+     "2026-11-11": 0.3674921882070766,
+     "2026-11-12": 0.38517254438750587,
+     "2026-11-13": 0.3735803264570585,
+     "2026-11-14": 0.3583881067866106
+    },
+    "baseline_pr_auc": 0.23592910096527492,
+    "recall_at_1_false_alert": 0.2373504688005173,
+    "recall_at_2_false_alerts": 0.3979011746955491,
+    "calibration_ratio": 1.0653529712817165,
+    "brier": 0.060495127678045324,
+    "lift_by_group": {
+     "A+Ve": {
+      "cases": 181617,
+      "base_rate": 0.07083037380861924,
+      "pr_auc": 0.3966764253976302,
+      "lift": 5.600371762394388
+     },
+     "A-Ve": {
+      "cases": 46904,
+      "base_rate": 0.152268463244073,
+      "pr_auc": 0.35277292442691,
+      "lift": 2.316782588535394
+     },
+     "B+Ve": {
+      "cases": 199156,
+      "base_rate": 0.050472996043302736,
+      "pr_auc": 0.36861352005161035,
+      "lift": 7.303182869020943
+     },
+     "B-Ve": {
+      "cases": 66392,
+      "base_rate": 0.13736594770454272,
+      "pr_auc": 0.34749294592405494,
+      "lift": 2.5296876826523964
+     },
+     "O+Ve": {
+      "cases": 201937,
+      "base_rate": 0.04191406230656096,
+      "pr_auc": 0.33351612060297603,
+      "lift": 7.957141404324571
+     },
+     "O-Ve": {
+      "cases": 65649,
+      "base_rate": 0.14167771024691922,
+      "pr_auc": 0.3639205926060565,
+      "lift": 2.5686510035474686
+     },
+     "AB+Ve": {
+      "cases": 144414,
+      "base_rate": 0.09588405556248009,
+      "pr_auc": 0.33790984836397353,
+      "lift": 3.5241505626947984
+     },
+     "AB-Ve": {
+      "cases": 17341,
+      "base_rate": 0.19848912980796954,
+      "pr_auc": 0.3318999887259634,
+      "lift": 1.672131814205965
+     }
+    },
+    "beats_baseline_by": 0.5159448294042579,
+    "carried": {
+     "test_days": [
+      "2026-11-01",
+      "2026-11-02",
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08",
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13",
+      "2026-11-14"
+     ],
+     "cases": 749841,
+     "calibration_ratio_raw": 1.0479771630565997,
+     "calibration_ratio": 0.9497869849400216,
+     "brier_raw": 0.061029658076628454,
+     "brier": 0.06145657435042691,
+     "false_alerts_per_bank_week": 0.8535112359550562,
+     "recall": 0.2086079111271795
+    },
+    "platt_day": "2026-11-13",
+    "cut_off": 0.3604286439132822,
+    "training": {
+     "rows": 1218132,
+     "stockouts": 96224,
+     "iterations": 29,
+     "artifact_vs_sklearn": 8.881784197001252e-16
+    }
+   },
+   "72": {
+    "test_days": [
+     "2026-10-30",
+     "2026-10-31",
+     "2026-11-01",
+     "2026-11-02",
+     "2026-11-03",
+     "2026-11-04",
+     "2026-11-05",
+     "2026-11-06",
+     "2026-11-07",
+     "2026-11-08",
+     "2026-11-09",
+     "2026-11-10",
+     "2026-11-11",
+     "2026-11-12",
+     "2026-11-13"
+    ],
+    "cases": 810655,
+    "stockouts": 89378,
+    "base_rate": 0.11025405382067588,
+    "pr_auc": 0.4229280102469975,
+    "pr_auc_by_day": {
+     "2026-10-30": 0.4241414083515927,
+     "2026-10-31": 0.3997390803581306,
+     "2026-11-01": 0.4016312159029161,
+     "2026-11-02": 0.4355848750195402,
+     "2026-11-03": 0.4665499176004725,
+     "2026-11-04": 0.4455407633942387,
+     "2026-11-05": 0.41283728652644575,
+     "2026-11-06": 0.40164796533668007,
+     "2026-11-07": 0.4053336801271622,
+     "2026-11-08": 0.41901063698563334,
+     "2026-11-09": 0.432728218081185,
+     "2026-11-10": 0.4314705719263727,
+     "2026-11-11": 0.4425802046704009,
+     "2026-11-12": 0.44999487838789154,
+     "2026-11-13": 0.44068980828864873
+    },
+    "baseline_pr_auc": 0.30181753530114397,
+    "recall_at_1_false_alert": 0.23975698717805277,
+    "recall_at_2_false_alerts": 0.40447313656604533,
+    "calibration_ratio": 1.0715546007811962,
+    "brier": 0.07709004753495528,
+    "lift_by_group": {
+     "A+Ve": {
+      "cases": 159298,
+      "base_rate": 0.09568858366081182,
+      "pr_auc": 0.44599576471379787,
+      "lift": 4.660908832078893
+     },
+     "A-Ve": {
+      "cases": 41230,
+      "base_rate": 0.20475382003395587,
+      "pr_auc": 0.42121876192316693,
+      "lift": 2.057196109226744
+     },
+     "B+Ve": {
+      "cases": 174806,
+      "base_rate": 0.06953994714140246,
+      "pr_auc": 0.41697552409904926,
+      "lift": 5.996201338076539
+     },
+     "B-Ve": {
+      "cases": 58359,
+      "base_rate": 0.18948234205521,
+      "pr_auc": 0.4217480809338781,
+      "lift": 2.2257909436806105
+     },
+     "O+Ve": {
+      "cases": 177120,
+      "base_rate": 0.05842931345980126,
+      "pr_auc": 0.38813605144920027,
+      "lift": 6.642830943345478
+     },
+     "O-Ve": {
+      "cases": 57727,
+      "base_rate": 0.19436312297538413,
+      "pr_auc": 0.448161471295337,
+      "lift": 2.3057947641235224
+     },
+     "AB+Ve": {
+      "cases": 126852,
+      "base_rate": 0.1325087503547441,
+      "pr_auc": 0.41041692526757256,
+      "lift": 3.097281682672504
+     },
+     "AB-Ve": {
+      "cases": 15263,
+      "base_rate": 0.2686889864377907,
+      "pr_auc": 0.42604518745244313,
+      "lift": 1.585644402849705
+     }
+    },
+    "beats_baseline_by": 0.40127050545626286,
+    "carried": {
+     "test_days": [
+      "2026-11-03",
+      "2026-11-04",
+      "2026-11-05",
+      "2026-11-06",
+      "2026-11-07",
+      "2026-11-08",
+      "2026-11-09",
+      "2026-11-10",
+      "2026-11-11",
+      "2026-11-12",
+      "2026-11-13"
+     ],
+     "cases": 580826,
+     "calibration_ratio_raw": 1.0486572097347553,
+     "calibration_ratio": 0.9265681080114582,
+     "brier_raw": 0.07719949939546102,
+     "brier": 0.07804285016906959,
+     "false_alerts_per_bank_week": 0.7928878367599002,
+     "recall": 0.20505849270588966
+    },
+    "platt_day": "2026-11-12",
+    "cut_off": 0.4356619575135877,
+    "training": {
+     "rows": 1162516,
+     "stockouts": 126300,
+     "iterations": 27,
+     "artifact_vs_sklearn": 1.1102230246251565e-15
+    }
+   }
+  },
+  "dry_run_reference": {
+   "threshold_units": 0,
+   "pr_auc_48h": 0.249,
+   "recall_at_1_false_alert_48h": 0.147,
+   "calibration_ratio_48h": 1.17,
+   "until": "2026-11-03T07:37:39Z"
+  },
+  "gap_rule_effect": {
+   "24": {
+    "cases": 1275455,
+    "rate": 0.04541281346656683,
+    "cases_with_gap_rule": 786582,
+    "rate_with_gap_rule": 0.07363758641819924
+   },
+   "48": {
+    "cases": 1223140,
+    "rate": 0.08276403355298657,
+    "cases_with_gap_rule": 697848,
+    "rate_with_gap_rule": 0.1450631082986553
+   },
+   "72": {
+    "cases": 1173090,
+    "rate": 0.11667817473510131,
+    "cases_with_gap_rule": 665929,
+    "rate_with_gap_rule": 0.20553842827088173
+   }
+  }
+ },
+ "thresholdUnits": 2,
+ "inputs": [
+  "units",
+  "bankUnits",
+  "groupsStocked",
+  "groupShare",
+  "zeroDropsPerDay",
+  "change24h",
+  "change72h",
+  "decreasesPerDay",
+  "increasesPerDay",
+  "daysOfSupply",
+  "bankUsePerDay",
+  "updates24h",
+  "updatesPerDay",
+  "hoursSinceUpdate",
+  "autoRefresh",
+  "ownership",
+  "stateCode",
+  "bloodGroup",
+  "rhNegative"
+ ],
+ "dataset": {
+  "builder": "ml/dataset.py",
+  "cut": "2026-11-16T04:41:31.428Z",
+  "grid_times": 94,
+  "cases": 1330898,
+  "banks": 3660,
+  "collection_gaps_over_6_5_h": 9,
+  "labels": "units at or below 2 within the horizon, by report 3's rules otherwise; collection gaps not censored"
+ },
+ "training": {
+  "model": "LogisticRegression(C=1.0, lbfgs), StandardScaler, every row unweighted",
+  "python": "3.13.5",
+  "numpy": "2.5.3",
+  "scipy": "1.18.1",
+  "scikit_learn": "1.9.1"
+ }
+}

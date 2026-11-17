@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { BLOOD_GROUPS, STATES, districtsFor } from "@/lib/constants";
 import { evaluateEligibility } from "@/lib/eligibility";
+import { mobileDigits } from "@/lib/profile";
 
 // No gender is preselected: it sets the donation gap (90 days for men, 120 otherwise).
 const EMPTY_FORM = {
@@ -41,11 +42,11 @@ function formFromDetails(details) {
     fullName: details.fullName ?? "",
     dob: details.dob ?? "",
     gender: details.gender ?? "",
-    phone: details.phone ?? "",
+    phone: mobileDigits(details.phone),
     stateCode: details.stateCode ? String(details.stateCode) : "",
     districtCode: details.districtCode ? String(details.districtCode) : "",
     emergencyName: details.emergencyContact?.name ?? "",
-    emergencyPhone: details.emergencyContact?.phone ?? "",
+    emergencyPhone: mobileDigits(details.emergencyContact?.phone),
     isDonor: details.isDonor === true,
     bloodGroupId: details.bloodGroupId ? String(details.bloodGroupId) : "",
     lastDonationDate: donorDetails.lastDonationDate ?? "",
@@ -84,6 +85,32 @@ function detailsFromForm(form) {
         }
       : null,
   };
+}
+
+// A mobile number box with +91 already in front, so people type only the 10 digits.
+// A pasted "+91 98765 43210" is cleaned to its 10 digits.
+function PhoneInput({ id, value, onChange, required }) {
+  return (
+    <div className="phone-field">
+      <span className="phone-prefix" aria-hidden="true">
+        +91
+      </span>
+      <input
+        id={id}
+        className="input phone-input"
+        type="tel"
+        inputMode="numeric"
+        autoComplete="tel-national"
+        placeholder="98765 43210"
+        maxLength={16}
+        value={value}
+        onChange={(event) => onChange(mobileDigits(event.target.value))}
+        pattern="[6-9][0-9]{9}"
+        title="A 10-digit mobile number starting with 6, 7, 8 or 9"
+        required={required}
+      />
+    </div>
+  );
 }
 
 function FormField({ label, htmlFor, children }) {
@@ -312,14 +339,11 @@ export default function SetDetailsPage() {
                 </FormField>
               </div>
 
-              <FormField label="Phone Number" htmlFor="phone">
-                <input
+              <FormField label="Mobile number (10 digits)" htmlFor="phone">
+                <PhoneInput
                   id="phone"
-                  className="input"
-                  type="tel"
-                  placeholder="+91 XXXXX XXXXX"
                   value={form.phone}
-                  onChange={handleFieldChange("phone")}
+                  onChange={(digits) => setForm((current) => ({ ...current, phone: digits }))}
                   required
                 />
               </FormField>
@@ -379,14 +403,13 @@ export default function SetDetailsPage() {
                   onChange={handleFieldChange("emergencyName")}
                 />
               </FormField>
-              <FormField label="Phone Number" htmlFor="emergencyPhone">
-                <input
+              <FormField label="Mobile number (10 digits)" htmlFor="emergencyPhone">
+                <PhoneInput
                   id="emergencyPhone"
-                  className="input"
-                  type="tel"
-                  placeholder="+91 XXXXX XXXXX"
                   value={form.emergencyPhone}
-                  onChange={handleFieldChange("emergencyPhone")}
+                  onChange={(digits) =>
+                    setForm((current) => ({ ...current, emergencyPhone: digits }))
+                  }
                 />
               </FormField>
             </div>

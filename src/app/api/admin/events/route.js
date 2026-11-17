@@ -4,7 +4,7 @@ import { jsonError, requireAdmin } from "@/lib/auth";
 import { BLOOD_GROUPS, COMPONENTS } from "@/lib/constants";
 import { rpcErrorResponse } from "../rpcError";
 
-// Stock-out events an admin makes (docs/PLANS/ML_system.md, Part C, in the closed
+// Stock-out events an admin makes (docs/PLANS/plan_ml_system.md, Part C, in the closed
 // beta). create_admin_event() and end_admin_event() check is_admin() and write the
 // audit log; an event ends by itself after its window.
 //

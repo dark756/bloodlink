@@ -1,6 +1,6 @@
 """The parity fixture: one real week of history, for tests/stockout-parity.test.js.
 
-docs/PLANS/ML_system.md, A2: on fixtures of real history, the Python dataset builder
+docs/PLANS/plan_ml_system.md, A2: on fixtures of real history, the Python dataset builder
 and src/lib/stockoutFeatures.js must give the same inputs, and scikit-learn and
 src/lib/stockoutModel.js the same probabilities to 6 decimal places. A model whose
 parity test fails is never promoted.

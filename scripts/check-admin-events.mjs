@@ -1,5 +1,5 @@
 // Checks admins' stock-out events and the extended forecast_marks()
-// (supabase/migrations/*_admin_events.sql; docs/PLANS/ML_system.md, Parts B and C) on
+// (supabase/migrations/*_admin_events.sql; docs/PLANS/plan_ml_system.md, Parts B and C) on
 // the project in SUPABASE_DB_URL, inside one transaction that is always rolled back.
 // Applies the migration first if the project lacks it. The admin checks borrow an
 // existing admin's id, and are skipped when there is none; nothing is written to auth.

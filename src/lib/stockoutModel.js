@@ -6,7 +6,7 @@ import {
 } from "./stockoutFeatures.js";
 
 // Scoring, daily calibration, the alert cut-off, the daily metrics and the kill
-// switch for the stock-out forecast (docs/PLANS/ML_system.md, A2 to A4 and A7).
+// switch for the stock-out forecast (docs/PLANS/plan_ml_system.md, A2 to A4 and A7).
 // Pure, so the score-stock Edge Function, scripts and tests share it. Training stays
 // in Python (ml/); this applies the JSON artifact it exports.
 //

@@ -1,6 +1,6 @@
 """Reference values from scikit-learn for the JS side of the stock-out forecast.
 
-docs/PLANS/ML_system.md, A2 and A4: the daily calibration (Platt scaling) and the
+docs/PLANS/plan_ml_system.md, A2 and A4: the daily calibration (Platt scaling) and the
 PR-AUC run in JS (src/lib/stockoutModel.js), so they must agree with the library the
 models are trained and judged with. This writes tests/fixtures/stockout_sklearn.json,
 which tests/stockout-model.test.js reads:

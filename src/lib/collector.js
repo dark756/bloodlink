@@ -27,7 +27,7 @@ const BATCH_SIZE = 400;
 // One call from central India with a 5,000 km radius returns every bank with coordinates.
 export const DIRECTORY_QUERY = { latitude: 22, longitude: 79, radius: 5_000_000 };
 // The banks whose stock eRaktKosh refreshes automatically, in batches: a list of
-// bank codes as strings. An input of the stock-out forecast (docs/PLANS/ML_system.md, A1).
+// bank codes as strings. An input of the stock-out forecast (docs/PLANS/plan_ml_system.md, A1).
 export const AUTO_REFRESH_ENDPOINT = "master/portal-refresh-hospitals";
 // Archive lines carry their format version; lines without one are version 1.
 export const ARCHIVE_VERSION = 1;
@@ -35,7 +35,7 @@ export const ARCHIVE_VERSION = 1;
 // secret can make collection more frequent than hourly.
 export const REPEAT_GUARD_MINUTES = 50;
 // A machine location fix gives way to eRaktKosh's own usable point within this distance
-// of it; further away, the difference is logged for review (plan_bank_locations.md, L6).
+// of it; further away, the difference is logged for review (data_quality.md, "Bank locations in full", L6).
 export const SUPERSEDE_WITHIN_M = 2_000;
 
 // The four batches of a cloud sweep, split by measured time so each takes about

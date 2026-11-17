@@ -6,7 +6,7 @@ import { METHOD_LABELS, REASON_LABELS } from "@/lib/bankLocations";
 import LocationReview from "./LocationReview";
 
 // The banks location search can't place, and the positions waiting for review (#33,
-// #34; docs/PLANS/plan_bank_locations.md, Part B). Worst first: the most units held,
+// #34; docs/SUMMARIES/data_quality.md, "Bank locations in full", Part B). Worst first: the most units held,
 // then those with no position at all. Reads bank_location_queue, which only admins see
 // in full.
 

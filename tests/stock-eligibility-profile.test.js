@@ -10,7 +10,7 @@ import {
   unitsForComponent,
 } from "@/lib/stock";
 import { calculateAge, evaluateEligibility } from "@/lib/eligibility";
-import { sanitizeDetails } from "@/lib/profile";
+import { mobileDigits, sanitizeDetails, toIndianMobile } from "@/lib/profile";
 import { sanitizeOrganization } from "@/lib/organization";
 import { BLOOD_GROUPS, COMPONENTS, findState, getComponentName } from "@/lib/constants";
 import { detailsToRows, rowsToDetails } from "@/lib/profileStore";
@@ -256,5 +256,44 @@ describe("district from an eRaktKosh address", () => {
     expect(fromAddress("Civil Lines, Mumbai, Gujarat", maharashtra)).toBeNull();
     expect(fromAddress("Station Road, Andheri, Maharashtra", maharashtra)).toBeNull();
     expect(fromAddress(null, maharashtra)).toBeNull();
+  });
+});
+
+describe("Indian mobile numbers", () => {
+  it("reduces any typed form to the 10 digits", () => {
+    for (const typed of [
+      "9876543210",
+      "+91 98765 43210",
+      "+91-98765-43210",
+      "919876543210",
+      "09876543210",
+    ]) {
+      expect(mobileDigits(typed)).toBe("9876543210");
+    }
+    expect(mobileDigits("98765")).toBe("98765");
+    expect(mobileDigits(null)).toBe("");
+  });
+  it("accepts only 10 digits starting 6 to 9, stored with +91", () => {
+    expect(toIndianMobile("98765 43210")).toBe("+919876543210");
+    for (const bad of ["12345 67890", "98765", "abc", ""]) expect(toIndianMobile(bad)).toBeNull();
+  });
+  it("stores the profile's phones as +91 numbers", () => {
+    const profile = {
+      fullName: "Asha",
+      dob: "1995-05-01",
+      gender: "female",
+      phone: "98765 43210",
+      stateCode: "30",
+      emergencyContact: { name: "Ravi", phone: "+91 91234 56789" },
+      isDonor: false,
+      bloodGroupId: "16",
+    };
+    const { errors, details } = sanitizeDetails(profile, new Date("2026-11-17T00:00:00Z"));
+    expect(errors).toEqual([]);
+    expect(details.phone).toBe("+919876543210");
+    expect(details.emergencyContact.phone).toBe("+919123456789");
+    expect(
+      sanitizeDetails({ ...profile, phone: "12345" }, new Date("2026-11-17T00:00:00Z")).errors,
+    ).toContain("Enter a valid 10-digit mobile number.");
   });
 });

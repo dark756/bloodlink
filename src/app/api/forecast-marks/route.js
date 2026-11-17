@@ -5,7 +5,7 @@ import { eventForBank, forecastForBank } from "@/lib/forecastMarks";
 import { checkRateLimit, tooManyRequests } from "@/lib/rateLimit";
 
 // The stock-out forecast's marks and admins' events for a region search's banks
-// (docs/PLANS/ML_system.md, A6 and Part C). Region search answers with eRaktKosh's own
+// (docs/PLANS/plan_ml_system.md, A6 and Part C). Region search answers with eRaktKosh's own
 // rows, so the page asks for these afterwards and adds them to its cards.
 //
 // GET /api/forecast-marks?codes=101,202&componentId=12&bloodGroupId=16

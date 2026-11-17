@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { toLocationFix } from "./bankLocations";
+import { bankPositions, toLocationFix } from "./bankLocations";
 import { findState, getComponentName } from "./constants";
 import { haversineMeters } from "./geo";
 import { districtFromAddress, keepOnlyComponent } from "./stock";
@@ -114,7 +114,7 @@ async function loadDirectory(supabase) {
     supabase
       .from("blood_banks")
       .select(
-        "hospital_code, name, address, phone, state_code, district_id, latitude, longitude, bank_type, hospital_type, stock_source, last_seen_at",
+        "hospital_code, name, address, phone, state_code, district_id, latitude, longitude, location_quality, bank_type, hospital_type, stock_source, last_seen_at",
       )
       .not("latitude", "is", null)
       .order("hospital_code"),
@@ -151,6 +151,21 @@ export async function loadSavedNearest({ latitude, longitude, radius }) {
     .filter((bank) => bank.dist <= radius)
     .sort((a, b) => a.dist - b.dist);
   return { data, fetchedAt: Math.max(...banks.map((bank) => Date.parse(bank.last_seen_at))) };
+}
+
+// Every bank's usable position by hospital code (the saved directory plus the accepted
+// fixes, each cached for an hour), for a region search's Directions links. Never
+// throws: with no database there are simply no positions.
+export async function loadBankPositions() {
+  const supabase = getPublicClient();
+  if (!supabase) return new Map();
+  try {
+    const [directory, fixes] = await Promise.all([loadDirectory(supabase), loadLocationFixes()]);
+    return bankPositions(directory, fixes);
+  } catch (error) {
+    console.warn(`bank positions unavailable (${error.message}); no Directions links`);
+    return new Map();
+  }
 }
 
 // Kept on globalThis so the fixes survive hot reloads in development.

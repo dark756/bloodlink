@@ -1,5 +1,5 @@
 """The forecast's scores, defined as src/lib/stockoutModel.js defines them, so the
-backtest and the app's daily metrics (docs/PLANS/ML_system.md, A4) measure the same
+backtest and the app's daily metrics (docs/PLANS/plan_ml_system.md, A4) measure the same
 thing:
 
 - an alert is p > cut-off;

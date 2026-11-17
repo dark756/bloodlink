@@ -5,6 +5,23 @@ import { BLOOD_GROUPS, findState } from "./constants";
 
 // Same pattern as the CHECK constraints in supabase/migrations.
 export const PHONE_PATTERN = /^\+?[\d -]{7,20}$/;
+const MOBILE_PATTERN = /^[6-9]\d{9}$/;
+
+// The 10 digits of an Indian mobile number from whatever was typed or saved: spaces,
+// dashes, "+91", "91" or a leading 0 are dropped. Not validated, so a partly typed
+// number comes back as typed.
+export function mobileDigits(value) {
+  let digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.length > 10 && digits.startsWith("91")) digits = digits.slice(2);
+  if (digits.length > 10 && digits.startsWith("0")) digits = digits.slice(1);
+  return digits.slice(0, 10);
+}
+
+// "+91XXXXXXXXXX" for a valid mobile number, else null.
+export function toIndianMobile(value) {
+  const digits = mobileDigits(value);
+  return MOBILE_PATTERN.test(digits) ? `+91${digits}` : null;
+}
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const GENDERS = ["male", "female", "other"];
 const IST_OFFSET_MS = 5.5 * 3_600_000;
@@ -44,8 +61,8 @@ export function sanitizeDetails(input, now = new Date()) {
   const gender = GENDERS.includes(fields.gender) ? fields.gender : null;
   if (!gender) errors.push("Select a gender.");
 
-  const phone = trimText(fields.phone, 20);
-  if (!PHONE_PATTERN.test(phone)) errors.push("Enter a valid phone number.");
+  const phone = toIndianMobile(fields.phone);
+  if (!phone) errors.push("Enter a valid 10-digit mobile number.");
 
   const state = findState(fields.stateCode);
   if (!state) errors.push("Select a valid state.");
@@ -59,9 +76,10 @@ export function sanitizeDetails(input, now = new Date()) {
   }
 
   const emergencyName = trimText(fields.emergencyContact?.name, 100);
-  const emergencyPhone = trimText(fields.emergencyContact?.phone, 20);
-  if (emergencyPhone && !PHONE_PATTERN.test(emergencyPhone)) {
-    errors.push("Enter a valid emergency contact phone.");
+  const emergencyDigits = mobileDigits(fields.emergencyContact?.phone);
+  const emergencyPhone = toIndianMobile(emergencyDigits);
+  if (emergencyDigits && !emergencyPhone) {
+    errors.push("Enter a valid 10-digit emergency contact mobile number.");
   }
 
   const bloodGroupId = String(fields.bloodGroupId ?? "");

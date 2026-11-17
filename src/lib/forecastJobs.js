@@ -20,7 +20,7 @@ import {
   withCalibration,
 } from "./stockoutModel.js";
 
-// The stock-out forecast's two scheduled jobs (docs/PLANS/ML_system.md, A3 and A4),
+// The stock-out forecast's two scheduled jobs (docs/PLANS/plan_ml_system.md, A3 and A4),
 // run by the score-stock Edge Function as bloodlink_ml:
 //
 // - score, after each grid time (00:05, 06:05, 12:05 and 18:05 India time): every

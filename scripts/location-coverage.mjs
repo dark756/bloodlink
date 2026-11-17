@@ -1,5 +1,5 @@
 // How many stocked banks location search can see, and what that changes for real
-// searches (#33, #34; docs/PLANS/plan_bank_locations.md, Part D).
+// searches (#33, #34; docs/SUMMARIES/data_quality.md, "Bank locations in full", Part D).
 //
 //   node scripts/location-coverage.mjs
 //       Saves a snapshot of the stock store (read-only) and measures it as it is:
