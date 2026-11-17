@@ -93,6 +93,9 @@ export default function DonorNetworkCard() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [areas, setAreas] = useState([]);
   const [activeKind, setActiveKind] = useState("home");
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState("");
+  const [mapFocus, setMapFocus] = useState(null);
   const [isBusy, setIsBusy] = useState(false);
   const [isConfirmingWithdraw, setIsConfirmingWithdraw] = useState(false);
   const [error, setError] = useState("");
@@ -147,6 +150,30 @@ export default function DonorNetworkCard() {
       longitude: roundCell(longitude),
     };
     setAreas((current) => [...current.filter((item) => item.kind !== activeKind), area]);
+  }
+
+  // Reads the device's position once, in the browser, and sets the active area from it.
+  // Only the rounded cell is kept; the exact position goes nowhere.
+  function locateMe() {
+    if (!navigator.geolocation) {
+      setLocationError("This browser can't share its location. Click the map instead.");
+      return;
+    }
+    setLocationError("");
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsLocating(false);
+        const { latitude, longitude } = position.coords;
+        handlePick({ latitude, longitude });
+        setMapFocus({ latitude: roundCell(latitude), longitude: roundCell(longitude) });
+      },
+      () => {
+        setIsLocating(false);
+        setLocationError("Couldn't get your location. Allow it in the browser, or click the map.");
+      },
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 },
+    );
   }
 
   function toggleChannel(channel) {
@@ -231,8 +258,19 @@ export default function DonorNetworkCard() {
               Set {AREA_LABELS[kind].toLowerCase()}
             </button>
           ))}
+          <button
+            type="button"
+            className="btn btn-small btn-outline"
+            disabled={isLocating}
+            onClick={locateMe}
+          >
+            {isLocating
+              ? "Finding you..."
+              : `Use my location for ${AREA_LABELS[activeKind].toLowerCase()}`}
+          </button>
         </div>
-        <AreaMap areas={areas} onPick={handlePick} />
+        {locationError && <p className="notice notice-error mb-2">{locationError}</p>}
+        <AreaMap areas={areas} onPick={handlePick} focus={mapFocus} />
         <ul className="text-xs text-[#666] mt-2">
           {AREA_KINDS.map((kind) => {
             const area = areas.find((item) => item.kind === kind);

@@ -5,8 +5,8 @@
 // Unlike the search map it never looks up a place name, so a chosen area goes nowhere
 // but the browser until the person saves it, rounded to about 1 km.
 import "leaflet/dist/leaflet.css";
-import { useState } from "react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import { useEffect, useState } from "react";
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 
 const CARTO_API_KEY = process.env.NEXT_PUBLIC_CARTO_API_KEY;
@@ -36,10 +36,20 @@ function ClickHandler({ onPick }) {
   return null;
 }
 
+// Moves the map to a place chosen from outside it, such as the device's location.
+function FlyTo({ focus }) {
+  const map = useMap();
+  useEffect(() => {
+    if (focus) map.flyTo([focus.latitude, focus.longitude], Math.max(map.getZoom(), 13));
+  }, [focus, map]);
+  return null;
+}
+
 // Props:
 //   areas   - [{ kind, latitude, longitude }] - the areas chosen so far
 //   onPick  - ({ latitude, longitude }) => void - called on a map click
-export default function AreaMap({ areas, onPick }) {
+//   focus   - { latitude, longitude } | null - a place to move the map to when it changes
+export default function AreaMap({ areas, onPick, focus = null }) {
   const [mapKey] = useState(() => `area-map-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const [icons] = useState(() => ({
     home: createIcon(KIND_COLORS.home),
@@ -56,6 +66,7 @@ export default function AreaMap({ areas, onPick }) {
       >
         <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
         <ClickHandler onPick={onPick} />
+        <FlyTo focus={focus} />
         {areas.map((area) => (
           <Marker
             key={area.kind}
