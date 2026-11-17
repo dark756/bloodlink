@@ -66,8 +66,13 @@ create table public.donor_card_signals (
 
 create table public.contact_reveals (
   id bigint generated always as identity primary key,
-  request_id bigint not null references public.blood_requests (id) on delete cascade,
-  response_id bigint not null references public.request_responses (id) on delete cascade,
+  -- A reveal is removed with its request and response, and its revealed_by is nulled when that
+  -- person's account goes. Deleting a person can do both to one row, so the two cascading keys
+  -- are checked at the end of the statement, when the row has already gone.
+  request_id bigint not null references public.blood_requests (id) on delete cascade
+    deferrable initially deferred,
+  response_id bigint not null references public.request_responses (id) on delete cascade
+    deferrable initially deferred,
   donor_id uuid not null references public.profiles (id) on delete cascade,
   revealed_by uuid references public.profiles (id) on delete set null,
   phone_shared boolean not null,
@@ -75,6 +80,10 @@ create table public.contact_reveals (
 );
 create index contact_reveals_donor_idx on public.contact_reveals (donor_id, revealed_at desc);
 create index contact_reveals_request_idx on public.contact_reveals (request_id);
+
+-- A donation is nulled twice when its organization's applicant is deleted: by its request and by
+-- its organization. The request key is checked at the end of the statement, when both are done.
+alter table public.donations alter constraint donations_request_id_fkey deferrable initially deferred;
 
 -- ── abuse_reports ────────────────────────────────────────────────────────────
 
@@ -892,47 +901,6 @@ begin
   from shown s
   join public.profiles p on p.id = s.donor_id
   order by s.response_id;
-end;
-$$;
-
--- ── delete_my_account ────────────────────────────────────────────────────────
-
--- Replaces the phase 1 function. Before the account goes, the references that the cascade would
--- otherwise null in the same statement that deletes the rows they sit on are nulled here: the
--- person's mark on contact_reveals, abuse_reports and organization_live_flags, and the
--- organization and request of donations made through their organization. The foreign keys stay
--- ON DELETE SET NULL; this only fixes the order, so a deletion never depends on which cascade
--- Postgres runs first. A donation is the donor's own history and stays.
-create or replace function public.delete_my_account()
-returns void
-language plpgsql
-security definer
-set search_path = ''
-as $$
-declare
-  v_user uuid := (select auth.uid());
-  v_role text;
-begin
-  select role into v_role from public.profiles where id = v_user for update;
-  if v_role = 'admin' and (select count(*) from public.profiles where role = 'admin') <= 1 then
-    raise exception 'You are the only admin. Make someone else an admin before deleting your account.'
-      using errcode = '22023';
-  end if;
-  update public.contact_reveals set revealed_by = null where revealed_by = v_user;
-  update public.abuse_reports set reviewed_by = null where reviewed_by = v_user;
-  update public.organization_live_flags set updated_by = null where updated_by = v_user;
-  update public.donations set request_id = null
-  where request_id in (
-    select r.id from public.blood_requests r
-    join public.organizations o on o.id = r.organization_id
-    where o.applicant_id = v_user
-  );
-  update public.donations set organization_id = null
-  where organization_id in (select o.id from public.organizations o where o.applicant_id = v_user);
-  delete from auth.users where id = v_user;
-  if not found then
-    raise exception 'Account not found' using errcode = 'P0002';
-  end if;
 end;
 $$;
 

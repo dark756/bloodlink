@@ -2831,6 +2831,14 @@ try {
 
   // From here the checks run at a fixed noon India time, so the live lifecycles don't depend on
   // the hour the script runs; the window's own checks below move the clock with a setting.
+  // The swap replaces real functions, so it refuses to run outside a transaction, where it
+  // would stay in the database. SAVEPOINT is an error unless a transaction is open.
+  try {
+    await client.query("savepoint in_transaction_probe");
+    await client.query("release savepoint in_transaction_probe");
+  } catch {
+    throw new Error("Refusing to replace the window helpers outside a transaction.");
+  }
   await client.query(`
     create or replace function public.live_wave_allowed_now(
       p_urgency text, p_organization_id uuid, p_at timestamptz default now()
