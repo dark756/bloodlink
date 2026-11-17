@@ -11,7 +11,7 @@ import { getBloodGroupName, getComponentName, getStateName } from "@/lib/constan
 import { cleanText, exactGroupUnits, isDormant, normalizeAvailabilityRow } from "@/lib/stock";
 import { URGENCY_LEVELS, buildResponsePlan, rankSources } from "@/lib/ranking";
 import { checkRateLimit, tooManyRequests } from "@/lib/rateLimit";
-import { nearestModeRing, rankedModeRing } from "@/lib/rings";
+import { RURAL_RINGS_KM, URBAN_RINGS_KM, nearestModeRing, rankedModeRing } from "@/lib/rings";
 import { fetchRoadLegs } from "@/lib/routing";
 import { createStateChecker } from "@/lib/stateBounds";
 import { estimateTravel, trafficConditions, trafficZone } from "@/lib/traffic";
@@ -57,8 +57,8 @@ import stateBoundaries from "../../../../assets/state_boundaries.json";
 const DENSITY_RADIUS_M = 15_000;
 const DENSE_AREA_MIN_BANKS = 10;
 const RINGS_M = {
-  urban: [5_000, 10_000, 15_000, 25_000],
-  rural: [20_000, 50_000, 100_000, 150_000],
+  urban: URBAN_RINGS_KM.map((km) => km * 1000),
+  rural: RURAL_RINGS_KM.map((km) => km * 1000),
 };
 const SEARCH_RADIUS_M = 150_000;
 const MAX_UNITS = 50;

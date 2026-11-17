@@ -144,6 +144,38 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
+      <Section title="The donor network (optional)">
+        <p>
+          Joining the donor network is your choice, and only if you are willing to donate. In this
+          first phase nobody is messaged, and nobody outside bloodLink sees you as an individual.
+        </p>
+        <p>
+          <strong>What is stored:</strong> your consent, with the version of the notice you agreed
+          to and when; up to two areas, home and work, each rounded to about 1 km in your browser
+          (never your address); your availability, snooze, quiet hours, the limit on requests a week
+          and the channels you chose; and the dates your eligibility window covers, worked out from
+          your profile and screening answers. Your screening answers themselves are never shown to
+          anyone else.
+        </p>
+        <p>
+          <strong>Who sees what:</strong> you see your own. Admins see only counts of donors per
+          cell of about 1 km, and cells with fewer than 5 donors are hidden. The window is only a
+          guide: the blood centre&apos;s medical officer makes the final call.
+        </p>
+        <p>
+          <strong>Withdrawing</strong> on{" "}
+          <Link href="/peer-to-peer" className="text-[#d32f2f] font-semibold">
+            My profile
+          </Link>{" "}
+          deletes your areas and settings at once. The record that you consented, and later
+          withdrew, is kept until you delete your account, to show what you agreed to.
+        </p>
+        <p>
+          <strong>How long:</strong> areas, settings and the eligibility window are kept while you
+          are in the network and until you withdraw, stop being a donor or delete your account.
+        </p>
+      </Section>
+
       <Section title="Who else receives data">
         <table className="w-full text-left">
           <thead className="text-xs text-[#666]">

@@ -1,0 +1,725 @@
+{
+  "cases": [
+    {
+      "name": "male, donated 90 days before",
+      "details": {
+        "isDonor": true,
+        "dob": "2000-05-10",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2026-01-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-04-01",
+        "eligibleUntil": "2066-05-09",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "female, 120-day gap",
+      "details": {
+        "isDonor": true,
+        "dob": "2000-05-10",
+        "gender": "female",
+        "donorDetails": {
+          "lastDonationDate": "2026-01-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-05-01",
+        "eligibleUntil": "2066-05-09",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "other gets the 120-day gap",
+      "details": {
+        "isDonor": true,
+        "dob": "2000-05-10",
+        "gender": "other",
+        "donorDetails": {
+          "lastDonationDate": "2026-03-10",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-07-08",
+        "eligibleUntil": "2066-05-09",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "female gap crossing into next year",
+      "details": {
+        "isDonor": true,
+        "dob": "1985-11-17",
+        "gender": "female",
+        "donorDetails": {
+          "lastDonationDate": "2026-10-20",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2027-02-17",
+        "eligibleUntil": "2051-11-16",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "male gap crossing a non-leap February",
+      "details": {
+        "isDonor": true,
+        "dob": "1990-01-01",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2025-12-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-03-01",
+        "eligibleUntil": "2055-12-31",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "male gap crossing a leap February",
+      "details": {
+        "isDonor": true,
+        "dob": "1990-01-01",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2023-12-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2024-02-29",
+        "eligibleUntil": "2055-12-31",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "18th birthday, first-time male",
+      "details": {
+        "isDonor": true,
+        "dob": "2008-03-15",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-03-15",
+        "eligibleUntil": "2069-03-14",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "18th birthday, first-time female",
+      "details": {
+        "isDonor": true,
+        "dob": "2008-05-10",
+        "gender": "female",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-05-10",
+        "eligibleUntil": "2069-05-09",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "born 28 Feb, 18th birthday on 28 Feb",
+      "details": {
+        "isDonor": true,
+        "dob": "2008-02-28",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-02-28",
+        "eligibleUntil": "2069-02-27",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "born 1 Mar, 18th birthday on 1 Mar",
+      "details": {
+        "isDonor": true,
+        "dob": "2008-03-01",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-03-01",
+        "eligibleUntil": "2069-02-28",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "born 29 Feb, first-time: birthdays on 1 Mar in non-leap years",
+      "details": {
+        "isDonor": true,
+        "dob": "2008-02-29",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-03-01",
+        "eligibleUntil": "2069-02-28",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "born 29 Feb 2004, first-time female",
+      "details": {
+        "isDonor": true,
+        "dob": "2004-02-29",
+        "gender": "female",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2022-03-01",
+        "eligibleUntil": "2065-02-28",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "born 29 Feb 2000, donated 2026-02-01, day before 66th",
+      "details": {
+        "isDonor": true,
+        "dob": "2000-02-29",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2026-02-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-05-02",
+        "eligibleUntil": "2066-02-28",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "born 29 Feb 1960, centre donation only, day before 66th",
+      "details": {
+        "isDonor": true,
+        "dob": "1960-02-29",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [
+        "2025-01-10"
+      ],
+      "expected": {
+        "eligibleFrom": "2025-04-10",
+        "eligibleUntil": "2026-02-28",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "day before the 66th birthday, donated before",
+      "details": {
+        "isDonor": true,
+        "dob": "1960-06-20",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2026-01-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-04-01",
+        "eligibleUntil": "2026-06-19",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "day before the 61st birthday, first-time",
+      "details": {
+        "isDonor": true,
+        "dob": "1980-02-10",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "1998-02-10",
+        "eligibleUntil": "2041-02-09",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "64-year-old with a past donation",
+      "details": {
+        "isDonor": true,
+        "dob": "1962-04-10",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2026-02-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2026-05-02",
+        "eligibleUntil": "2028-04-09",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "62-year-old first-time: window is in the past",
+      "details": {
+        "isDonor": true,
+        "dob": "1964-03-01",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "1982-03-01",
+        "eligibleUntil": "2025-02-28",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "gap runs past the 66th birthday: no window",
+      "details": {
+        "isDonor": true,
+        "dob": "1960-06-20",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2026-06-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": null,
+        "eligibleUntil": null,
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "16-year-old with a past donation: 18th birthday after the gap",
+      "details": {
+        "isDonor": true,
+        "dob": "2010-01-15",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2026-01-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2028-01-15",
+        "eligibleUntil": "2076-01-14",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "centre donation newer than self-reported",
+      "details": {
+        "isDonor": true,
+        "dob": "2000-05-10",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2026-01-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [
+        "2026-03-01",
+        "2025-12-01"
+      ],
+      "expected": {
+        "eligibleFrom": "2026-05-30",
+        "eligibleUntil": "2066-05-09",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "centre donation older than self-reported",
+      "details": {
+        "isDonor": true,
+        "dob": "2000-05-10",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2026-02-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [
+        "2025-10-01"
+      ],
+      "expected": {
+        "eligibleFrom": "2026-05-02",
+        "eligibleUntil": "2066-05-09",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "centre donation only, no self-report",
+      "details": {
+        "isDonor": true,
+        "dob": "1990-07-04",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [
+        "2026-06-15"
+      ],
+      "expected": {
+        "eligibleFrom": "2026-09-13",
+        "eligibleUntil": "2056-07-03",
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "recent tattoo",
+      "details": {
+        "isDonor": true,
+        "dob": "1990-07-04",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": true,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": null,
+        "eligibleUntil": null,
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "pregnant or breastfeeding",
+      "details": {
+        "isDonor": true,
+        "dob": "1992-07-04",
+        "gender": "female",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": true,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": null,
+        "eligibleUntil": null,
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "underweight",
+      "details": {
+        "isDonor": true,
+        "dob": "1990-07-04",
+        "gender": "female",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": true,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": null,
+        "eligibleUntil": null,
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "blood-transmissible infection",
+      "details": {
+        "isDonor": true,
+        "dob": "1990-07-04",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": true
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": null,
+        "eligibleUntil": null,
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "medication: window still computed, staff check",
+      "details": {
+        "isDonor": true,
+        "dob": "1995-12-01",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": true,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2013-12-01",
+        "eligibleUntil": "2056-11-30",
+        "needsStaffCheck": true
+      }
+    },
+    {
+      "name": "medication and a deferral answer",
+      "details": {
+        "isDonor": true,
+        "dob": "1995-12-01",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": true,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": true,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": null,
+        "eligibleUntil": null,
+        "needsStaffCheck": true
+      }
+    },
+    {
+      "name": "not a donor",
+      "details": {
+        "isDonor": false,
+        "dob": "1990-07-04",
+        "gender": "male",
+        "donorDetails": null
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": null,
+        "eligibleUntil": null,
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "not a donor, medication flag ignored",
+      "details": {
+        "isDonor": false,
+        "dob": "1990-07-04",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": null,
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": true,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": null,
+        "eligibleUntil": null,
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "missing date of birth",
+      "details": {
+        "isDonor": true,
+        "dob": "",
+        "gender": "male",
+        "donorDetails": {
+          "lastDonationDate": "2026-01-01",
+          "recentTattoo": false,
+          "pregnant": false,
+          "underweight": false,
+          "onMedication": false,
+          "hasDisease": false
+        }
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": null,
+        "eligibleUntil": null,
+        "needsStaffCheck": false
+      }
+    },
+    {
+      "name": "donor with no screening row, first-time",
+      "details": {
+        "isDonor": true,
+        "dob": "2000-01-01",
+        "gender": "female",
+        "donorDetails": null
+      },
+      "donations": [],
+      "expected": {
+        "eligibleFrom": "2018-01-01",
+        "eligibleUntil": "2060-12-31",
+        "needsStaffCheck": false
+      }
+    }
+  ]
+}

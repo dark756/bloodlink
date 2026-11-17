@@ -1,14 +1,20 @@
 // Display helpers shared by the pages. Pure functions, safe on client and server.
 
-const DATE_OPTIONS = { day: "numeric", month: "short", year: "numeric" };
+// Always India's zone, so a server render and any browser print the same thing (#64).
+const DATE_OPTIONS = { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" };
 const DATE_TIME_OPTIONS = { ...DATE_OPTIONS, hour: "2-digit", minute: "2-digit" };
+// A date-only value is a calendar date, not an instant: printed in UTC it stays that date.
+const CALENDAR_DATE_OPTIONS = { ...DATE_OPTIONS, timeZone: "UTC" };
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 // "2026-10-23" -> "23 Oct 2026". "-" when empty; the raw value when it isn't a date.
 export function formatDate(value) {
   if (!value) return "-";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-IN", DATE_OPTIONS);
+  const options =
+    typeof value === "string" && DATE_ONLY.test(value) ? CALENDAR_DATE_OPTIONS : DATE_OPTIONS;
+  return date.toLocaleDateString("en-IN", options);
 }
 
 // A timestamp as "23 Oct 2026, 04:30 pm" in Indian format. "-" when empty.

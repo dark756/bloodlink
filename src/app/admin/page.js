@@ -199,6 +199,48 @@ function ForecastCard({ model, scoreRuns, dailyRuns, flags, metrics }) {
   );
 }
 
+// Donors per cell of about 1 km, from donor_cell_counts() (admins only; the database
+// hides cells with fewer than 5 donors). Shows a note until the donor network's migration
+// has added the function.
+function DonorCellsCard({ cells }) {
+  if (cells.error) {
+    return (
+      <p className="card-body text-sm text-[#666]">
+        The donor network isn&apos;t set up yet: apply its migration (npm run db:migrate).
+      </p>
+    );
+  }
+  const rows = [...(cells.data ?? [])].sort((a, b) => b.donors - a.donors);
+  if (rows.length === 0) {
+    return (
+      <p className="card-body text-sm text-[#666]">
+        No cell has 5 donors yet, so none is shown. Cells with fewer are hidden on purpose.
+      </p>
+    );
+  }
+  const donors = rows.reduce((sum, row) => sum + row.donors, 0);
+  return (
+    <>
+      <p className="card-body text-sm">
+        {rows.length} cells with 5 or more donors, {donors} donor areas in all.
+      </p>
+      <ul>
+        {rows.slice(0, 8).map((row) => (
+          <li key={`${row.latitude},${row.longitude}`} className="result-item text-sm">
+            <span className="font-semibold">
+              {Number(row.latitude).toFixed(2)}, {Number(row.longitude).toFixed(2)}
+            </span>
+            <span className="text-[#666]">
+              {" "}
+              · {row.donors} donors · {row.eligible_today} eligible today
+            </span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 export default async function AdminOverviewPage() {
   const supabase = await createClient();
 
@@ -219,6 +261,7 @@ export default async function AdminOverviewPage() {
     forecastDailyRuns,
     forecastFlags,
     forecastMetrics,
+    donorCells,
   ] = await Promise.all([
     countRows(supabase.from("profiles").select("id", COUNT_ONLY)),
     countRows(supabase.from("profiles").select("id", COUNT_ONLY).eq("is_profile_complete", true)),
@@ -275,6 +318,7 @@ export default async function AdminOverviewPage() {
       )
       .order("day", { ascending: false })
       .limit(3),
+    supabase.rpc("donor_cell_counts"),
   ]);
   const auditEntries = recentAuditEntries.data ?? [];
 
@@ -331,6 +375,11 @@ export default async function AdminOverviewPage() {
           flags={forecastFlags}
           metrics={forecastMetrics}
         />
+      </div>
+
+      <div className="card mt-5">
+        <h2 className="card-title">Donor network, donors per area (beta)</h2>
+        <DonorCellsCard cells={donorCells} />
       </div>
 
       <div className="card mt-5">
