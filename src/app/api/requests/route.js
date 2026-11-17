@@ -2,13 +2,18 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile, jsonError, requireUser } from "@/lib/auth";
 import { haversineMeters } from "@/lib/geo";
-import { sanitizeRequest, sanitizeTravelConditions } from "@/lib/donorRequests";
+import {
+  sanitizeConfirmDonation,
+  sanitizeDefer,
+  sanitizeRequest,
+  sanitizeTravelConditions,
+} from "@/lib/donorRequests";
 import { trafficConditions, trafficZone } from "@/lib/traffic";
 import { loadBankPositions } from "@/lib/stockStore";
 import { fetchRainMmPerHour } from "@/lib/weather";
 import { rpcErrorResponse } from "@/app/api/admin/rpcError";
 
-// Shadow requests for the signed-in user's organization (donor network, phase 2). Every
+// Requests for the signed-in user's organization (donor network, phases 2 and 3), shadow or live. Every
 // query and function call runs as that user, and the id comes only from the session. Before
 // the migration is applied the tables and functions don't exist: GET then answers
 // { available: false }, and POST says the network isn't open yet.
@@ -62,6 +67,20 @@ const toWave = (row) => ({
   scoreMax: row.score_max,
   filterCounts: row.filter_counts ?? null,
 });
+
+// request_donor_contacts() rows: the donors who accepted or arrived. The name is always
+// there, the phone only when the donor agreed to share it; each call is logged as a reveal.
+const toDonor = (row) => ({
+  responseId: row.response_id,
+  name: row.donor_name,
+  phone: row.phone ?? null,
+  phoneShared: row.phone_shared === true,
+  status: row.status,
+  holdUntil: row.hold_until,
+  checkInCode: row.check_in_code ?? null,
+});
+
+// Donors are listed for live requests that are still open or covered.
 
 // The signed-in user's approved organization, or null.
 async function loadOrganization(supabase, profile) {
@@ -121,6 +140,8 @@ export async function GET() {
     return jsonError("Could not load your requests. Please try again.", 500);
   }
 
+  // Donors are not listed here: request_donor_contacts() logs a reveal on every call, so
+  // it runs only when staff open a request (the "donors" action).
   return NextResponse.json({
     available: true,
     organization,
@@ -129,6 +150,18 @@ export async function GET() {
       waves: (summaries[index].data ?? []).map(toWave),
     })),
   });
+}
+
+// The donors who accepted or arrived, for a request staff have opened.
+async function listDonors(supabase, body) {
+  const id = body?.id;
+  if (!Number.isInteger(id) || id <= 0) return jsonError("Choose a request.", 400);
+  const { data, error } = await supabase.rpc("request_donor_contacts", { p_request_id: id });
+  if (error) {
+    if (isMissingObject(error)) return jsonError("Requests aren't open yet.", 503);
+    return rpcErrorResponse(error);
+  }
+  return NextResponse.json({ donors: (data ?? []).map(toDonor) });
 }
 
 export async function POST(request) {
@@ -145,7 +178,38 @@ export async function POST(request) {
 
   if (body?.action === "create") return createRequest(supabase, user, body);
   if (body?.action === "cancel") return cancelRequest(supabase, body);
+  if (body?.action === "confirm_donation") return confirmDonation(supabase, body);
+  if (body?.action === "defer") return deferDonor(supabase, body);
+  if (body?.action === "donors") return listDonors(supabase, body);
   return jsonError("Unknown action.", 400);
+}
+
+async function confirmDonation(supabase, body) {
+  const { responseId, kind, errors } = sanitizeConfirmDonation(body);
+  if (errors.length > 0) return NextResponse.json({ error: errors[0], errors }, { status: 400 });
+  const { error } = await supabase.rpc("confirm_donation", {
+    p_response_id: responseId,
+    p_kind: kind,
+  });
+  if (error) {
+    if (isMissingObject(error)) return jsonError("Requests aren't open yet.", 503);
+    return rpcErrorResponse(error);
+  }
+  return NextResponse.json({ message: "Donation confirmed" });
+}
+
+async function deferDonor(supabase, body) {
+  const { responseId, reason, errors } = sanitizeDefer(body);
+  if (errors.length > 0) return NextResponse.json({ error: errors[0], errors }, { status: 400 });
+  const { error } = await supabase.rpc("defer_donor", {
+    p_response_id: responseId,
+    p_reason: reason,
+  });
+  if (error) {
+    if (isMissingObject(error)) return jsonError("Requests aren't open yet.", 503);
+    return rpcErrorResponse(error);
+  }
+  return NextResponse.json({ message: "Donor deferred" });
 }
 
 async function createRequest(supabase, user, body) {

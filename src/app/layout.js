@@ -2,6 +2,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 import Header from "./components/Header";
+import DonorRequestsPopup from "./DonorRequestsPopup";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
@@ -18,6 +19,7 @@ export default function RootLayout({ children }) {
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <Header />
+        <DonorRequestsPopup />
         <main className="flex-1">{children}</main>
         <footer className="border-t border-[#e0e0e0] bg-white">
           <div className="max-w-[900px] mx-auto px-4 py-5 text-xs text-[#666] text-center">

@@ -5,15 +5,19 @@ import { BLOOD_GROUPS, COMPONENTS, getBloodGroupName, getComponentName } from "@
 import { formatDateTime } from "@/lib/format";
 import {
   PATIENT_REFERENCE_MAX,
+  DONATION_KIND_LABELS,
   REQUEST_KINDS,
   REQUEST_KIND_LABELS,
   UNITS_MAX,
   UNITS_MIN,
   URGENCIES,
   URGENCY_LABELS,
+  donationKindsFor,
 } from "@/lib/donorRequests";
 
 const SHADOW_NOTICE = "Shadow mode: no donor is told";
+const LIVE_NOTICE = "Live: donors see this when they open the site";
+const DONOR_STATUS_LABELS = { accepted: "Accepted, not yet arrived", arrived: "Arrived" };
 const BAND_LABELS = ["to 5 km", "to 10 km", "to 15 km", "to 25 km", "beyond"];
 const STATUS_LABELS = {
   open: "Open",
@@ -78,8 +82,75 @@ function WaveLine({ wave }) {
   );
 }
 
-function RequestCard({ item, onCancel, isBusy }) {
+function DonorRow({ donor, kinds, onConfirm, onDefer, isBusy }) {
+  const [kind, setKind] = useState(kinds[0] ?? "");
+  return (
+    <li className="result-item text-sm">
+      <span className="font-semibold">{donor.name}</span>
+      <span className="badge ml-2">{DONOR_STATUS_LABELS[donor.status] ?? donor.status}</span>
+      <span className="block text-xs text-[#666] mt-1">
+        {donor.phone ? `Phone ${donor.phone}` : "Phone not shared."}
+        {donor.checkInCode && ` · check-in code ${donor.checkInCode}`}
+        {donor.holdUntil && ` · held until ${formatDateTime(donor.holdUntil)}`}
+      </span>
+      <span className="flex flex-wrap items-center gap-2 mt-2">
+        {kinds.length > 1 && (
+          <select
+            className="select"
+            aria-label="Kind of donation"
+            value={kind}
+            onChange={(event) => setKind(event.target.value)}
+          >
+            {kinds.map((option) => (
+              <option key={option} value={option}>
+                {DONATION_KIND_LABELS[option]}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          type="button"
+          className="btn btn-primary btn-small"
+          disabled={isBusy || kind === ""}
+          onClick={() => onConfirm(donor.responseId, kind)}
+        >
+          Confirm donation
+        </button>
+        <button
+          type="button"
+          className="btn btn-outline btn-small"
+          disabled={isBusy}
+          onClick={() => onDefer(donor.responseId)}
+        >
+          Defer
+        </button>
+      </span>
+    </li>
+  );
+}
+
+function RequestCard({ item, onCancel, onConfirm, onDefer, isBusy }) {
   const isOpen = OPEN_STATUSES.includes(item.status);
+  const isLive = item.mode === "live";
+  const kinds = donationKindsFor(item.kind);
+  const [donors, setDonors] = useState(null); // null = not opened yet
+  const [isLoadingDonors, setIsLoadingDonors] = useState(false);
+  const [donorsError, setDonorsError] = useState("");
+
+  // Listing the donors logs a contact reveal, so it runs only when staff ask for it.
+  async function loadDonors() {
+    setIsLoadingDonors(true);
+    setDonorsError("");
+    try {
+      const { data: body } = await axios.post("/api/requests", { action: "donors", id: item.id });
+      setDonors(body.donors);
+    } catch (err) {
+      setDonorsError(errorMessage(err, "Could not load the donors. Please try again."));
+    } finally {
+      setIsLoadingDonors(false);
+    }
+  }
+
   return (
     <div className="card mt-4">
       <h3 className="card-title flex items-center justify-between gap-2">
@@ -100,7 +171,51 @@ function RequestCard({ item, onCancel, isBusy }) {
           {item.patientReference && ` · reference ${item.patientReference}`}
           {item.closeReason && ` · ${item.closeReason}`}
         </p>
-        <p className="notice notice-warn mt-3">{SHADOW_NOTICE}</p>
+        <p className={`notice mt-3 ${isLive ? "" : "notice-warn"}`}>
+          {isLive ? LIVE_NOTICE : SHADOW_NOTICE}
+        </p>
+        {isLive && isOpen && (
+          <div className="mt-3">
+            <p className="font-semibold">Donors who accepted</p>
+            {donors === null ? (
+              <>
+                <p className="text-xs text-[#666] mt-1">
+                  Opening the list is logged as a contact reveal.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-small mt-2"
+                  disabled={isBusy || isLoadingDonors}
+                  onClick={loadDonors}
+                >
+                  {isLoadingDonors ? "Loading..." : "Show donors who accepted"}
+                </button>
+                {donorsError && <p className="notice notice-error mt-2">{donorsError}</p>}
+              </>
+            ) : donors.length === 0 ? (
+              <p className="text-xs text-[#666] mt-1">No donor has accepted yet.</p>
+            ) : (
+              <ul className="mt-1">
+                {donors.map((donor) => (
+                  <DonorRow
+                    key={donor.responseId}
+                    donor={donor}
+                    kinds={kinds}
+                    onConfirm={async (...args) => {
+                      await onConfirm(...args);
+                      await loadDonors();
+                    }}
+                    onDefer={async (...args) => {
+                      await onDefer(...args);
+                      await loadDonors();
+                    }}
+                    isBusy={isBusy}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         {item.waves.length === 0 ? (
           <p className="text-xs text-[#666] mt-3">
             {isOpen && item.nextWaveAt
@@ -129,8 +244,9 @@ function RequestCard({ item, onCancel, isBusy }) {
   );
 }
 
-// Raises shadow requests and shows each one's waves, for an approved organization. Real
-// requests run real waves and the asks are recorded, but nobody is told.
+// Raises requests and shows each one's mode and waves, for an approved organization. A shadow
+// request records its asks and tells nobody; a live one shows donors a card, and lists the
+// donors who accepted with Confirm donation and Defer.
 export default function ShadowRequestsCard() {
   const [data, setData] = useState(undefined); // undefined = loading
   const [form, setForm] = useState(null);
@@ -181,7 +297,7 @@ export default function ShadowRequestsCard() {
         allowCompatible: isBloodBank && form.allowCompatible,
         patientReference: form.patientReference.trim() === "" ? null : form.patientReference,
       });
-      setMessage("Shadow request raised. No donor was told.");
+      setMessage("Request raised.");
       setForm(emptyForm(organization));
       await load();
     } catch (err) {
@@ -207,18 +323,50 @@ export default function ShadowRequestsCard() {
     }
   }
 
+  async function handleConfirm(responseId, kind) {
+    setIsBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await axios.post("/api/requests", { action: "confirm_donation", responseId, kind });
+      setMessage("Donation confirmed.");
+      await load();
+    } catch (err) {
+      setError(errorMessage(err, "Could not confirm the donation. Please try again."));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleDefer(responseId) {
+    const reason = window.prompt("Why is this donor deferred?");
+    if (!reason || reason.trim() === "") return;
+    setIsBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      await axios.post("/api/requests", { action: "defer", responseId, reason: reason.trim() });
+      setMessage("Donor deferred.");
+      await load();
+    } catch (err) {
+      setError(errorMessage(err, "Could not defer the donor. Please try again."));
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   return (
     <section className="mt-8">
-      <h2 className="page-title text-xl">Shadow requests</h2>
+      <h2 className="page-title text-xl">Requests</h2>
       <p className="page-subtitle">
-        Raise a request to see whom bloodLink would ask, wave by wave. {SHADOW_NOTICE}.
+        Raise a request and follow each wave. A shadow request tells no donor; a live one shows
+        donors a card when they open the site.
       </p>
 
       {error && <p className="notice notice-error mt-4">{error}</p>}
       {message && <p className="notice mt-4">{message}</p>}
 
       <form onSubmit={handleSubmit} className="card card-body mt-4 flex flex-col gap-3">
-        <p className="notice notice-warn">{SHADOW_NOTICE}</p>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="label" htmlFor="request-kind">
@@ -374,7 +522,7 @@ export default function ShadowRequestsCard() {
           </label>
         )}
         <button type="submit" className="btn btn-primary mt-2" disabled={isBusy}>
-          {isBusy ? "Working…" : "Raise shadow request"}
+          {isBusy ? "Working…" : "Raise request"}
         </button>
       </form>
 
@@ -382,7 +530,14 @@ export default function ShadowRequestsCard() {
         <p className="text-sm text-[#666] mt-4">No requests raised yet.</p>
       ) : (
         requests.map((item) => (
-          <RequestCard key={item.id} item={item} onCancel={handleCancel} isBusy={isBusy} />
+          <RequestCard
+            key={item.id}
+            item={item}
+            onCancel={handleCancel}
+            onConfirm={handleConfirm}
+            onDefer={handleDefer}
+            isBusy={isBusy}
+          />
         ))
       )}
     </section>

@@ -115,6 +115,48 @@ export function sanitizeRequest(input, now = new Date(), { canAllowCompatible = 
   };
 }
 
+// The centre's two actions on a donor who accepted (live requests). The kinds and the reason
+// length mirror confirm_donation() and defer_donor().
+export const DONATION_KINDS = ["whole_blood", "apheresis_platelets", "apheresis_plasma"];
+export const DONATION_KIND_LABELS = {
+  whole_blood: "Whole blood",
+  apheresis_platelets: "Apheresis platelets",
+  apheresis_plasma: "Apheresis plasma",
+};
+export const DEFER_REASON_MAX = 200;
+
+// The donation kinds a request of this kind can end in: a shortfall is whole blood, an
+// apheresis request is platelets or plasma.
+export const donationKindsFor = (requestKind) =>
+  requestKind === "apheresis"
+    ? ["apheresis_platelets", "apheresis_plasma"]
+    : requestKind === "shortfall"
+      ? ["whole_blood"]
+      : [];
+
+const isResponseId = (value) => Number.isInteger(value) && value >= 1;
+
+// Returns { responseId, kind, errors } for a confirm_donation action.
+export function sanitizeConfirmDonation(input) {
+  const errors = [];
+  const raw = isObject(input) ? input : {};
+  if (!isResponseId(raw.responseId)) errors.push("Unknown donor response.");
+  if (!DONATION_KINDS.includes(raw.kind)) errors.push("Choose the kind of donation.");
+  return { responseId: raw.responseId, kind: raw.kind, errors };
+}
+
+// Returns { responseId, reason, errors } for a defer action.
+export function sanitizeDefer(input) {
+  const errors = [];
+  const raw = isObject(input) ? input : {};
+  if (!isResponseId(raw.responseId)) errors.push("Unknown donor response.");
+  const reason = typeof raw.reason === "string" ? raw.reason.trim() : "";
+  if (reason === "" || reason.length > DEFER_REASON_MAX) {
+    errors.push(`Give a reason of up to ${DEFER_REASON_MAX} characters.`);
+  }
+  return { responseId: raw.responseId, reason, errors };
+}
+
 // Returns { conditions, errors } for what trafficConditions() and trafficZone() produced:
 // { freeFlowKmh, congestionPercent, rainFactor }, all numbers inside TRAVEL_BOUNDS.
 export function sanitizeTravelConditions(input) {

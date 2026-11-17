@@ -7,6 +7,7 @@ import { getBloodGroupName, getDistrictName, getStateName } from "@/lib/constant
 import { capitalize, formatDate, getInitials } from "@/lib/format";
 import DonateNearby from "./DonateNearby";
 import DonorNetworkCard from "./DonorNetworkCard";
+import DonorRequestsCard from "./DonorRequestsCard";
 
 const ROLE_LABELS = {
   hospital: "Verified hospital account",
@@ -188,6 +189,8 @@ export default function PeerToPeerPage() {
           )}
         </div>
       </div>
+
+      {details?.isDonor && <DonorRequestsCard />}
 
       {details?.isDonor && <DonorNetworkCard />}
 

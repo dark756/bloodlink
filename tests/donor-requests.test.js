@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  DEFER_REASON_MAX,
   PATIENT_REFERENCE_MAX,
   TRAVEL_BOUNDS,
+  donationKindsFor,
+  sanitizeConfirmDonation,
+  sanitizeDefer,
   sanitizeRequest,
   sanitizeTravelConditions,
 } from "@/lib/donorRequests";
@@ -141,5 +145,45 @@ describe("sanitizeTravelConditions", () => {
       expect(sanitizeTravelConditions(conditions(changes)).errors.length).toBe(1);
     }
     expect(sanitizeTravelConditions(undefined).errors.length).toBe(3);
+  });
+});
+
+describe("sanitizeConfirmDonation", () => {
+  it("accepts a response id with a known kind", () => {
+    const result = sanitizeConfirmDonation({ responseId: 7, kind: "apheresis_plasma" });
+    expect(result).toEqual({ responseId: 7, kind: "apheresis_plasma", errors: [] });
+  });
+
+  it("refuses a bad id or an unknown kind", () => {
+    expect(sanitizeConfirmDonation({ responseId: 0, kind: "whole_blood" }).errors).toHaveLength(1);
+    expect(sanitizeConfirmDonation({ responseId: "7", kind: "whole_blood" }).errors).toHaveLength(
+      1,
+    );
+    expect(sanitizeConfirmDonation({ responseId: 7, kind: "plasma" }).errors).toHaveLength(1);
+    expect(sanitizeConfirmDonation(null).errors).toHaveLength(2);
+  });
+});
+
+describe("sanitizeDefer", () => {
+  it("trims the reason", () => {
+    const result = sanitizeDefer({ responseId: 3, reason: "  low haemoglobin " });
+    expect(result).toEqual({ responseId: 3, reason: "low haemoglobin", errors: [] });
+  });
+
+  it("refuses an empty or over-long reason and a bad id", () => {
+    expect(sanitizeDefer({ responseId: 3, reason: "   " }).errors).toHaveLength(1);
+    expect(
+      sanitizeDefer({ responseId: 3, reason: "x".repeat(DEFER_REASON_MAX + 1) }).errors,
+    ).toHaveLength(1);
+    expect(sanitizeDefer({ responseId: 1.5, reason: "ok" }).errors).toHaveLength(1);
+    expect(sanitizeDefer({ responseId: 3 }).errors).toHaveLength(1);
+  });
+});
+
+describe("donationKindsFor", () => {
+  it("maps a request kind to the donations it can end in", () => {
+    expect(donationKindsFor("shortfall")).toEqual(["whole_blood"]);
+    expect(donationKindsFor("apheresis")).toEqual(["apheresis_platelets", "apheresis_plasma"]);
+    expect(donationKindsFor("other")).toEqual([]);
   });
 });
