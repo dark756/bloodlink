@@ -13,7 +13,7 @@ import {
   trafficConditions,
   trafficZone,
 } from "@/lib/traffic";
-import { createTrafficModel } from "@/lib/trafficModel";
+import { CITY_FREE_FLOW_KMH, RURAL_FREE_FLOW_KMH, createTrafficModel } from "@/lib/trafficModel";
 
 // India time, written with its offset. 2026-10-23 is a Friday.
 const at = (localDateTime) => new Date(`${localDateTime}+05:30`);
@@ -48,11 +48,13 @@ describe("traffic zones", () => {
     expect(trafficZone(NASHIK, 5).kind).toBe("town");
     expect(trafficZone(NASHIK, 1).kind).toBe("rural");
   });
-  it("drives faster outside cities: highway speed when rural, halfway in towns", () => {
+  it("drives faster outside cities: tuned speeds in cities and rural areas, halfway in towns", () => {
     const { freeFlowKmh, highwayFreeFlowKmh } = trafficProfiles.india;
-    expect(trafficZone(NASHIK, 20).freeFlowKmh).toBe(freeFlowKmh);
+    expect(CITY_FREE_FLOW_KMH).toBe(40);
+    expect(RURAL_FREE_FLOW_KMH).toBe(44);
+    expect(trafficZone(NASHIK, 20).freeFlowKmh).toBe(CITY_FREE_FLOW_KMH);
     expect(trafficZone(NASHIK, 5).freeFlowKmh).toBeCloseTo((freeFlowKmh + highwayFreeFlowKmh) / 2);
-    expect(trafficZone(NASHIK, 1).freeFlowKmh).toBe(highwayFreeFlowKmh);
+    expect(trafficZone(NASHIK, 1).freeFlowKmh).toBe(RURAL_FREE_FLOW_KMH);
   });
 });
 

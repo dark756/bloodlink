@@ -30,6 +30,15 @@ export const ZONE_MIN_BANKS = { city: 11, town: 3 };
 // 2 M and 0.74 for a town of about 300 k, once divided by its value at the metro
 // average. 0.89 and 0.73 are used, under one point of congestion away.
 // rural is an assumption: half the congestion on Indian metro highways.
+// Free-flow speeds outside the metros, in km/h, tuned on 17 November 2026 to Google's
+// traffic-aware predictions: 3,360 trips from 40 origins, one week of November, scored by
+// leave-one-origin-out checks (../rough_work/eta_benchmarks/optimisation/). The profile
+// file's Indian averages (33.1 city, 57.8 highway) left rural trips 28% too quick and
+// city trips 8.5% too slow against Google. Town stays halfway between those averages:
+// no change to it held up on held-out origins. These two values are therefore tuned to
+// Google Maps data, not measured on real trips (docs/SUMMARIES/eta_benchmark.md, E10).
+export const CITY_FREE_FLOW_KMH = 40;
+export const RURAL_FREE_FLOW_KMH = 44;
 export const ZONE_SCALE = { metro: 1, city: 0.89, town: 0.73, rural: 0.29 };
 // The 2.5 and 7.6 mm/h bands are the American Meteorological Society's moderate and
 // heavy rain rates. The factors sit at the low end of studies that classed rain by
@@ -154,9 +163,9 @@ export function createTrafficModel(
     // Free-flow speed: city streets, open road for rural trips, and halfway for
     // towns, whose trips mix town streets with open road.
     const freeFlowKmh = {
-      city: india.freeFlowKmh,
+      city: CITY_FREE_FLOW_KMH,
       town: (india.freeFlowKmh + india.highwayFreeFlowKmh) / 2,
-      rural: india.highwayFreeFlowKmh,
+      rural: RURAL_FREE_FLOW_KMH,
     };
     return {
       kind,
