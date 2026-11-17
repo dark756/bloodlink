@@ -241,6 +241,45 @@ function DonorCellsCard({ cells }) {
   );
 }
 
+// Open shadow requests and when a wave last ran, for the donor network's phase 2. The
+// tables exist only once its migration is applied; until then this shows a note.
+// TODO: the spec gives no read path for when advance_requests() last ran. The newest
+// request_waves.ran_at stands in for it: it moves only when a wave is sent. Replace it
+// with the job's own run record if the migration adds one.
+function ShadowRequestsCard({ open, lastWave }) {
+  if (open.error || lastWave.error) {
+    return (
+      <p className="card-body text-sm text-[#666]">
+        Requests aren&apos;t set up yet: apply the donor network&apos;s phase 2 migration (npm run
+        db:migrate).
+      </p>
+    );
+  }
+  const requests = open.data ?? [];
+  const lastRanAt = lastWave.data?.[0]?.ran_at ?? null;
+  return (
+    <>
+      <p className="card-body text-sm">
+        {requests.length} open shadow requests. The last wave ran{" "}
+        {lastRanAt ? formatDateTime(lastRanAt) : "never"}.
+      </p>
+      <ul>
+        {requests.map((row) => (
+          <li key={row.id} className="result-item text-sm">
+            <span className="font-semibold">
+              #{row.id} · {row.units_needed} units · {row.urgency}
+            </span>
+            <span className="text-[#666]">
+              {" "}
+              · wave {row.waves_sent} · needed by {formatDateTime(row.needed_by)} · {row.status}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 export default async function AdminOverviewPage() {
   const supabase = await createClient();
 
@@ -262,6 +301,8 @@ export default async function AdminOverviewPage() {
     forecastFlags,
     forecastMetrics,
     donorCells,
+    openShadowRequests,
+    lastShadowWave,
   ] = await Promise.all([
     countRows(supabase.from("profiles").select("id", COUNT_ONLY)),
     countRows(supabase.from("profiles").select("id", COUNT_ONLY).eq("is_profile_complete", true)),
@@ -319,6 +360,14 @@ export default async function AdminOverviewPage() {
       .order("day", { ascending: false })
       .limit(3),
     supabase.rpc("donor_cell_counts"),
+    supabase
+      .from("blood_requests")
+      .select("id, urgency, units_needed, status, waves_sent, needed_by")
+      .eq("mode", "shadow")
+      .in("status", ["open", "covered"])
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase.from("request_waves").select("ran_at").order("ran_at", { ascending: false }).limit(1),
   ]);
   const auditEntries = recentAuditEntries.data ?? [];
 
@@ -380,6 +429,11 @@ export default async function AdminOverviewPage() {
       <div className="card mt-5">
         <h2 className="card-title">Donor network, donors per area (beta)</h2>
         <DonorCellsCard cells={donorCells} />
+      </div>
+
+      <div className="card mt-5">
+        <h2 className="card-title">Donor network, shadow requests (beta)</h2>
+        <ShadowRequestsCard open={openShadowRequests} lastWave={lastShadowWave} />
       </div>
 
       <div className="card mt-5">

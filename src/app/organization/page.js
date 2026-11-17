@@ -8,6 +8,7 @@ import {
   ORGANIZATION_STATUS_BADGE_CLASSES,
   ORGANIZATION_STATUS_LABELS,
 } from "@/lib/organization";
+import ShadowRequestsCard from "./ShadowRequestsCard";
 
 const EMPTY_FORM = {
   kind: "hospital",
@@ -274,6 +275,8 @@ export default function OrganizationPage() {
           )}
         </>
       )}
+
+      <ShadowRequestsCard />
     </div>
   );
 }
