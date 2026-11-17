@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getInitials } from "@/lib/format";
+import ThemeToggle from "./ThemeToggle";
 
 // The header finds out who is signed in from the browser, so the root layout reads no
 // cookies and pages can be prerendered instead of each waiting on a profile query
@@ -65,70 +66,83 @@ export default function Header() {
     setIsSigningOut(false);
   }
 
-  return (
-    <header className="w-full border-b border-[#e0e0e0] bg-white">
-      <div className="max-w-[900px] mx-auto px-4 min-h-14 py-2 flex flex-wrap items-center justify-between gap-2">
-        <nav className="flex items-center gap-4 text-sm">
-          <Link href="/" className="font-bold text-[#222]">
-            🩸 Bloodlink
-          </Link>
-          <Link href="/search" className="text-[#444] hover:text-[#d32f2f]">
-            Search
-          </Link>
-          {user && (
-            <Link href="/peer-to-peer" className="text-[#444] hover:text-[#d32f2f]">
-              My profile
-            </Link>
-          )}
-          {user && (
-            <Link href="/organization" className="text-[#444] hover:text-[#d32f2f]">
-              Organization
-            </Link>
-          )}
-          {user?.role === "admin" && (
-            <Link href="/admin" className="text-[#d32f2f] font-semibold">
-              Admin
-            </Link>
-          )}
-        </nav>
+  // Highlights the link for the page you are on.
+  const isActive = (href) => (href === "/" ? pathname === "/" : pathname?.startsWith(href));
+  const linkClass = (href) => `nav-link ${isActive(href) ? "nav-link-active" : ""}`;
 
-        {/* Nothing shows on the right until the session is known, so a signed-in user
+  return (
+    <header className="nav-shell">
+      <div className="nav-row">
+        <div className="nav-bar">
+          <Link href="/" className="nav-brand">
+            <span className="nav-dot" />
+            Bloodlink
+            <span className="nav-tag hidden sm:inline">EMERGENCY</span>
+          </Link>
+
+          <nav className="nav-links">
+            <Link href="/" className={linkClass("/")}>
+              Home
+            </Link>
+            <Link href="/search" className={linkClass("/search")}>
+              Search
+            </Link>
+            {user && (
+              <Link href="/peer-to-peer" className={linkClass("/peer-to-peer")}>
+                My profile
+              </Link>
+            )}
+            {user && (
+              <Link href="/organization" className={linkClass("/organization")}>
+                Organization
+              </Link>
+            )}
+            {user?.role === "admin" && (
+              <Link href="/admin" className={linkClass("/admin")}>
+                Admin
+              </Link>
+            )}
+          </nav>
+
+          {/* Nothing shows on the right until the session is known, so a signed-in user
             never sees a "Sign in" button flash first. */}
-        <div className="flex items-center gap-3">
-          {user ? (
-            <>
-              <Link href="/account" className="flex items-center gap-3" title="Your account">
-                {user.avatarUrl ? (
-                  <Image
-                    src={user.avatarUrl}
-                    alt={user.name ?? "User"}
-                    width={32}
-                    height={32}
-                    className="h-8 w-8 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="h-8 w-8 rounded-full bg-[#fdeaea] text-[#d32f2f] text-xs font-semibold flex items-center justify-center">
-                    {initials}
-                  </div>
-                )}
-                <span className="text-sm text-[#222] hidden sm:block">{user.name}</span>
-              </Link>
-              <button
-                onClick={handleSignOut}
-                disabled={isSigningOut}
-                className="btn btn-outline btn-small"
-              >
-                Sign out
-              </button>
-            </>
-          ) : (
-            sessionUser === null && (
-              <Link href="/login" className="btn btn-outline btn-small">
-                Sign in
-              </Link>
-            )
-          )}
+          <div className="flex items-center gap-3">
+            {user ? (
+              <>
+                <Link href="/account" className="flex items-center gap-3" title="Your account">
+                  {user.avatarUrl ? (
+                    <Image
+                      src={user.avatarUrl}
+                      alt={user.name ?? "User"}
+                      width={32}
+                      height={32}
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-8 w-8 rounded-full bg-[var(--red-soft)] text-[var(--accent-text)] text-xs font-semibold flex items-center justify-center">
+                      {initials}
+                    </div>
+                  )}
+                  <span className="text-sm text-[var(--text)] hidden sm:block">{user.name}</span>
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  disabled={isSigningOut}
+                  className="btn btn-outline btn-small"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              sessionUser === null && (
+                <Link href="/login" className="btn btn-primary btn-small">
+                  Sign in
+                </Link>
+              )
+            )}
+          </div>
         </div>
+        <ThemeToggle />
       </div>
     </header>
   );

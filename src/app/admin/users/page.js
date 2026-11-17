@@ -69,7 +69,7 @@ export default async function AdminUsersPage({ searchParams }) {
       {error ? (
         <p className="card-body notice notice-error">Could not load users: {error.message}</p>
       ) : data.length === 0 ? (
-        <p className="card-body text-sm text-[#666]">No matching users.</p>
+        <p className="card-body text-sm text-[var(--text-light)]">No matching users.</p>
       ) : (
         <ul>
           {data.map((profile) => (
@@ -83,7 +83,7 @@ export default async function AdminUsersPage({ searchParams }) {
                   <span className="badge ml-1">{ROLE_LABELS[profile.role]}</span>
                 </p>
                 <p className="result-address">{profile.email}</p>
-                <p className="text-xs text-[#666] mt-1">
+                <p className="text-xs text-[var(--text-light)] mt-1">
                   {profile.is_profile_complete ? "Profile complete" : "Profile incomplete"}
                   {profile.is_donor &&
                     ` · donor${profile.blood_group_code ? `, ${getBloodGroupName(profile.blood_group_code)}` : ""}`}

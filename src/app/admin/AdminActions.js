@@ -92,7 +92,7 @@ export function FlagToggle({ name, label, isEnabled }) {
       >
         {action}
       </button>
-      {error && <p className="text-xs text-[#a52121] mt-1">{error}</p>}
+      {error && <p className="text-xs text-[var(--error-text)] mt-1">{error}</p>}
     </div>
   );
 }
@@ -189,7 +189,7 @@ export function EndEventButton({ id }) {
       <button className="btn btn-outline btn-small" disabled={isBusy} onClick={handleClick}>
         End now
       </button>
-      {error && <p className="text-xs text-[#a52121] mt-1">{error}</p>}
+      {error && <p className="text-xs text-[var(--error-text)] mt-1">{error}</p>}
     </div>
   );
 }
@@ -198,7 +198,7 @@ export function EndEventButton({ id }) {
 export function RoleActions({ userId, role, isSelf }) {
   const { isBusy, error, runAction } = useAdminAction();
   if (role === "hospital" || role === "blood_bank") {
-    return <span className="text-xs text-[#666]">Set by verification</span>;
+    return <span className="text-xs text-[var(--text-light)]">Set by verification</span>;
   }
   const nextRole = role === "admin" ? "user" : "admin";
   const label =
@@ -213,7 +213,7 @@ export function RoleActions({ userId, role, isSelf }) {
       <button className="btn btn-outline btn-small" disabled={isBusy} onClick={handleClick}>
         {label}
       </button>
-      {error && <p className="text-xs text-[#a52121] mt-1">{error}</p>}
+      {error && <p className="text-xs text-[var(--error-text)] mt-1">{error}</p>}
     </div>
   );
 }

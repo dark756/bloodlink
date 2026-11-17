@@ -15,8 +15,8 @@ const ROLE_LABELS = {
 
 function DetailRow({ label, children }) {
   return (
-    <tr className="border-t border-[#e0e0e0]">
-      <td className="py-2 text-[#666] w-1/2">{label}</td>
+    <tr className="border-t border-[var(--border)]">
+      <td className="py-2 text-[var(--text-light)] w-1/2">{label}</td>
       <td className="py-2 text-right">{children}</td>
     </tr>
   );
@@ -71,7 +71,7 @@ export default function PeerToPeerPage() {
 
         <div className="card-body">
           {profile === undefined ? (
-            <p className="text-sm text-[#666]">Loading your profile...</p>
+            <p className="text-sm text-[var(--text-light)]">Loading your profile...</p>
           ) : loadError ? (
             <p className="notice notice-error">{loadError}</p>
           ) : (
@@ -86,7 +86,7 @@ export default function PeerToPeerPage() {
                     className="h-12 w-12 rounded-full object-cover"
                   />
                 ) : (
-                  <div className="h-12 w-12 rounded-full bg-[#fdeaea] text-[#d32f2f] text-sm font-semibold flex items-center justify-center">
+                  <div className="h-12 w-12 rounded-full bg-[var(--red-soft)] text-[var(--accent-text)] text-sm font-semibold flex items-center justify-center">
                     {initials}
                   </div>
                 )}
@@ -100,15 +100,15 @@ export default function PeerToPeerPage() {
               </div>
 
               {!details ? (
-                <p className="text-sm text-[#666] mt-4">
+                <p className="text-sm text-[var(--text-light)] mt-4">
                   You haven&apos;t filled in your details yet.{" "}
-                  <Link href="/set-details" className="text-[#d32f2f] font-semibold">
+                  <Link href="/set-details" className="text-[var(--accent-text)] font-semibold">
                     Complete your profile
                   </Link>
                 </p>
               ) : (
                 <>
-                  <h3 className="font-semibold text-[#222] mt-5 mb-1">Personal</h3>
+                  <h3 className="font-semibold text-[var(--text)] mt-5 mb-1">Personal</h3>
                   <table className="w-full text-sm">
                     <tbody>
                       <DetailRow label="Full name">{details.fullName || "-"}</DetailRow>
@@ -122,7 +122,7 @@ export default function PeerToPeerPage() {
                     </tbody>
                   </table>
 
-                  <h3 className="font-semibold text-[#222] mt-5 mb-1">Blood</h3>
+                  <h3 className="font-semibold text-[var(--text)] mt-5 mb-1">Blood</h3>
                   <table className="w-full text-sm">
                     <tbody>
                       <DetailRow label="Blood group">
@@ -136,7 +136,7 @@ export default function PeerToPeerPage() {
                     </tbody>
                   </table>
 
-                  <h3 className="font-semibold text-[#222] mt-5 mb-1">Emergency contact</h3>
+                  <h3 className="font-semibold text-[var(--text)] mt-5 mb-1">Emergency contact</h3>
                   <table className="w-full text-sm">
                     <tbody>
                       <DetailRow label="Name">{details.emergencyContact?.name || "-"}</DetailRow>
@@ -146,7 +146,7 @@ export default function PeerToPeerPage() {
 
                   {details.isDonor && details.donorDetails && (
                     <>
-                      <h3 className="font-semibold text-[#222] mt-5 mb-1">Donor info</h3>
+                      <h3 className="font-semibold text-[var(--text)] mt-5 mb-1">Donor info</h3>
                       <table className="w-full text-sm">
                         <tbody>
                           <DetailRow label="Last donation">
@@ -166,7 +166,7 @@ export default function PeerToPeerPage() {
                         </tbody>
                       </table>
                       {eligibility?.reasons?.length > 0 && (
-                        <ul className="text-xs text-[#666] mt-2 list-disc ml-5">
+                        <ul className="text-xs text-[var(--text-light)] mt-2 list-disc ml-5">
                           {eligibility.reasons.map((reason) => (
                             <li key={reason}>{reason}</li>
                           ))}
@@ -175,9 +175,9 @@ export default function PeerToPeerPage() {
                     </>
                   )}
 
-                  <p className="text-xs text-[#666] mt-4">
+                  <p className="text-xs text-[var(--text-light)] mt-4">
                     Need to change something?{" "}
-                    <Link href="/set-details" className="text-[#d32f2f] font-semibold">
+                    <Link href="/set-details" className="text-[var(--accent-text)] font-semibold">
                       Edit your details
                     </Link>
                   </p>

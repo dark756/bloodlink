@@ -94,7 +94,7 @@ export default async function AdminLocationsPage({ searchParams }) {
     <div className="card">
       <div className="card-title">
         <h2>Bank locations</h2>
-        <p className="text-xs font-normal text-[#666] mt-1">
+        <p className="text-xs font-normal text-[var(--text-light)] mt-1">
           Stocked banks location search can&apos;t place, and positions found for them. An accepted
           position goes into location search within the hour. Check each against the bank&apos;s
           address: a bank placed in the wrong town is worse than one not placed.
@@ -112,7 +112,7 @@ export default async function AdminLocationsPage({ searchParams }) {
         </div>
       </div>
       {shown.length === 0 ? (
-        <p className="card-body text-sm text-[#666]">Nothing here.</p>
+        <p className="card-body text-sm text-[var(--text-light)]">Nothing here.</p>
       ) : (
         <ul>
           {shown.map((bank) => (
@@ -155,7 +155,7 @@ export default async function AdminLocationsPage({ searchParams }) {
               Previous
             </Link>
           )}
-          <span className="text-[#666]">
+          <span className="text-[var(--text-light)]">
             Page {page} of {pages}
           </span>
           {page < pages && (

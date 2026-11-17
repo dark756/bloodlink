@@ -39,7 +39,7 @@ export default function OrganizationCard({ organization }) {
         {organization.address}
         {location && `, ${location}`} · {organization.phone}
       </p>
-      <p className="text-xs text-[#666] mt-1">
+      <p className="text-xs text-[var(--text-light)] mt-1">
         Applied by {organization.applicant?.full_name || "unknown"} (
         {organization.applicant?.email || "no email"}) on {formatDateTime(organization.created_at)}
         {organization.reviewed_at &&

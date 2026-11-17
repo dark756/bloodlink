@@ -139,7 +139,7 @@ function PrivacyConsentRow({ checked, onChange }) {
     <div className="mt-5">
       <CheckboxRow checked={checked} onChange={onChange}>
         I&apos;m 18 or older, I&apos;ve read the{" "}
-        <Link href="/privacy" target="_blank" className="text-[#d32f2f] font-semibold">
+        <Link href="/privacy" target="_blank" className="text-[var(--accent-text)] font-semibold">
           privacy note
         </Link>
         , and I agree to bloodLink storing these details as it describes.
@@ -279,7 +279,7 @@ export default function SetDetailsPage() {
   if (!isProfileLoaded) {
     return (
       <div className="page-wrap-small">
-        <p className="text-sm text-[#666] flex items-center gap-2">
+        <p className="text-sm text-[var(--text-light)] flex items-center gap-2">
           <span className="spinner" /> Loading your details…
         </p>
       </div>
@@ -298,7 +298,7 @@ export default function SetDetailsPage() {
 
         {currentStep === PERSONAL_STEP && (
           <form onSubmit={handlePersonalStepSubmit}>
-            <h2 className="font-semibold text-[#222] mb-3">Personal Details</h2>
+            <h2 className="font-semibold text-[var(--text)] mb-3">Personal Details</h2>
             <div className="flex flex-col gap-3 mb-5">
               <FormField label="Full Name" htmlFor="fullName">
                 <input
@@ -391,7 +391,7 @@ export default function SetDetailsPage() {
               </div>
             </div>
 
-            <h2 className="font-semibold text-[#222] mb-3">Emergency Contact</h2>
+            <h2 className="font-semibold text-[var(--text)] mb-3">Emergency Contact</h2>
             <div className="flex flex-col gap-3">
               <FormField label="Full Name" htmlFor="emergencyName">
                 <input
@@ -424,7 +424,7 @@ export default function SetDetailsPage() {
 
         {currentStep === BLOOD_STEP && (
           <form onSubmit={handleBloodStepSubmit}>
-            <h2 className="font-semibold text-[#222] mb-3">Blood Details</h2>
+            <h2 className="font-semibold text-[var(--text)] mb-3">Blood Details</h2>
             <div className="flex flex-col gap-3">
               <FormField label="Blood Group" htmlFor="bloodGroup">
                 <select
@@ -487,7 +487,7 @@ export default function SetDetailsPage() {
 
         {currentStep === SCREENING_STEP && form.isDonor && (
           <div>
-            <h2 className="font-semibold text-[#222] mb-3">Donor Screening</h2>
+            <h2 className="font-semibold text-[var(--text)] mb-3">Donor Screening</h2>
             <div className="flex flex-col gap-3 mb-5">
               <FormField label="Last Donation Date" htmlFor="lastDonationDate">
                 <input
@@ -498,7 +498,7 @@ export default function SetDetailsPage() {
                   onChange={handleFieldChange("lastDonationDate")}
                 />
                 {/* Without a date, eligibility treats the person as a first-time donor. */}
-                <p className="text-xs text-[#666] mt-1">
+                <p className="text-xs text-[var(--text-light)] mt-1">
                   Leave it empty if you have never donated.
                 </p>
               </FormField>
@@ -514,8 +514,8 @@ export default function SetDetailsPage() {
               </FormField>
             </div>
 
-            <h2 className="font-semibold text-[#222] mb-1">Health Screening</h2>
-            <p className="text-xs text-[#666] mb-3">
+            <h2 className="font-semibold text-[var(--text)] mb-1">Health Screening</h2>
+            <p className="text-xs text-[var(--text-light)] mb-3">
               Only you can see these answers, not even bloodLink&apos;s admins. They are deleted as
               soon as you are no longer a donor, or when you delete your account.
             </p>

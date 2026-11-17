@@ -40,11 +40,11 @@ export default async function AccountPage() {
             </p>
           )}
           <p>
-            <Link href="/privacy" className="text-[#d32f2f] font-semibold">
+            <Link href="/privacy" className="text-[var(--accent-text)] font-semibold">
               Read the privacy note
             </Link>{" "}
             ·{" "}
-            <Link href="/set-details" className="text-[#d32f2f] font-semibold">
+            <Link href="/set-details" className="text-[var(--accent-text)] font-semibold">
               Edit your details
             </Link>
           </p>

@@ -18,8 +18,8 @@ async function countRows(query) {
 function StatCard({ label, value, href }) {
   const card = (
     <div className="card card-body">
-      <div className="text-2xl font-bold text-[#222]">{value}</div>
-      <div className="text-xs text-[#666] mt-1">{label}</div>
+      <div className="text-2xl font-bold text-[var(--text)]">{value}</div>
+      <div className="text-xs text-[var(--text-light)] mt-1">{label}</div>
     </div>
   );
   return href ? <Link href={href}>{card}</Link> : card;
@@ -65,7 +65,7 @@ function CollectionHealthCard({ stats }) {
   const rows = stats.data ?? [];
   if (rows.length === 0) {
     return (
-      <p className="card-body text-sm text-[#666]">
+      <p className="card-body text-sm text-[var(--text-light)]">
         No eRaktKosh calls in the last 24 hours. Is the hourly collector (npm run snapshot) running?
       </p>
     );
@@ -85,7 +85,7 @@ function CollectionHealthCard({ stats }) {
         {stateRows.slice(0, 8).map((row) => (
           <li key={row.state_code} className="result-item text-sm">
             <span className="font-semibold">{getStateName(row.state_code) ?? row.state_code}</span>
-            <span className="text-[#666]">
+            <span className="text-[var(--text-light)]">
               {" "}
               · {row.success_pct}% ok · median {row.median_ms} ms · last good fetch{" "}
               {row.last_ok_at ? formatDateTime(row.last_ok_at) : "none"}
@@ -114,7 +114,7 @@ const decimal = (value, digits = 2) =>
 function ForecastCard({ model, scoreRuns, dailyRuns, flags, metrics }) {
   if (model.error || flags.error) {
     return (
-      <p className="card-body text-sm text-[#666]">
+      <p className="card-body text-sm text-[var(--text-light)]">
         The forecast&apos;s tables aren&apos;t set up yet: apply its migrations (npm run
         db:migrate).
       </p>
@@ -147,7 +147,7 @@ function ForecastCard({ model, scoreRuns, dailyRuns, flags, metrics }) {
         </p>
       )}
       {lastFailure && (
-        <p className="card-body text-xs text-[#a52121]">
+        <p className="card-body text-xs text-[var(--error-text)]">
           Last failed run, {formatDateTime(lastFailure.started_at)}: {lastFailure.error}
         </p>
       )}
@@ -159,7 +159,7 @@ function ForecastCard({ model, scoreRuns, dailyRuns, flags, metrics }) {
               <span>
                 <span className="font-semibold">{flag?.is_enabled ? "On" : "Off"}</span>: {label}
                 {flag?.disabled_reason && (
-                  <span className="text-[#a52121]">
+                  <span className="text-[var(--error-text)]">
                     {" "}
                     · stopped by the kill switch: {flag.disabled_reason}
                   </span>
@@ -181,7 +181,7 @@ function ForecastCard({ model, scoreRuns, dailyRuns, flags, metrics }) {
             {decimal(latest48.cut_off, 3)}.
           </p>
           {latest48.lift_by_group && (
-            <p className="text-xs text-[#666] mt-1">
+            <p className="text-xs text-[var(--text-light)] mt-1">
               Lift by group:{" "}
               {Object.entries(latest48.lift_by_group)
                 .map(([group, entry]) => `${group} ${decimal(entry.lift, 1)}`)
@@ -190,7 +190,7 @@ function ForecastCard({ model, scoreRuns, dailyRuns, flags, metrics }) {
           )}
         </div>
       ) : (
-        <p className="card-body text-xs text-[#666]">
+        <p className="card-body text-xs text-[var(--text-light)]">
           No live metrics yet: the daily job needs a full day of scores whose 72-hour windows have
           closed, about four days after scoring starts.
         </p>
@@ -306,7 +306,7 @@ export default async function AdminOverviewPage() {
             Could not load applications: {pendingApplications.error.message}
           </p>
         ) : pendingApplications.data.length === 0 ? (
-          <p className="card-body text-sm text-[#666]">Nothing to review right now.</p>
+          <p className="card-body text-sm text-[var(--text-light)]">Nothing to review right now.</p>
         ) : (
           <ul>
             {pendingApplications.data.map((organization) => (
@@ -339,18 +339,18 @@ export default async function AdminOverviewPage() {
           {auditEntries.map((entry) => (
             <li key={entry.id} className="result-item text-sm">
               <span className="font-semibold">{entry.action}</span>
-              <span className="text-[#666]">
+              <span className="text-[var(--text-light)]">
                 {" "}
                 by {entry.actor?.email ?? "system"} · {formatDateTime(entry.created_at)}
               </span>
             </li>
           ))}
           {auditEntries.length === 0 && (
-            <li className="result-item text-sm text-[#666]">No activity yet.</li>
+            <li className="result-item text-sm text-[var(--text-light)]">No activity yet.</li>
           )}
         </ul>
         <p className="card-body text-xs">
-          <Link href="/admin/audit" className="text-[#d32f2f] font-semibold">
+          <Link href="/admin/audit" className="text-[var(--accent-text)] font-semibold">
             Full audit log →
           </Link>
         </p>

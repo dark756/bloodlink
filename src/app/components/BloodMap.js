@@ -37,7 +37,7 @@ function formatCoords({ lat, lng }) {
 function createPinIcon() {
   return L.divIcon({
     className: "",
-    html: `<div style="width:18px;height:18px;background:#d32f2f;border:3px solid white;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
+    html: `<div style="width:18px;height:18px;background:#f0124f;border:3px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,0.4);"></div>`,
     iconSize: [18, 18],
     iconAnchor: [9, 9],
   });
@@ -164,7 +164,7 @@ export default function BloodMap({
               left: 8,
               zIndex: 1000,
               fontWeight: "normal",
-              color: "#666",
+              color: "var(--text-light)",
               display: "flex",
               alignItems: "center",
               gap: 6,
@@ -177,7 +177,7 @@ export default function BloodMap({
       </div>
 
       {coords && (
-        <p className="text-[13px] text-[#666] mt-2">
+        <p className="text-[13px] text-[var(--text-light)] mt-2">
           📌 {pinLabel}
           {isGeocoding && " (resolving…)"}
         </p>

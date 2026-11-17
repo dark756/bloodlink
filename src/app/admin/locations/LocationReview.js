@@ -8,7 +8,7 @@ import { SHOWN_PRECISION_M } from "@/lib/bankLocations";
 // Leaflet touches window on import, so the map loads in the browser only.
 const BloodMap = dynamic(() => import("../../components/BloodMap"), {
   ssr: false,
-  loading: () => <p className="text-sm text-[#666]">Loading map…</p>,
+  loading: () => <p className="text-sm text-[var(--text-light)]">Loading map…</p>,
 });
 
 const formatKm = (meters) => (meters / 1000).toFixed(meters < 10_000 ? 1 : 0);
@@ -69,7 +69,7 @@ export default function LocationReview({ bank }) {
         {bank.address || "No address"}
         {bank.place && ` · ${bank.place}`}
       </p>
-      <p className="text-xs text-[#666] mt-1">
+      <p className="text-xs text-[var(--text-light)] mt-1">
         Code {bank.hospitalCode}
         {bank.type && ` · ${bank.type}`} · {bank.units} {bank.units === 1 ? "unit" : "units"} listed
         · {bank.reason}
@@ -84,7 +84,7 @@ export default function LocationReview({ bank }) {
           {evidence.townOnly && " (on the town's name only)"}
           {evidence.note && ` · note: ${evidence.note}`}
           {evidence.displayName && (
-            <span className="block text-xs text-[#666]">{evidence.displayName}</span>
+            <span className="block text-xs text-[var(--text-light)]">{evidence.displayName}</span>
           )}
         </p>
       )}
@@ -127,7 +127,7 @@ export default function LocationReview({ bank }) {
             initialCenter={pin ? [pin.lat, pin.lng] : undefined}
             initialZoom={pin ? 15 : 5}
           />
-          <p className="text-xs text-[#666] mt-1">Click the map to move the pin.</p>
+          <p className="text-xs text-[var(--text-light)] mt-1">Click the map to move the pin.</p>
         </div>
       )}
       <input

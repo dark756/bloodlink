@@ -101,10 +101,10 @@ export default function LoginForm({ nextPath, callbackFailed }) {
           Continue with Google
         </button>
 
-        <div className="flex items-center gap-3 my-5 text-xs text-[#666]">
-          <span className="flex-1 border-t border-[#e0e0e0]" />
+        <div className="flex items-center gap-3 my-5 text-xs text-[var(--text-light)]">
+          <span className="flex-1 border-t border-[var(--border)]" />
           or with email
-          <span className="flex-1 border-t border-[#e0e0e0]" />
+          <span className="flex-1 border-t border-[var(--border)]" />
         </div>
 
         {error && <p className="notice notice-error mb-4">{error}</p>}
@@ -159,18 +159,22 @@ export default function LoginForm({ nextPath, callbackFailed }) {
           </button>
         </form>
 
-        <p className="text-sm text-[#666] mt-4">
+        <p className="text-sm text-[var(--text-light)] mt-4">
           {isSignIn ? "New here? " : "Already have an account? "}
-          <button type="button" className="text-[#d32f2f] font-semibold" onClick={handleToggleMode}>
+          <button
+            type="button"
+            className="text-[var(--accent-text)] font-semibold"
+            onClick={handleToggleMode}
+          >
             {isSignIn ? "Create an account" : "Sign in instead"}
           </button>
         </p>
 
         {/* Continuing with Google creates an account too, so this shows in both modes. */}
-        <p className="text-xs text-[#666] mt-4">
+        <p className="text-xs text-[var(--text-light)] mt-4">
           bloodLink is for people aged 18 or over. Until you fill in your details, an account holds
           only your name and email, and your profile picture if you use Google. The{" "}
-          <Link href="/privacy" className="text-[#d32f2f] font-semibold">
+          <Link href="/privacy" className="text-[var(--accent-text)] font-semibold">
             privacy note
           </Link>{" "}
           says what is stored and why.

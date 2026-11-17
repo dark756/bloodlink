@@ -41,7 +41,7 @@ export default function DeleteAccountCard({ isAdmin }) {
     <div className="card mt-5">
       <h2 className="card-title">Delete your account</h2>
       <div className="card-body text-sm">
-        <p className="text-[#666]">
+        <p className="text-[var(--text-light)]">
           This deletes your account, your profile, your donor screening answers and any organization
           application you made, straight away. It can&apos;t be undone.
           {isAdmin && " If you are the only admin, make someone else an admin first."}

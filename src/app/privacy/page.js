@@ -85,11 +85,14 @@ function Section({ title, children }) {
 
 export default function PrivacyPage() {
   const contact = CONTACT_EMAIL ? (
-    <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#d32f2f] font-semibold">
+    <a href={`mailto:${CONTACT_EMAIL}`} className="text-[var(--accent-text)] font-semibold">
       {CONTACT_EMAIL}
     </a>
   ) : (
-    <a href="https://github.com/dark756/bloodlink" className="text-[#d32f2f] font-semibold">
+    <a
+      href="https://github.com/dark756/bloodlink"
+      className="text-[var(--accent-text)] font-semibold"
+    >
       the project&apos;s GitHub page
     </a>
   );
@@ -108,7 +111,7 @@ export default function PrivacyPage() {
           bloodLink stores the following, and only for the reasons given.
         </p>
         <table className="w-full text-left">
-          <thead className="text-xs text-[#666]">
+          <thead className="text-xs text-[var(--text-light)]">
             <tr>
               <th className="py-2 pr-3 font-semibold">What</th>
               <th className="py-2 pr-3 font-semibold">Why</th>
@@ -117,10 +120,10 @@ export default function PrivacyPage() {
           </thead>
           <tbody>
             {STORED_DATA.map((item) => (
-              <tr key={item.what} className="border-t border-[#e0e0e0] align-top">
+              <tr key={item.what} className="border-t border-[var(--border)] align-top">
                 <td className="py-2 pr-3">{item.what}</td>
-                <td className="py-2 pr-3 text-[#666]">{item.why}</td>
-                <td className="py-2 text-[#666]">{item.who}</td>
+                <td className="py-2 pr-3 text-[var(--text-light)]">{item.why}</td>
+                <td className="py-2 text-[var(--text-light)]">{item.who}</td>
               </tr>
             ))}
           </tbody>
@@ -146,7 +149,7 @@ export default function PrivacyPage() {
 
       <Section title="Who else receives data">
         <table className="w-full text-left">
-          <thead className="text-xs text-[#666]">
+          <thead className="text-xs text-[var(--text-light)]">
             <tr>
               <th className="py-2 pr-3 font-semibold">Service</th>
               <th className="py-2 pr-3 font-semibold">What it receives</th>
@@ -155,10 +158,10 @@ export default function PrivacyPage() {
           </thead>
           <tbody>
             {OUTSIDE_SERVICES.map((item) => (
-              <tr key={item.service} className="border-t border-[#e0e0e0] align-top">
+              <tr key={item.service} className="border-t border-[var(--border)] align-top">
                 <td className="py-2 pr-3">{item.service}</td>
-                <td className="py-2 pr-3 text-[#666]">{item.gets}</td>
-                <td className="py-2 text-[#666]">{item.why}</td>
+                <td className="py-2 pr-3 text-[var(--text-light)]">{item.gets}</td>
+                <td className="py-2 text-[var(--text-light)]">{item.why}</td>
               </tr>
             ))}
           </tbody>
@@ -180,18 +183,18 @@ export default function PrivacyPage() {
       <Section title="Your choices and rights">
         <p>
           <strong>See and correct your details</strong> on{" "}
-          <Link href="/peer-to-peer" className="text-[#d32f2f] font-semibold">
+          <Link href="/peer-to-peer" className="text-[var(--accent-text)] font-semibold">
             My profile
           </Link>{" "}
           and the{" "}
-          <Link href="/set-details" className="text-[#d32f2f] font-semibold">
+          <Link href="/set-details" className="text-[var(--accent-text)] font-semibold">
             details form
           </Link>
           .
         </p>
         <p>
           <strong>Delete your account</strong> on the{" "}
-          <Link href="/account" className="text-[#d32f2f] font-semibold">
+          <Link href="/account" className="text-[var(--accent-text)] font-semibold">
             Account page
           </Link>
           . Everything listed above goes at once, and your agreement to this note is withdrawn. To

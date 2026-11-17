@@ -31,16 +31,16 @@ function ApplicationCard({ application }) {
         </span>
       </h2>
       <div className="card-body text-sm">
-        <p className="text-[#666]">
+        <p className="text-[var(--text-light)]">
           {ORGANIZATION_KINDS[application.kind]} · Registration {application.registration_number}
           {application.eraktkosh_code && ` · eRaktKosh code ${application.eraktkosh_code}`}
         </p>
-        <p className="text-[#666] mt-1">
+        <p className="text-[var(--text-light)] mt-1">
           {application.address},{" "}
           {getDistrictName(application.state_code, application.district_code) ?? ""}{" "}
           {getStateName(application.state_code) ?? ""} · {application.phone}
         </p>
-        <p className="text-xs text-[#666] mt-2">
+        <p className="text-xs text-[var(--text-light)] mt-2">
           Submitted {formatDate(application.created_at)}
           {application.reviewed_at && ` · Reviewed ${formatDate(application.reviewed_at)}`}
         </p>
@@ -50,10 +50,7 @@ function ApplicationCard({ application }) {
           </p>
         )}
         {application.status === "approved" && (
-          <p
-            className="notice mt-3"
-            style={{ background: "#e6f4ea", borderColor: "#b7dfc4", color: "#1b7a41" }}
-          >
+          <p className="notice notice-ok mt-3">
             Your account is verified as a {ORGANIZATION_KINDS[application.kind].toLowerCase()}.
           </p>
         )}
@@ -126,7 +123,7 @@ export default function OrganizationPage() {
       {error && <p className="notice notice-error mt-5">{error}</p>}
 
       {applications === undefined ? (
-        <p className="text-sm text-[#666] mt-5">Loading…</p>
+        <p className="text-sm text-[var(--text-light)] mt-5">Loading…</p>
       ) : (
         <>
           {applications.map((application) => (
@@ -135,7 +132,7 @@ export default function OrganizationPage() {
 
           {!openApplication && (
             <form onSubmit={handleSubmit} className="card card-body mt-5 flex flex-col gap-3">
-              <h2 className="font-semibold text-[#222]">
+              <h2 className="font-semibold text-[var(--text)]">
                 {applications.length > 0 ? "Submit a new application" : "Application"}
               </h2>
 

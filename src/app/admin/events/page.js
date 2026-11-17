@@ -42,7 +42,7 @@ export default async function AdminEventsPage() {
           <FlagToggle name="admin_events" label="stock-out events" isEnabled={isOn} />
         </div>
         <StockEventForm components={COMPONENTS} groups={BLOOD_GROUPS} />
-        <p className="card-body text-xs text-[#666]">
+        <p className="card-body text-xs text-[var(--text-light)]">
           An event is real: everyone searching that bank and group sees &quot;flagged by
           bloodLink&apos;s team&quot; with the reason, and donors of that group within 15 km who are
           eligible today see it in their suggestions. It ends by itself after the window you choose.
@@ -54,7 +54,7 @@ export default async function AdminEventsPage() {
         {error ? (
           <p className="card-body notice notice-error">Could not load events: {error.message}</p>
         ) : events.length === 0 ? (
-          <p className="card-body text-sm text-[#666]">No events yet.</p>
+          <p className="card-body text-sm text-[var(--text-light)]">No events yet.</p>
         ) : (
           <ul>
             {events.map((event) => (
@@ -68,8 +68,8 @@ export default async function AdminEventsPage() {
                     {getComponentName(event.component_id) ?? event.component_id} at{" "}
                     {bankNames.get(event.hospital_code) ?? "bank"} ({event.hospital_code})
                   </p>
-                  <p className="text-[#666]">{event.reason}</p>
-                  <p className="text-xs text-[#666] mt-1">
+                  <p className="text-[var(--text-light)]">{event.reason}</p>
+                  <p className="text-xs text-[var(--text-light)] mt-1">
                     {isActive(event, now)
                       ? `Active until ${formatDateTime(event.ends_at)}`
                       : event.ended_at

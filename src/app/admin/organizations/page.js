@@ -38,7 +38,7 @@ export default async function AdminOrganizationsPage({ searchParams }) {
           Could not load organizations: {error.message}
         </p>
       ) : data.length === 0 ? (
-        <p className="card-body text-sm text-[#666]">No organizations here.</p>
+        <p className="card-body text-sm text-[var(--text-light)]">No organizations here.</p>
       ) : (
         <ul>
           {data.map((organization) => (

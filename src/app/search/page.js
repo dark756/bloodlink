@@ -24,8 +24,8 @@ const SAVED_COPY_WARNING_HOURS = 24;
 function MapPlaceholder() {
   return (
     <div
-      className="map-box flex items-center justify-center gap-2 text-sm text-[#666]"
-      style={{ height: 300, background: "#f0f0f0" }}
+      className="map-box flex items-center justify-center gap-2 text-sm text-[var(--text-light)]"
+      style={{ height: 300, background: "var(--surface-2)" }}
     >
       <span className="spinner" />
       Loading map…
@@ -77,10 +77,10 @@ function StockBadges({ stock }) {
 function RankingDetails({ bank }) {
   return (
     <div className="mt-2">
-      <p className="text-xs font-semibold text-[#d32f2f]">
+      <p className="text-xs font-semibold text-[var(--accent-text)]">
         #{bank.rank} · score {bank.score}/100 · about {bank.etaMinutes} min away
       </p>
-      <ul className="text-xs text-[#666] mt-1 list-disc ml-5">
+      <ul className="text-xs text-[var(--text-light)] mt-1 list-disc ml-5">
         {bank.reasons.map((reason) => (
           <li key={reason}>{reason}</li>
         ))}
@@ -92,15 +92,15 @@ function RankingDetails({ bank }) {
 function PlanCard({ plan, label }) {
   return (
     <div className="card card-body mb-3">
-      <h2 className="font-semibold text-[#222]">
+      <h2 className="font-semibold text-[var(--text)]">
         Suggested plan for {plan.unitsNeeded} unit(s) of {label}
       </h2>
       <ol className="text-sm mt-2 list-decimal ml-5">
         {plan.steps.map((step) => (
           <li key={step.hospitalCode} className="mt-1">
             <strong>{step.name}</strong>: {step.units} {step.units === 1 ? "unit" : "units"}
-            <span className="text-[#666]"> · about {step.etaMinutes} min</span>
-            {step.phone && <span className="text-[#666]"> · call {step.phone}</span>}
+            <span className="text-[var(--text-light)]"> · about {step.etaMinutes} min</span>
+            {step.phone && <span className="text-[var(--text-light)]"> · call {step.phone}</span>}
           </li>
         ))}
       </ol>
@@ -110,11 +110,11 @@ function PlanCard({ plan, label }) {
           and your nearest hospital.
         </p>
       ) : (
-        <p className="text-xs text-[#666] mt-2">
+        <p className="text-xs text-[var(--text-light)] mt-2">
           Call each bank to confirm and reserve before travelling.
         </p>
       )}
-      <p className="text-xs text-[#666] mt-2">
+      <p className="text-xs text-[var(--text-light)] mt-2">
         Only banks listing the exact blood group are shown. Ranking weighs travel time at this hour,
         whether the bank covers the request, spare stock beyond it (weighted more when urgent) and
         how recently stock was updated. The blood bank must still cross-match before transfusion.
@@ -138,7 +138,7 @@ function TravelNote({ travel }) {
   const basis =
     travel.roadRoutes > 0 ? "road routes" : "straight-line distance (road routing unavailable)";
   return (
-    <p className="text-xs font-normal text-[#666] mt-1">
+    <p className="text-xs font-normal text-[var(--text-light)] mt-1">
       Travel times use {basis} and {place} for {travel.localTime} ({travel.label}, +
       {Math.round(travel.congestionPercent)}%)
       {travel.rainFactor > 1 && `, slowed for rain (${travel.rainMmPerHour} mm/h)`}. They are
@@ -154,7 +154,7 @@ function ForecastNote({ forecast }) {
   if (!forecast?.mayRunLowSoon) return null;
   const chance = Math.round(forecast.p48 * 100);
   return (
-    <p className="text-xs text-[#a52121] mt-2">
+    <p className="text-xs text-[var(--error-text)] mt-2">
       Forecast (beta, informational): {chance}% chance of falling to {forecast.thresholdUnits}{" "}
       {unitWord(forecast.thresholdUnits)} or fewer within 48 hours
       {forecast.reasons.length > 0 && `: ${forecast.reasons.join("; ")}`}. Call the bank to confirm.
@@ -180,7 +180,7 @@ function withMarks(bank, marks) {
 function EventNote({ event }) {
   if (!event) return null;
   return (
-    <p className="text-xs text-[#a52121] mt-2">
+    <p className="text-xs text-[var(--error-text)] mt-2">
       Flagged by bloodLink&apos;s team until {formatDateTime(event.endsAt)}: {event.reason}. Call
       the bank to confirm.
     </p>
@@ -197,10 +197,10 @@ function BankItem({ bank }) {
       <h3 className="result-name">{bank.name}</h3>
       <p className="result-address">{bank.address}</p>
       {bank.distanceM !== undefined && (
-        <p className="text-sm text-[#d32f2f] mt-1">{describeDistance(bank)}</p>
+        <p className="text-sm text-[var(--accent-text)] mt-1">{describeDistance(bank)}</p>
       )}
       {bank.locationSource === "fixed" && (
-        <p className="text-xs text-[#666] mt-1">
+        <p className="text-xs text-[var(--text-light)] mt-1">
           Location found by bloodLink: eRaktKosh gives none, or a wrong one
           {bank.locationPrecisionM > SHOWN_PRECISION_M &&
             `. Accurate to about ${formatKm(bank.locationPrecisionM)} km`}
@@ -228,7 +228,7 @@ function BankItem({ bank }) {
       <EventNote event={bank.event} />
       <ForecastNote forecast={bank.forecast} />
       {bank.rank && <RankingDetails bank={bank} />}
-      <p className="text-xs text-[#666] mt-2 flex flex-wrap gap-x-3 gap-y-1">
+      <p className="text-xs text-[var(--text-light)] mt-2 flex flex-wrap gap-x-3 gap-y-1">
         {updatedAgo && (
           <span>
             Bank {updatedAgo}
@@ -238,7 +238,7 @@ function BankItem({ bank }) {
         {bank.phone && (
           <a
             href={`tel:${bank.phone.replace(/[^\d+]/g, "")}`}
-            className="text-[#d32f2f] font-semibold"
+            className="text-[var(--accent-text)] font-semibold"
           >
             📞 {bank.phone}
           </a>
@@ -248,7 +248,7 @@ function BankItem({ bank }) {
             href={`https://www.google.com/maps/dir/?api=1&destination=${bank.latitude},${bank.longitude}`}
             target="_blank"
             rel="noreferrer"
-            className="text-[#d32f2f] font-semibold"
+            className="text-[var(--accent-text)] font-semibold"
           >
             Directions ↗
           </a>
@@ -318,7 +318,7 @@ function SearchResults({ result }) {
           nearest hospital.
         </p>
       ) : mode === "region" && banks.length === 0 ? (
-        <p className="text-sm text-[#666]">No blood banks are listed for this area.</p>
+        <p className="text-sm text-[var(--text-light)]">No blood banks are listed for this area.</p>
       ) : (
         <>
           {meta?.mode === "ranked" && <PlanCard plan={meta.plan} label={label} />}
@@ -327,7 +327,7 @@ function SearchResults({ result }) {
               <h2>{describeResults(result)}</h2>
               {meta?.travel && <TravelNote travel={meta.travel} />}
               {meta?.misplacedBanks > 0 && (
-                <p className="text-xs font-normal text-[#666] mt-1">
+                <p className="text-xs font-normal text-[var(--text-light)] mt-1">
                   {meta.misplacedBanks} more {meta.misplacedBanks === 1 ? "bank is" : "banks are"}{" "}
                   left out: eRaktKosh places them outside their own state, so their distance is
                   unknown. Search by state to see them.
@@ -560,7 +560,7 @@ export default function SearchPage() {
         </div>
 
         {canRank ? (
-          <div className="grid gap-4 sm:grid-cols-2 mt-4 pt-4 border-t border-[#e0e0e0]">
+          <div className="grid gap-4 sm:grid-cols-2 mt-4 pt-4 border-t border-[var(--border)]">
             <div>
               <label className="label" htmlFor="units">
                 Units needed
@@ -594,7 +594,7 @@ export default function SearchPage() {
             </div>
           </div>
         ) : (
-          <p className="text-xs text-[#666] mt-3">
+          <p className="text-xs text-[var(--text-light)] mt-3">
             Pick both a component and a blood group to rank nearby sources and get a suggested plan.
           </p>
         )}
@@ -616,7 +616,7 @@ export default function SearchPage() {
           </button>
         </div>
         {!coords && (
-          <p className="text-xs text-[#666] mt-2">
+          <p className="text-xs text-[var(--text-light)] mt-2">
             To search by location, drop a pin on the map below or use your location.
           </p>
         )}
@@ -643,11 +643,11 @@ export default function SearchPage() {
       )}
       {result && <SearchResults result={result} />}
 
-      <p className="text-xs text-[#666] mt-6 max-w-xl">
+      <p className="text-xs text-[var(--text-light)] mt-6 max-w-xl">
         Stock comes from eRaktKosh and may be out of date. Always call the blood bank before
         travelling.
       </p>
-      <p className="text-xs text-[#999] mt-2 max-w-xl">
+      <p className="text-xs text-[var(--muted)] mt-2 max-w-xl">
         Routes: OSRM, map data © OpenStreetMap contributors. Traffic patterns: TomTom Traffic Index
         2025. Weather: Open-Meteo. State outlines: DataMeet India community via geoBoundaries (CC BY
         2.5 IN).

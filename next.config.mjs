@@ -34,6 +34,9 @@ const securityHeaders = [
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Pin Turbopack's root to this folder. Without it the dev server can pick the parent folder,
+  // where `@import "tailwindcss"` in globals.css cannot be resolved and pages hang compiling.
+  turbopack: { root: import.meta.dirname },
   images: {
     // Google profile pictures shown in the header and profile page.
     remotePatterns: [{ protocol: "https", hostname: "lh3.googleusercontent.com" }],

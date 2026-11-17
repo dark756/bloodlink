@@ -36,17 +36,17 @@ export default async function AdminAuditPage() {
           Could not load the audit log: {error.message}
         </p>
       ) : data.length === 0 ? (
-        <p className="card-body text-sm text-[#666]">No entries yet.</p>
+        <p className="card-body text-sm text-[var(--text-light)]">No entries yet.</p>
       ) : (
         <ul>
           {data.map((entry) => (
             <li key={entry.id} className="result-item text-sm">
               <p>
                 <span className="font-semibold">{entry.action}</span>{" "}
-                <span className="text-[#666]">{describeAuditEntry(entry)}</span>
+                <span className="text-[var(--text-light)]">{describeAuditEntry(entry)}</span>
               </p>
               {entry.details?.note && <p className="text-xs mt-1">Note: {entry.details.note}</p>}
-              <p className="text-xs text-[#666] mt-1">
+              <p className="text-xs text-[var(--text-light)] mt-1">
                 {describeActor(entry)} · {formatDateTime(entry.created_at)}
               </p>
             </li>

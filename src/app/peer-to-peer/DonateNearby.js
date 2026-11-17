@@ -18,23 +18,25 @@ function SuggestionItem({ suggestion }) {
       <h3 className="result-name">{suggestion.name}</h3>
       <p className="result-address">{suggestion.address}</p>
       {suggestion.distanceKm !== null && (
-        <p className="text-sm text-[#d32f2f] mt-1">About {suggestion.distanceKm} km away</p>
+        <p className="text-sm text-[var(--accent-text)] mt-1">
+          About {suggestion.distanceKm} km away
+        </p>
       )}
       <div className="mt-2 flex flex-wrap gap-2">
         <span className="badge badge-red">
           {isTeam ? "Flagged by bloodLink's team" : "Forecast: may run low within 48 h"}
         </span>
       </div>
-      <p className="text-xs text-[#666] mt-2">
+      <p className="text-xs text-[var(--text-light)] mt-2">
         {isTeam
           ? `${suggestion.reason}${suggestion.endsAt ? ` (until ${formatDateTime(suggestion.endsAt)})` : ""}`
           : `${Math.round(suggestion.chance48 * 100)}% chance of falling to ${suggestion.thresholdUnits} units or fewer${suggestion.forecastReasons.length > 0 ? `: ${suggestion.forecastReasons.join("; ")}` : ""}.`}
       </p>
-      <p className="text-xs text-[#666] mt-2 flex flex-wrap gap-x-3 gap-y-1">
+      <p className="text-xs text-[var(--text-light)] mt-2 flex flex-wrap gap-x-3 gap-y-1">
         {suggestion.phone && (
           <a
             href={`tel:${suggestion.phone.replace(/[^\d+]/g, "")}`}
-            className="text-[#d32f2f] font-semibold"
+            className="text-[var(--accent-text)] font-semibold"
           >
             📞 {suggestion.phone}
           </a>
@@ -44,7 +46,7 @@ function SuggestionItem({ suggestion }) {
             href={`https://www.google.com/maps/dir/?api=1&destination=${suggestion.latitude},${suggestion.longitude}`}
             target="_blank"
             rel="noreferrer"
-            className="text-[#d32f2f] font-semibold"
+            className="text-[var(--accent-text)] font-semibold"
           >
             Directions ↗
           </a>
@@ -108,13 +110,15 @@ export default function DonateNearby() {
   }
 
   if (answer === undefined) {
-    return <p className="card-body text-sm text-[#666]">Checking blood banks near you...</p>;
+    return (
+      <p className="card-body text-sm text-[var(--text-light)]">Checking blood banks near you...</p>
+    );
   }
   if (answer === null) {
     return <p className="card-body notice notice-error">Could not check blood banks near you.</p>;
   }
   if (!answer.canSuggest) {
-    return <p className="card-body text-sm text-[#666]">{answer.message}</p>;
+    return <p className="card-body text-sm text-[var(--text-light)]">{answer.message}</p>;
   }
   const group = getBloodGroupName(answer.bloodGroupCode) ?? "your group";
   return (
@@ -131,10 +135,12 @@ export default function DonateNearby() {
           {isLocating ? "Locating..." : "Use my location"}
         </button>
       </p>
-      {locationError && <p className="card-body text-xs text-[#a52121]">{locationError}</p>}
+      {locationError && (
+        <p className="card-body text-xs text-[var(--error-text)]">{locationError}</p>
+      )}
       {answer.suggestions.length === 0 ? (
         answer.basis !== "none" && (
-          <p className="card-body text-sm text-[#666]">
+          <p className="card-body text-sm text-[var(--text-light)]">
             None right now. Thank you for being ready to help.
           </p>
         )
@@ -145,7 +151,7 @@ export default function DonateNearby() {
           ))}
         </ul>
       )}
-      <p className="card-body text-xs text-[#666]">
+      <p className="card-body text-xs text-[var(--text-light)]">
         You may be eligible to donate; the blood centre decides. Call before you go. bloodLink never
         asks for money.
       </p>

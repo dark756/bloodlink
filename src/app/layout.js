@@ -1,10 +1,11 @@
-import { Geist, Geist_Mono } from "next/font/google";
+import { Plus_Jakarta_Sans, Inter, JetBrains_Mono } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 import Header from "./components/Header";
 
-const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const headFace = Plus_Jakarta_Sans({ variable: "--font-head-face", subsets: ["latin"] });
+const bodyFace = Inter({ variable: "--font-body-face", subsets: ["latin"] });
+const monoFace = JetBrains_Mono({ variable: "--font-mono-face", subsets: ["latin"] });
 
 export const metadata = {
   title: "Bloodlink",
@@ -13,17 +14,26 @@ export const metadata = {
 
 // Reads no cookies, so pages that don't read them either are prerendered. The header
 // finds the signed-in user in the browser (#49).
+// Runs before the first paint so a saved light-mode choice does not flash dark.
+const themeScript = `try{if(localStorage.getItem("theme")==="light")document.documentElement.dataset.theme="light"}catch(e){}`;
+
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html
+      lang="en"
+      className={`${headFace.variable} ${bodyFace.variable} ${monoFace.variable} h-full antialiased`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <Header />
         <main className="flex-1">{children}</main>
-        <footer className="border-t border-[#e0e0e0] bg-white">
-          <div className="max-w-[900px] mx-auto px-4 py-5 text-xs text-[#666] text-center">
+        <footer className="site-footer">
+          <div className="max-w-[900px] mx-auto px-4 py-6 text-xs text-[var(--text-light)] text-center">
             Bloodlink — a student project. In an emergency, please call your nearest hospital
             directly. ·{" "}
-            <Link href="/privacy" className="hover:text-[#d32f2f]">
+            <Link href="/privacy" className="hover:text-[var(--accent-text)]">
               Privacy
             </Link>
           </div>
